@@ -31,6 +31,15 @@ app.innerHTML = `
 
     <div class="card">
       <div class="status-row">
+        <strong>Local storage</strong>
+      </div>
+      <p class="muted" id="storage-note">Diagnostic scans are limited to the 3 most recent scans. Cleanup only affects this extension's local data.</p>
+      <button id="clear-diagnostic" class="secondary" type="button">Diagnostic-Speicher leeren</button>
+      <button id="clear-except-account" class="secondary" type="button">Alles außer Account-Snapshot löschen</button>
+    </div>
+
+    <div class="card">
+      <div class="status-row">
         <span class="dot" id="status-dot"></span>
         <strong id="status">Checking diagnostic scan status…</strong>
       </div>
@@ -55,7 +64,10 @@ app.innerHTML = `
 
 const dashboardButton = requiredButton('#dashboard');
 const resetAccountButton = requiredButton('#reset-account');
+const clearDiagnosticButton = requiredButton('#clear-diagnostic');
+const clearExceptAccountButton = requiredButton('#clear-except-account');
 const trackingNote = requiredElement('#tracking-note');
+const storageNote = requiredElement('#storage-note');
 const status = requiredElement('#status');
 const detail = requiredElement('#detail');
 const dot = requiredElement('#status-dot');
@@ -88,6 +100,24 @@ resetAccountButton.addEventListener('click', async () => {
   } finally {
     resetAccountButton.disabled = false;
   }
+});
+
+clearDiagnosticButton.addEventListener('click', async () => {
+  if (!window.confirm('Clear all locally stored diagnostic scans? The account snapshot, combat history, drop preferences, and UI preferences will be kept.')) return;
+  await runStorageCleanup(
+    { type: 'gbfit:clear-diagnostic-data' },
+    'Clearing diagnostic storage…',
+    'Diagnostic storage cleared. Account snapshot and combat data were kept.',
+  );
+});
+
+clearExceptAccountButton.addEventListener('click', async () => {
+  if (!window.confirm('Delete diagnostic scans, combat/raid history, and drop preferences? The normalized account snapshot and UI preferences will be kept.')) return;
+  await runStorageCleanup(
+    { type: 'gbfit:clear-all-except-account' },
+    'Clearing local data except the account snapshot…',
+    'Diagnostic and combat data cleared. Account snapshot and UI preferences were kept.',
+  );
 });
 
 toggle.addEventListener('click', async () => {
@@ -125,6 +155,19 @@ async function refresh(): Promise<void> {
   render(await sendMessage({ type: 'gbfit:get-status' }));
 }
 
+async function runStorageCleanup(
+  message: CaptureControlMessage,
+  pendingMessage: string,
+  successMessage: string,
+): Promise<void> {
+  clearDiagnosticButton.disabled = true;
+  clearExceptAccountButton.disabled = true;
+  storageNote.textContent = pendingMessage;
+  const response = await sendMessage(message);
+  render(response);
+  storageNote.textContent = response.error ?? successMessage;
+}
+
 async function sendMessage(message: CaptureControlMessage): Promise<CaptureStatusResponse> {
   try {
     return await chrome.runtime.sendMessage(message) as CaptureStatusResponse;
@@ -147,6 +190,8 @@ function render(response: CaptureStatusResponse): void {
   dot.classList.toggle('active', response.active);
   toggle.disabled = false;
   toggle.textContent = response.active ? 'Stop diagnostic scan' : 'Start diagnostic scan';
+  clearDiagnosticButton.disabled = response.active;
+  clearExceptAccountButton.disabled = response.active;
   responseCount.textContent = `${response.scan?.responseCount ?? 0} JSON responses`;
 
   const completed = !response.active && response.scan?.stoppedAt !== undefined;
