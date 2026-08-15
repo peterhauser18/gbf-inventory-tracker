@@ -1,0 +1,149 @@
+.theme-toggle {
+  width: 100%;
+  border: 1px solid #41423d;
+  border-radius: 9px;
+  padding: 9px 10px;
+  background: #2b2c28;
+  color: #f4f4ef;
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  background: #363732;
+  border-color: #5a5c54;
+}
+
+:root[data-theme='dark'] {
+  color: #e7e8e2;
+  background: #141511;
+  --panel: #1d1f1a;
+  --border: #34372f;
+}
+
+:root[data-theme='dark'] body {
+  background: #141511;
+}
+
+:root[data-theme='dark'] .content,
+:root[data-theme='dark'] .standalone {
+  color: #e7e8e2;
+}
+
+:root[data-theme='dark'] .muted,
+:root[data-theme='dark'] .result-count,
+:root[data-theme='dark'] .metric-head,
+:root[data-theme='dark'] .card-copy > span:not(.card-meta),
+:root[data-theme='dark'] .facts dt,
+:root[data-theme='dark'] .step-count,
+:root[data-theme='dark'] .step-copy span,
+:root[data-theme='dark'] .child-row .child-copy > span,
+:root[data-theme='dark'] .unknown {
+  color: #a7aaa0;
+}
+
+:root[data-theme='dark'] .search {
+  color: #c1c4ba;
+}
+
+:root[data-theme='dark'] .metric-card,
+:root[data-theme='dark'] .overview-panel,
+:root[data-theme='dark'] .entity-card,
+:root[data-theme='dark'] .facts > div,
+:root[data-theme='dark'] .child-row,
+:root[data-theme='dark'] .planner-step,
+:root[data-theme='dark'] .material-row,
+:root[data-theme='dark'] .wiki-link,
+:root[data-theme='dark'] .external-button,
+:root[data-theme='dark'] .close,
+:root[data-theme='dark'] .search input {
+  background: #1d1f1a;
+  border-color: #34372f;
+  color: #e7e8e2;
+}
+
+:root[data-theme='dark'] .detail-panel {
+  background: #181a16;
+  border-color: #34372f;
+  box-shadow: -12px 0 34px rgba(0, 0, 0, .35);
+}
+
+:root[data-theme='dark'] .detail-backdrop {
+  background: rgba(0, 0, 0, .58);
+}
+
+:root[data-theme='dark'] .card-open:hover,
+:root[data-theme='dark'] .planner-step-toggle:hover {
+  background: #252720;
+}
+
+:root[data-theme='dark'] .planner-step-toggle {
+  background: #1d1f1a;
+  color: #e7e8e2;
+}
+
+:root[data-theme='dark'] .material-row.header {
+  background: #252720;
+  color: #a7aaa0;
+}
+
+:root[data-theme='dark'] .detail-section,
+:root[data-theme='dark'] .planner-step-body,
+:root[data-theme='dark'] .evidence-row {
+  border-color: #34372f;
+}
+
+:root[data-theme='dark'] .material-table,
+:root[data-theme='dark'] .empty,
+:root[data-theme='dark'] .planner-step {
+  border-color: #34372f;
+}
+
+:root[data-theme='dark'] .placeholder,
+:root[data-theme='dark'] .entity-visual {
+  background: #272923;
+  border-color: #3a3d34;
+  color: #b8bbb0;
+}
+
+:root[data-theme='dark'] .entity-visual img {
+  background: #242620;
+}
+
+:root[data-theme='dark'] .quality.known,
+:root[data-theme='dark'] .target.done,
+:root[data-theme='dark'] .notice.success {
+  background: #1d3825;
+  color: #9ad0a7;
+}
+
+:root[data-theme='dark'] .quality.partial {
+  background: #3b301a;
+  color: #e0bc72;
+}
+
+:root[data-theme='dark'] .quality.unknown {
+  background: #30322c;
+  color: #b7baaf;
+}
+
+:root[data-theme='dark'] .target {
+  background: #292943;
+  color: #b8b7e5;
+}
+
+:root[data-theme='dark'] .enough {
+  color: #88c999;
+}
+
+:root[data-theme='dark'] .missing {
+  color: #e18b82;
+}
+
+:root[data-theme='dark'] .collection-export-state.ready strong {
+  color: #88c999;
+}
+
+:root[data-theme='dark'] .collection-export-state.warning strong {
+  color: #e0bc72;
+}
