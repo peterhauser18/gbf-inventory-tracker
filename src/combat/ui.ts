@@ -26,6 +26,7 @@ function syncNavigation(): void {
   if (!app) return;
   const nav = app.querySelector<HTMLElement>('.nav');
   if (!nav) return;
+  let changed = false;
 
   let combatButton = nav.querySelector<HTMLButtonElement>('[data-section="combat"]');
   if (!combatButton) {
@@ -33,15 +34,17 @@ function syncNavigation(): void {
     const overview = nav.querySelector<HTMLElement>('[data-section="overview"]');
     if (overview) overview.insertAdjacentElement('afterend', combatButton);
     else nav.prepend(combatButton);
+    changed = true;
   }
 
   let raidsButton = nav.querySelector<HTMLButtonElement>('[data-section="raids"]');
   if (!raidsButton) {
     raidsButton = makeNavButton('raids', 'Raids');
     combatButton.insertAdjacentElement('afterend', raidsButton);
+    changed = true;
   }
 
-  if (selected) renderSelected();
+  if (selected && changed) renderSelected();
 }
 
 function makeNavButton(section: 'combat' | 'raids', label: string): HTMLButtonElement {
