@@ -31,13 +31,20 @@ test('round-trips SSR, SR and R characters with proven uncap state', () => {
   ]);
 });
 
+test('matches the wiki short-id rule that ignores master ID position four', () => {
+  const result = buildCollectionTrackerExport([character('3041648000', 4)]);
+  assert.deepEqual(decodeCollectionTrackerCharacters(result.hash), [
+    { rarity: 4, index: 648, uncap: 4 },
+  ]);
+});
+
 test('omits unknown, unsupported and wiki-unresolved entries instead of guessing', () => {
   const known = new Set(['3040648000', '3030123000']);
   const result = buildCollectionTrackerExport([
     character('3040648000', 5),
     character('3030123000'),
     character('3020007000', 0),
-    character('3041000000', 4),
+    character('3050001000', 4),
     character('secret-token', 4),
   ], known);
 
@@ -45,7 +52,7 @@ test('omits unknown, unsupported and wiki-unresolved entries instead of guessing
   assert.deepEqual(result.omitted, [
     { masterId: '3030123000', reason: 'unknown-uncap' },
     { masterId: '3020007000', reason: 'not-in-wiki-dataset' },
-    { masterId: '3041000000', reason: 'unsupported-master-id' },
+    { masterId: '3050001000', reason: 'unsupported-master-id' },
     { masterId: 'secret-token', reason: 'unsupported-master-id' },
   ]);
   assert.equal(result.url.includes('secret-token'), false);
