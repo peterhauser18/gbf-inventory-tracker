@@ -7,6 +7,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(process.cwd(), 'popup.html'),
+        dashboard: resolve(process.cwd(), 'dashboard.html'),
         background: resolve(process.cwd(), 'src/background.ts'),
       },
       output: {
