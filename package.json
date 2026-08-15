@@ -1,0 +1,17 @@
+{
+  "name": "gbf-inventory-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "latest",
+    "@types/node": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}
