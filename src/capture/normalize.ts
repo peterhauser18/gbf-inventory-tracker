@@ -19,6 +19,8 @@ interface PageObservation<T> {
   capturedAt: number;
   items: T[];
   structurallyComplete: boolean;
+  resultCount?: number;
+  totalCount?: number;
 }
 
 const PATHS = {
@@ -152,7 +154,16 @@ function parsePagedRecord<T>(
     if (parsed) items.push(parsed);
     else structurallyComplete = false;
   }
-  return { current, last, capturedAt: record.meta.capturedAt, items, structurallyComplete };
+  const options = isObject(record.body.options) ? record.body.options : undefined;
+  return {
+    current,
+    last,
+    capturedAt: record.meta.capturedAt,
+    items,
+    structurallyComplete,
+    resultCount: optionalNonNegativeInt(record.body.count),
+    totalCount: options ? optionalNonNegativeInt(options.number) : undefined,
+  };
 }
 
 function mergePages<T extends { id: string; updatedAt: number }>(pages: PageObservation<T>[]): T[] {
@@ -177,6 +188,11 @@ function pageQuality<T>(pages: PageObservation<T>[]): DataQuality {
   for (let page = 1; page <= advertisedLast; page += 1) {
     const observation = newestByPage.get(page);
     if (!observation || !observation.structurallyComplete) return 'partial';
+    if (
+      observation.resultCount === undefined ||
+      observation.totalCount === undefined ||
+      observation.resultCount !== observation.totalCount
+    ) return 'partial';
   }
   return 'known';
 }
@@ -317,6 +333,11 @@ function optionalNumber(value: unknown): number | undefined {
 function requiredNonNegativeNumber(value: unknown): number | null {
   const parsed = optionalNumber(value);
   return parsed !== undefined && parsed >= 0 ? parsed : null;
+}
+
+function optionalNonNegativeInt(value: unknown): number | undefined {
+  const parsed = optionalNumber(value);
+  return parsed !== undefined && Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function requiredPositiveInt(value: unknown): number | null {

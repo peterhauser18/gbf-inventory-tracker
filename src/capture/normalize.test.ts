@@ -13,8 +13,17 @@ function record(url: string, body: unknown, capturedAt = 10, requestId = String(
   };
 }
 
-function page(list: unknown[], current: number, last: number) {
-  return { list, first: 1, last, prev: current - 1, next: current < last ? current + 1 : 0, count: list.length, current };
+function page(list: unknown[], current: number, last: number, total = list.length * last, held = total) {
+  return {
+    list,
+    first: 1,
+    last,
+    prev: current - 1,
+    next: current < last ? current + 1 : 0,
+    count: total,
+    current,
+    options: { number: held },
+  };
 }
 
 const character = (id: number, masterId: string, level = '80') => ({
@@ -76,6 +85,15 @@ test('reports paginated families partial until every advertised page is observed
   ]);
   assert.equal(complete.quality.characters, 'known');
   assert.equal(complete.characters.length, 2);
+});
+
+test('keeps a fully paged but filtered roster view partial', () => {
+  const snapshot = normalizeCaptureScan([
+    record('https://game.granbluefantasy.jp/summon/list/1', page([summon(1, 2001)], 1, 2, 2, 5), 10),
+    record('https://game.granbluefantasy.jp/summon/list/2', page([summon(2, 2002)], 2, 2, 2, 5), 11),
+  ]);
+  assert.equal(snapshot.summons.length, 2);
+  assert.equal(snapshot.quality.summons, 'partial');
 });
 
 test('deduplicates repeated instance observations using the newest captured record', () => {
