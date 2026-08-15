@@ -145,7 +145,9 @@ export function decodeCollectionTrackerCharacters(hash: string): DecodedTrackerC
 }
 
 function trackerCoordinate(masterId: string): { rarity: TrackerRarity; index: number } | null {
-  const match = /^30([234])(\d{4})000$/.exec(masterId);
+  // GBF Wiki derives character short_id as master ID position 3 (rarity)
+  // plus positions 5-7 (tracker index). Position 4 is intentionally ignored.
+  const match = /^30([234])\d(\d{3})000$/.exec(masterId);
   if (!match) return null;
   const rarity = Number(match[1]) as TrackerRarity;
   const index = Number(match[2]);
