@@ -13,6 +13,7 @@ import {
 } from './capture/storage.ts';
 import { isVerifiedCombatResponseUrl } from './combat/multiraid.ts';
 import { clearCombatParseContext, clearCombatStorage, ingestCapturedCombatRecord } from './combat/storage.ts';
+import { classifyPassiveResponseUrl } from './passive/route.ts';
 import type {
   CaptureMessage,
   CaptureResourceType,
@@ -30,6 +31,7 @@ const PASSIVE_SCAN_ID = 'passive-account';
 const pendingResponses = new CaptureEventBuffer();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
+let combatQueue: Promise<void> = Promise.resolve();
 
 type RuntimeState = {
   active: boolean;
@@ -99,11 +101,11 @@ async function handleMessage(message: CaptureMessage, sender: chrome.runtime.Mes
       await queueLocalCleanup('all-except-account');
       return await getStatus();
     case 'gbfit:passive-account-response':
-      return { ok: await handlePassiveAccountResponse(message, sender) };
+      return { ok: await handlePassiveResponse(message, sender) };
   }
 }
 
-async function handlePassiveAccountResponse(
+async function handlePassiveResponse(
   message: PassiveAccountResponseMessage,
   sender: chrome.runtime.MessageSender,
 ): Promise<boolean> {
@@ -111,6 +113,9 @@ async function handlePassiveAccountResponse(
   if (!isGbfPageUrl(senderUrl)) return false;
 
   const response = message.response;
+  const route = classifyPassiveResponseUrl(response.url);
+  if (!route) return false;
+
   const meta: ObservedResponse = {
     requestId: crypto.randomUUID(),
     url: response.url,
@@ -120,6 +125,20 @@ async function handlePassiveAccountResponse(
   };
   const record = buildCapturedResponse(meta, response.body, PASSIVE_SCAN_ID, Date.now());
   if (!record) return false;
+
+  if (route === 'combat') {
+    const state = await getRuntimeState();
+    if (state.active) return false;
+
+    let accepted = false;
+    combatQueue = combatQueue
+      .catch(() => {})
+      .then(async () => {
+        accepted = Boolean(await ingestCapturedCombatRecord(record));
+      });
+    await combatQueue;
+    return accepted;
+  }
 
   let accepted = false;
   accountQueue = accountQueue
