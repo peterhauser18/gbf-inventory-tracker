@@ -1,7 +1,7 @@
 import { findRequirementName, findUpgradeGoal } from '../data/requirements.ts';
 import { ETERNALS, EVOKERS, findSpecialCharacter, type SpecialCharacterMaster } from '../data/master.ts';
 import { calculateGoal } from '../planner/calculate.ts';
-import type { GoalCalculation } from '../planner/types.ts';
+import type { GoalCalculation, UpgradeGoal } from '../planner/types.ts';
 import type {
   AccountSnapshot,
   CharacterInstance,
@@ -9,6 +9,12 @@ import type {
   WeaponInstance,
 } from '../types/account.ts';
 import { resolveWikiUrl } from './resolver.ts';
+import {
+  EMPTY_ENTITY_METADATA,
+  type EntityMetadata,
+  type EntityMetadataIndex,
+  wikiEntityImageUrl,
+} from './wiki-metadata.ts';
 
 export type DashboardSection =
   | 'overview'
@@ -34,6 +40,7 @@ export interface DashboardCard {
   subtitle: string;
   quality: DataQuality;
   wikiUrl: string;
+  imageUrl?: string;
   detailFields: DetailField[];
   children?: DashboardCard[];
 }
@@ -45,14 +52,25 @@ export interface EvidenceRow {
   value?: string;
 }
 
-export interface PlannerCard extends DashboardCard {
-  kind: 'eternal' | 'evoker';
-  masterId: string;
+export interface PlannerStep {
+  goalId: string;
   targetLabel: string;
   targetDisplay: string;
   targetReached?: boolean;
   materialPlan: GoalCalculation;
   prerequisiteEvidence: EvidenceRow[];
+}
+
+export interface PlannerCard extends DashboardCard {
+  kind: 'eternal' | 'evoker';
+  masterId: string;
+  selectedGoalId: string;
+  targetLabel: string;
+  targetDisplay: string;
+  targetReached?: boolean;
+  materialPlan: GoalCalculation;
+  prerequisiteEvidence: EvidenceRow[];
+  steps: PlannerStep[];
   notes: string[];
 }
 
@@ -71,7 +89,10 @@ export interface DashboardViewModel {
   stashes: DashboardCard[];
 }
 
-export function buildDashboardViewModel(snapshot: AccountSnapshot): DashboardViewModel {
+export function buildDashboardViewModel(
+  snapshot: AccountSnapshot,
+  metadata: EntityMetadataIndex = EMPTY_ENTITY_METADATA,
+): DashboardViewModel {
   return {
     capturedAt: snapshot.capturedAt,
     quality: snapshot.quality,
@@ -86,17 +107,27 @@ export function buildDashboardViewModel(snapshot: AccountSnapshot): DashboardVie
     ],
     eternals: ETERNALS.map((master) => buildPlannerCard(master, snapshot)),
     evokers: EVOKERS.map((master) => buildPlannerCard(master, snapshot)),
-    characters: snapshot.characters.map((character) => characterCard(character, snapshot.quality.characters)),
-    weapons: snapshot.weapons.map((weapon) => weaponCard(weapon, snapshot.quality.weapons)),
+    characters: snapshot.characters.map((character) => characterCard(
+      character,
+      snapshot.quality.characters,
+      metadata.characters.get(character.masterId),
+    )),
+    weapons: snapshot.weapons.map((weapon) => weaponCard(
+      weapon,
+      snapshot.quality.weapons,
+      metadata.weapons.get(weapon.masterId),
+    )),
     summons: snapshot.summons.map((summon) => {
-      const title = `Summon ${summon.masterId}`;
+      const resolved = metadata.summons.get(summon.masterId);
+      const title = resolved?.name ?? `Summon ${summon.masterId}`;
       return {
         key: `summon:${summon.id}`,
         kind: 'summon',
         title,
         subtitle: summaryParts([numberLabel('Lv', summon.level), numberLabel('Uncap', summon.uncap)]),
         quality: snapshot.quality.summons,
-        wikiUrl: resolveWikiUrl({ publicId: summon.masterId }),
+        wikiUrl: resolveWikiUrl({ wikiTitle: resolved?.wikiTitle, displayName: resolved?.name, publicId: summon.masterId }),
+        imageUrl: resolved?.imageUrl ?? wikiEntityImageUrl('summon', summon.masterId),
         detailFields: [
           { label: 'Instance ID', value: summon.id },
           { label: 'Master ID', value: summon.masterId },
@@ -164,38 +195,42 @@ export function buildDashboardViewModel(snapshot: AccountSnapshot): DashboardVie
         { label: 'Observed weapons', value: formatNumber(stash.weapons.length) },
         { label: 'Coverage', value: stash.quality, state: stash.quality },
       ],
-      children: stash.weapons.map((weapon) => stashWeaponCard(weapon, stash.quality, stash.stashId)),
+      children: stash.weapons.map((weapon) => stashWeaponCard(
+        weapon,
+        stash.quality,
+        stash.stashId,
+        metadata.weapons.get(weapon.masterId),
+      )),
     })),
   };
 }
 
 function buildPlannerCard(master: SpecialCharacterMaster, snapshot: AccountSnapshot): PlannerCard {
   const character = snapshot.characters.find((candidate) => candidate.masterId === master.masterId);
-  const selectedGoalId = character?.uncap !== undefined && character.uncap >= 5 && master.transcendenceGoalId
-    ? master.transcendenceGoalId
-    : master.goalId;
-  const goal = findUpgradeGoal(selectedGoalId);
-  if (!goal) throw new Error(`Missing upgrade goal ${selectedGoalId}`);
-  const targetReached = targetState(character, snapshot.quality.characters, goal.targetUncap, goal.targetLevel);
+  const goalIds = [...(master.uncapGoalIds ?? [master.goalId]), ...(master.transcendenceGoalIds ?? [])];
+  const steps = goalIds.map((goalId) => {
+    const goal = findUpgradeGoal(goalId);
+    if (!goal) throw new Error(`Missing upgrade goal ${goalId}`);
+    return buildPlannerStep(master, goal, character, snapshot);
+  });
+  const selected = steps.find((step) => step.targetReached !== true) ?? steps.at(-1);
+  if (!selected) throw new Error(`Missing upgrade goals for ${master.masterId}`);
   const ownership = ownershipEvidence(character, snapshot.quality.characters);
-  const prerequisiteEvidence = goal.targetLevel === 110
-    ? transcendenceStage1Evidence(master.kind, character, ownership, snapshot.accountStatus?.rank, goal.prerequisiteNotes)
-    : [
-        ownership,
-        characterThresholdEvidence('At least 4★ uncap', character?.uncap, 4, ownership),
-        characterThresholdEvidence('Level 80', character?.level, 80, ownership),
-        ...(goal.prerequisiteNotes ?? []).map((label) => ({ label, state: 'unknown' as const })),
-      ];
+  const hasHigherModeledTarget = steps.some((step) => step.goalId !== selected.goalId && step.targetReached !== true);
+  const notes = selected.targetReached && !hasHigherModeledTarget
+    ? [`${selected.targetDisplay} is already observed. No later verified stage is modeled for this character yet.`]
+    : [];
 
   return {
     key: `${master.kind}:${master.masterId}`,
     kind: master.kind,
     title: master.name,
     subtitle: character
-      ? summaryParts([numberLabel('Lv', character.level), numberLabel('Uncap', character.uncap), `Target ${targetDisplay(goal.targetUncap, goal.targetLevel)}`])
-      : `Ownership ${ownership.state === 'known' ? 'not observed in complete roster' : 'unknown'} · Target ${targetDisplay(goal.targetUncap, goal.targetLevel)}`,
+      ? summaryParts([numberLabel('Lv', character.level), numberLabel('Uncap', character.uncap), `Next ${selected.targetDisplay}`])
+      : `Ownership ${ownership.state === 'known' ? 'not observed in complete roster' : 'unknown'} · Next ${selected.targetDisplay}`,
     quality: character ? 'known' : ownership.state === 'known' ? 'known' : 'unknown',
     wikiUrl: resolveWikiUrl({ wikiTitle: master.wikiTitle }),
+    imageUrl: wikiEntityImageUrl('character', master.masterId, master.wikiTitle),
     detailFields: [
       { label: 'Master ID', value: master.masterId },
       valueField('Level', character?.level),
@@ -204,23 +239,45 @@ function buildPlannerCard(master: SpecialCharacterMaster, snapshot: AccountSnaps
       { label: 'Roster coverage', value: snapshot.quality.characters, state: snapshot.quality.characters },
     ],
     masterId: master.masterId,
-    targetLabel: goal.label,
-    targetDisplay: targetDisplay(goal.targetUncap, goal.targetLevel),
-    targetReached,
-    materialPlan: calculateGoal(goal, snapshot),
-    prerequisiteEvidence,
-    notes: targetReached
-      ? [master.transcendenceGoalId
-          ? `${targetDisplay(goal.targetUncap, goal.targetLevel)} is already observed; later supported stages are not modeled in this milestone.`
-          : '5★ is already observed. No currently supported higher target is mapped for this character.'
-        ]
-      : [...(goal.prerequisiteNotes ?? [])],
+    selectedGoalId: selected.goalId,
+    targetLabel: selected.targetLabel,
+    targetDisplay: selected.targetDisplay,
+    targetReached: selected.targetReached,
+    materialPlan: selected.materialPlan,
+    prerequisiteEvidence: selected.prerequisiteEvidence,
+    steps,
+    notes,
   };
 }
 
-function characterCard(character: CharacterInstance, quality: DataQuality): DashboardCard {
+function buildPlannerStep(
+  master: SpecialCharacterMaster,
+  goal: UpgradeGoal,
+  character: CharacterInstance | undefined,
+  snapshot: AccountSnapshot,
+): PlannerStep {
+  const ownership = ownershipEvidence(character, snapshot.quality.characters);
+  const prerequisiteEvidence = goal.targetLevel !== undefined
+    ? transcendenceEvidence(master.kind, goal.targetLevel, character, ownership, snapshot.accountStatus?.rank, goal.prerequisiteNotes)
+    : uncapEvidence(goal.targetUncap, character, ownership, goal.prerequisiteNotes);
+  return {
+    goalId: goal.id,
+    targetLabel: goal.label,
+    targetDisplay: targetDisplay(goal.targetUncap, goal.targetLevel),
+    targetReached: targetState(character, snapshot.quality.characters, goal.targetUncap, goal.targetLevel),
+    materialPlan: calculateGoal(goal, snapshot),
+    prerequisiteEvidence,
+  };
+}
+
+function characterCard(
+  character: CharacterInstance,
+  quality: DataQuality,
+  resolved: EntityMetadata | undefined,
+): DashboardCard {
   const special = findSpecialCharacter(character.masterId);
-  const title = special?.name ?? character.name ?? `Character ${character.masterId}`;
+  const title = special?.name ?? resolved?.name ?? character.name ?? `Character ${character.masterId}`;
+  const wikiTitle = special?.wikiTitle ?? resolved?.wikiTitle;
   return {
     key: `character:${character.id}`,
     kind: 'character',
@@ -231,7 +288,8 @@ function characterCard(character: CharacterInstance, quality: DataQuality): Dash
       numberLabel('Awakening', character.awakeningLevel),
     ]),
     quality,
-    wikiUrl: resolveWikiUrl({ wikiTitle: special?.wikiTitle, displayName: character.name, publicId: character.masterId }),
+    wikiUrl: resolveWikiUrl({ wikiTitle, displayName: title, publicId: character.masterId }),
+    imageUrl: resolved?.imageUrl ?? wikiEntityImageUrl('character', character.masterId, wikiTitle),
     detailFields: [
       { label: 'Instance ID', value: character.id },
       { label: 'Master ID', value: character.masterId },
@@ -242,18 +300,24 @@ function characterCard(character: CharacterInstance, quality: DataQuality): Dash
   };
 }
 
-function weaponCard(weapon: WeaponInstance, quality: DataQuality): DashboardCard {
+function weaponCard(
+  weapon: WeaponInstance,
+  quality: DataQuality,
+  resolved?: EntityMetadata,
+): DashboardCard {
+  const title = resolved?.name ?? weapon.name ?? `Weapon ${weapon.masterId}`;
   return {
     key: `weapon:${weapon.id}`,
     kind: 'weapon',
-    title: weapon.name ?? `Weapon ${weapon.masterId}`,
+    title,
     subtitle: summaryParts([
       numberLabel('Lv', weapon.level),
       numberLabel('Skill', weapon.skillLevel),
       numberLabel('Uncap', weapon.uncap),
     ]),
     quality,
-    wikiUrl: resolveWikiUrl({ displayName: weapon.name, publicId: weapon.masterId }),
+    wikiUrl: resolveWikiUrl({ wikiTitle: resolved?.wikiTitle, displayName: title, publicId: weapon.masterId }),
+    imageUrl: resolved?.imageUrl ?? wikiEntityImageUrl('weapon', weapon.masterId),
     detailFields: [
       { label: 'Instance ID', value: weapon.id },
       { label: 'Master ID', value: weapon.masterId },
@@ -265,9 +329,13 @@ function weaponCard(weapon: WeaponInstance, quality: DataQuality): DashboardCard
   };
 }
 
-
-function stashWeaponCard(weapon: WeaponInstance, quality: DataQuality, stashId: string): DashboardCard {
-  const card = weaponCard(weapon, quality);
+function stashWeaponCard(
+  weapon: WeaponInstance,
+  quality: DataQuality,
+  stashId: string,
+  resolved?: EntityMetadata,
+): DashboardCard {
+  const card = weaponCard(weapon, quality, resolved);
   return {
     ...card,
     key: `stash-weapon:${stashId}:${weapon.id}`,
@@ -303,30 +371,63 @@ function targetState(
   targetUncap: number,
   targetLevel?: number,
 ): boolean | undefined {
-  if (targetLevel !== undefined && character?.level !== undefined) return character.level >= targetLevel;
+  if (targetLevel !== undefined) {
+    if (character?.level !== undefined) return character.level >= targetLevel;
+    if (!character && familyQuality === 'known') return false;
+    return undefined;
+  }
   if (character?.uncap !== undefined) return character.uncap >= targetUncap;
   if (!character && familyQuality === 'known') return false;
   return undefined;
 }
 
-function transcendenceStage1Evidence(
+function uncapEvidence(
+  targetUncap: number,
+  character: CharacterInstance | undefined,
+  ownership: EvidenceRow,
+  prerequisiteNotes: string[] | undefined,
+): EvidenceRow[] {
+  const evidence: EvidenceRow[] = [ownership];
+  if (targetUncap > 1 && targetUncap <= 4) {
+    evidence.push(characterThresholdEvidence(`Previous uncap ${targetUncap - 1}★`, character?.uncap, targetUncap - 1, ownership));
+  }
+  if (targetUncap === 5) {
+    evidence.push(
+      characterThresholdEvidence('4★ uncap', character?.uncap, 4, ownership),
+      characterThresholdEvidence('Level 80', character?.level, 80, ownership),
+    );
+  }
+  evidence.push(...(prerequisiteNotes ?? []).map((label) => ({ label, state: 'unknown' as const })));
+  return evidence;
+}
+
+function transcendenceEvidence(
   kind: 'eternal' | 'evoker',
+  targetLevel: number,
   character: CharacterInstance | undefined,
   ownership: EvidenceRow,
   rank: number | undefined,
   prerequisiteNotes: string[] | undefined,
 ): EvidenceRow[] {
-  const minimumRank = kind === 'eternal' ? 150 : 200;
-  const awakening = kind === 'eternal' ? 7 : 10;
+  if (targetLevel === 110) {
+    const minimumRank = kind === 'eternal' ? 150 : 200;
+    const awakening = kind === 'eternal' ? 7 : 10;
+    return [
+      ownership,
+      characterThresholdEvidence('5★ uncap', character?.uncap, 5, ownership),
+      characterThresholdEvidence('Level 100', character?.level, 100, ownership),
+      characterThresholdEvidence(`Awakening ${awakening}`, character?.awakeningLevel, awakening, ownership),
+      rankEvidence(minimumRank, rank),
+      ...(prerequisiteNotes ?? []).map((label) => ({ label, state: 'unknown' as const })),
+    ];
+  }
   return [
     ownership,
-    characterThresholdEvidence('5★ uncap', character?.uncap, 5, ownership),
-    characterThresholdEvidence('Level 100', character?.level, 100, ownership),
-    characterThresholdEvidence(`Awakening ${awakening}`, character?.awakeningLevel, awakening, ownership),
-    rankEvidence(minimumRank, rank),
+    characterThresholdEvidence(`Level ${targetLevel - 10}`, character?.level, targetLevel - 10, ownership),
     ...(prerequisiteNotes ?? []).map((label) => ({ label, state: 'unknown' as const })),
   ];
 }
+
 
 function rankEvidence(minimum: number, rank: number | undefined): EvidenceRow {
   return rank === undefined

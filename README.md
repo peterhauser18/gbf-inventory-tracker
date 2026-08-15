@@ -51,9 +51,9 @@ The capture implementation uses the `activeTab` and `debugger` permissions only 
 
 After a scan is stopped, the popup can export that scan as a local, versioned JSON bundle. Export is explicit and applies a second sanitization pass that removes secret/auth fields, strips URL query values, and pseudonymizes clear account identifiers before the file is created. Nothing is uploaded automatically.
 
-The extension also includes a full-page **GBF Tool Dashboard** opened from the popup. It reads the latest completed local scan, normalizes it on demand, and exposes collection browsing plus an Eternal/Evoker planner with explicit `known` / `partial` / `unknown` states. It selects the final 5★ uncap where applicable and Stage 1 Transcendence (Lv110) for already-5★ Eternals; currently supported Evoker Transcendence targets are modeled conservatively. The dashboard never performs GBF gameplay requests and does not persist a second normalized copy of account data.
+The extension also includes a full-page **GBF Tool Dashboard** opened from the popup. It reads the latest completed local scan, normalizes it on demand, and exposes collection browsing plus an Eternal/Evoker planner with explicit `known` / `partial` / `unknown` states. Eternal details expose 1★–5★ plus the modeled Transcendence stages through Lv150 as expandable steps; Evoker details expose 1★–5★ plus only currently verified Transcendence stages instead of guessing unreleased recipes. The dashboard never performs GBF gameplay requests and does not persist a second normalized copy of account data.
 
-Dashboard entity cards include user-triggered GBF Wiki links. Images currently use local placeholders: the runtime does not request Cygames/GBF asset-CDN images and does not hotlink GBFAL. The image resolver is intentionally allowlisted so a separately approved asset host can be added later without weakening the account boundary.
+Dashboard character, weapon and summon cards resolve public names and thumbnails from GBF Wiki metadata where available, including stash weapons. Wiki metadata/image requests are limited to `https://gbf.wiki/*`, omit credentials/referrers, and fall back to technical IDs plus local placeholders on failure. The runtime does not request Cygames/GBF asset-CDN images and does not hotlink GBFAL.
 
 ## Safety / account risk
 

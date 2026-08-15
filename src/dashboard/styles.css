@@ -107,3 +107,30 @@ a { color: inherit; }
   .entity-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
   .overview-panel { grid-template-columns: 1fr; }
 }
+
+/* Public GBF Wiki thumbnails sit over the local placeholder. If an image fails,
+   dashboard.ts removes only the image and the placeholder remains visible. */
+.entity-visual { position: relative; width: 48px; height: 48px; flex: 0 0 48px; border-radius: 12px; overflow: hidden; background: #f7f7f2; }
+.entity-visual.large { width: 62px; height: 62px; flex-basis: 62px; border-radius: 15px; }
+.entity-visual.compact { width: 38px; height: 38px; flex-basis: 38px; border-radius: 9px; }
+.entity-visual .placeholder { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; }
+.entity-visual img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #fff; }
+.entity-visual.weapon img, .entity-visual.summon img { object-fit: contain; }
+
+.step-count { color: #777972; font-size: 10px; font-weight: 750; }
+.planner-steps { display: grid; gap: 8px; margin-top: 12px; }
+.planner-step { border: 1px solid #dcddd6; border-radius: 11px; overflow: hidden; background: #fff; }
+.planner-step.expanded { border-color: #bfc1b9; }
+.planner-step-toggle { width: 100%; padding: 11px 12px; border: 0; background: #fff; display: grid; grid-template-columns: 58px minmax(0, 1fr) auto 24px; gap: 10px; align-items: center; text-align: left; cursor: pointer; color: inherit; }
+.planner-step-toggle:hover { background: #fafaf7; }
+.step-target { font-weight: 850; font-size: 13px; }
+.step-copy { min-width: 0; display: grid; gap: 2px; }
+.step-copy strong { font-size: 11px; overflow-wrap: anywhere; }
+.step-copy span { color: #777972; font-size: 10px; }
+.chevron { font-size: 18px; color: #666861; text-align: center; }
+.planner-step-body { padding: 0 12px 14px; border-top: 1px solid #e5e6df; }
+.planner-step-body > .muted { margin-top: 10px; }
+
+.child-row button { display: flex; align-items: center; gap: 9px; }
+.child-copy { min-width: 0; display: grid; gap: 3px; }
+.child-row .child-copy > span { color: #777972; font-size: 10px; }
