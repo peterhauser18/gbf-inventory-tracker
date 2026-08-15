@@ -4,7 +4,10 @@ import type { GoalCalculation, MaterialDeficit, MaterialRequirement, UpgradeGoal
 export function calculateGoal(goal: UpgradeGoal, snapshot: AccountSnapshot): GoalCalculation {
   const materials = goal.requirements.map((requirement) => calculateRequirement(requirement, snapshot));
   const knownCount = materials.filter((material) => material.state === 'known').length;
-  const quality = knownCount === materials.length ? 'known' : knownCount === 0 ? 'unknown' : 'partial';
+  const observedQuality = knownCount === materials.length ? 'known' : knownCount === 0 ? 'unknown' : 'partial';
+  const quality = observedQuality === 'known' && goal.requirements.some((requirement) => requirementFamilyQuality(requirement, snapshot) === 'partial')
+    ? 'partial'
+    : observedQuality;
   return {
     goalId: goal.id,
     quality,
@@ -61,5 +64,14 @@ function findInventoryItem(
       );
     case 'untracked':
       return undefined;
+  }
+}
+
+function requirementFamilyQuality(requirement: MaterialRequirement, snapshot: AccountSnapshot): 'known' | 'partial' | 'unknown' {
+  switch (requirement.source) {
+    case 'treasures': return snapshot.quality.treasures;
+    case 'consumables': return snapshot.quality.consumables;
+    case 'tickets': return snapshot.quality.tickets;
+    case 'untracked': return 'unknown';
   }
 }
