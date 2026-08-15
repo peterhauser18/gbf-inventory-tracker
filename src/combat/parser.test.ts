@@ -133,6 +133,27 @@ test('a new run of the same raid type does not inherit the completed run', () =>
   assert.equal(parse.observedStartedAt, 3000);
 });
 
+test('a later completed run with known rewards does not overwrite the previous completed run', () => {
+  const first = parseCombatObservation(record({
+    raid: { technicalId: 'raid-repeat-result' },
+    result: { status: 'victory', rewardsComplete: true, rewards: [{ item_id: 'first-drop', quantity: 1 }] },
+  }, 1000));
+  assert.ok(first);
+  let parse = mergeCombatObservation(null, first);
+  assert.equal(parse.drops[0]?.itemId, 'first-drop');
+
+  const second = parseCombatObservation(record({
+    raid: { technicalId: 'raid-repeat-result' },
+    result: { status: 'victory', rewardsComplete: true, rewards: [] },
+  }, 5000));
+  assert.ok(second);
+  parse = mergeCombatObservation(parse, second);
+  assert.equal(parse.observedEndedAt, 5000);
+  assert.deepEqual(parse.drops, []);
+  assert.equal(parse.dropsQuality, 'known');
+  assert.equal(parse.partyDamage, undefined);
+});
+
 test('complete empty rewards are preserved as a known zero-drop observation', () => {
   const reward = parseCombatObservation(record({
     raid: { technicalId: 'raid-empty' },
