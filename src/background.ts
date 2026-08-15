@@ -4,13 +4,14 @@ import { CaptureEventBuffer } from './capture/event-buffer.ts';
 import { processObservedResponse } from './capture/observer.ts';
 import { buildCapturedResponse, isGbfPageUrl } from './capture/policy.ts';
 import {
+  clearCaptureStorage,
   finishCaptureScan,
   getCaptureScan,
   getLatestCaptureScan,
   saveCapturedResponse,
   startCaptureScan,
 } from './capture/storage.ts';
-import { ingestCapturedCombatRecord } from './combat/storage.ts';
+import { clearCombatStorage, ingestCapturedCombatRecord } from './combat/storage.ts';
 import type {
   CaptureMessage,
   CaptureResourceType,
@@ -20,6 +21,7 @@ import type {
   ObservedResponse,
   PassiveAccountResponseMessage,
 } from './capture/types.ts';
+import { cleanupLocalData, type LocalCleanupMode } from './storage/cleanup.ts';
 
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const STATE_KEY = 'gbfit:capture-state';
@@ -89,6 +91,12 @@ async function handleMessage(message: CaptureMessage, sender: chrome.runtime.Mes
     case 'gbfit:reset-account-data':
       await queueAccountReset();
       return await getStatus();
+    case 'gbfit:clear-diagnostic-data':
+      await queueLocalCleanup('diagnostic');
+      return await getStatus();
+    case 'gbfit:clear-all-except-account':
+      await queueLocalCleanup('all-except-account');
+      return await getStatus();
     case 'gbfit:passive-account-response':
       return { ok: await handlePassiveAccountResponse(message, sender) };
   }
@@ -131,6 +139,16 @@ async function queueAccountReset(): Promise<void> {
     .catch(() => {})
     .then(async () => resetAccountDatabase());
   await accountQueue;
+}
+
+async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
+  const state = await getRuntimeState();
+  if (state.active) throw new Error('Stop the diagnostic scan before clearing local diagnostic data.');
+  await cleanupLocalData(mode, {
+    clearDiagnostic: clearCaptureStorage,
+    clearCombat: clearCombatStorage,
+  });
+  await setRuntimeState({ active: false });
 }
 
 async function startObservation(): Promise<CaptureStatusResponse> {
