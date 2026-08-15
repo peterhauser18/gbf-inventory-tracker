@@ -16,6 +16,19 @@
     "default_title": "GBF Inventory Tracker",
     "default_popup": "popup.html"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://game.granbluefantasy.jp/*"],
+      "js": ["passive-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://game.granbluefantasy.jp/*"],
+      "js": ["passive-page.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
   "host_permissions": [
     "https://gbf.wiki/*"
   ]
