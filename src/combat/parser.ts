@@ -64,6 +64,7 @@ export function emptyRaidParse(raidTechnicalId: string, observedAt: number): Nor
 function shouldContinueExistingRaid(current: NormalizedRaidParse, observation: CombatObservation): boolean {
   if (current.raidTechnicalId !== observation.raidTechnicalId) return false;
   if (!TERMINAL.has(current.result)) return true;
+  if (current.result !== 'victory' || current.dropsQuality === 'known') return false;
   return !observation.startObserved && observation.actions.length === 0 && observation.dropsQuality !== 'unknown';
 }
 
