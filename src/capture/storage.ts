@@ -78,6 +78,27 @@ export async function finishCaptureScan(id: string, stoppedAt = Date.now()): Pro
   db.close();
 }
 
+export async function getCapturedResponsesForScan(scanId: string): Promise<CapturedResponseRecord[]> {
+  const db = await openCaptureDatabase();
+  const records = await new Promise<CapturedResponseRecord[]>((resolve, reject) => {
+    const tx = db.transaction(RESPONSE_STORE, 'readonly');
+    const request = tx.objectStore(RESPONSE_STORE).getAll();
+    request.onsuccess = () =>
+      resolve(
+        (request.result as CapturedResponseRecord[])
+          .filter((record) => record.scanId === scanId)
+          .sort(
+            (a, b) =>
+              a.meta.capturedAt - b.meta.capturedAt ||
+              a.meta.requestId.localeCompare(b.meta.requestId),
+          ),
+      );
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return records;
+}
+
 export async function getCaptureScan(id: string): Promise<CaptureScanSummary | null> {
   const db = await openCaptureDatabase();
   const summary = await new Promise<CaptureScanSummary | null>((resolve, reject) => {
