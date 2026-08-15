@@ -68,12 +68,34 @@ test('reports a fully known goal complete only when every explicit quantity is o
       { id: 'b', itemId: '2', name: 'B', quantity: 3, source: 'treasures' },
     ],
   };
-  const result = calculateGoal(fullyTracked, snapshot([
+  const account = snapshot([
     { itemId: '1', quantity: 5, updatedAt: 1 },
     { itemId: '2', quantity: 4, updatedAt: 1 },
-  ]));
+  ]);
+  account.quality.treasures = 'known';
+  const result = calculateGoal(fullyTracked, account);
   assert.equal(result.quality, 'known');
   assert.equal(result.complete, true);
+});
+
+
+test('keeps goal quality partial when a required inventory family is only partially covered', () => {
+  const fullyTracked: UpgradeGoal = {
+    ...goal,
+    requirements: [
+      { id: 'a', itemId: '1', name: 'A', quantity: 5, source: 'treasures' },
+    ],
+  };
+  const account = snapshot([
+    { itemId: '1', quantity: 5, updatedAt: 1 },
+  ]);
+  account.quality.treasures = 'partial';
+
+  const result = calculateGoal(fullyTracked, account);
+  assert.equal(result.materials[0]?.state, 'known');
+  assert.equal(result.materials[0]?.missing, 0);
+  assert.equal(result.quality, 'partial');
+  assert.equal(result.complete, undefined);
 });
 
 test('matches consumable requirements by group and item kind instead of item id alone', () => {
