@@ -24,6 +24,10 @@ Transforms endpoint-specific payloads into stable internal records such as `Char
 
 A dedicated IndexedDB database stores sanitized raw capture records and per-scan candidate status. The normalized account database remains separate; instance collections use their instance IDs and treasures use the GBF item/master ID.
 
+### Export
+
+A completed capture scan can be exported only from an explicit popup action. The exporter reads that scan's records from the local capture database, applies a second sanitization pass, and creates a local JSON download with no upload or external request. Sensitive/auth fields are removed, URL query values are stripped again, and clear account identifiers are pseudonymized while game/master/instance IDs remain available for parser work.
+
 ### Planner
 
 Consumes normalized treasure counts and progression state. It never depends directly on captured network payloads.
