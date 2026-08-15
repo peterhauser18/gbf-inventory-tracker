@@ -117,3 +117,43 @@ test('matches consumable requirements by group and item kind instead of item id 
   assert.equal(result.materials[0]?.owned, 1);
   assert.equal(result.materials[0]?.missing, 1);
 });
+
+test('can match a verified treasure by an exact unique name when static master data lacks its technical id', () => {
+  const named: UpgradeGoal = {
+    id: 'named-treasure',
+    label: 'Named treasure',
+    characterMasterId: 'fixture-character',
+    targetUncap: 6,
+    targetLevel: 120,
+    requirements: [
+      { id: 'named', name: 'Fixture Named Treasure', quantity: 10, source: 'treasures' },
+    ],
+  };
+  const account = snapshot([
+    { itemId: 'fixture-id', name: 'Fixture Named Treasure', quantity: 7, updatedAt: 1 },
+  ]);
+  account.quality.treasures = 'known';
+  const result = calculateGoal(named, account);
+  assert.equal(result.materials[0]?.state, 'known');
+  assert.equal(result.materials[0]?.owned, 7);
+  assert.equal(result.materials[0]?.missing, 3);
+});
+
+test('does not guess by name when multiple treasure rows share the same display name', () => {
+  const named: UpgradeGoal = {
+    id: 'ambiguous-treasure',
+    label: 'Ambiguous treasure',
+    characterMasterId: 'fixture-character',
+    targetUncap: 6,
+    requirements: [
+      { id: 'named', name: 'Fixture Duplicate', quantity: 1, source: 'treasures' },
+    ],
+  };
+  const account = snapshot([
+    { itemId: 'a', name: 'Fixture Duplicate', quantity: 4, updatedAt: 1 },
+    { itemId: 'b', name: 'Fixture Duplicate', quantity: 9, updatedAt: 1 },
+  ]);
+  account.quality.treasures = 'known';
+  const result = calculateGoal(named, account);
+  assert.equal(result.materials[0]?.state, 'unknown');
+});

@@ -28,7 +28,7 @@ export function aggregateRequirements(goals: UpgradeGoal[]): Map<string, number>
 }
 
 function calculateRequirement(requirement: MaterialRequirement, snapshot: AccountSnapshot): MaterialDeficit {
-  if (requirement.source === 'untracked' || !requirement.itemId) {
+  if (requirement.source === 'untracked') {
     return { ...requirement, state: 'unknown' };
   }
 
@@ -48,8 +48,11 @@ function findInventoryItem(
   snapshot: AccountSnapshot,
 ): TreasureCount | ConsumableCount | TicketCount | undefined {
   switch (requirement.source) {
-    case 'treasures':
-      return snapshot.treasures.find((item) => item.itemId === requirement.itemId);
+    case 'treasures': {
+      if (requirement.itemId) return snapshot.treasures.find((item) => item.itemId === requirement.itemId);
+      const matches = snapshot.treasures.filter((item) => item.name === requirement.name);
+      return matches.length === 1 ? matches[0] : undefined;
+    }
     case 'consumables':
       return snapshot.consumables.find((item) =>
         item.itemId === requirement.itemId &&
