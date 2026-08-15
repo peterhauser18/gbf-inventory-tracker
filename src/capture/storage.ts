@@ -112,6 +112,22 @@ export async function getCaptureScan(id: string): Promise<CaptureScanSummary | n
 }
 
 export async function getLatestCaptureScan(): Promise<CaptureScanSummary | null> {
+  const scans = await getAllCaptureScans();
+  scans.sort((a, b) => b.startedAt - a.startedAt);
+  return scans[0] ?? null;
+}
+
+export async function getLatestCompletedCaptureScan(): Promise<CaptureScanSummary | null> {
+  return selectLatestCompletedScan(await getAllCaptureScans());
+}
+
+export function selectLatestCompletedScan(scans: CaptureScanSummary[]): CaptureScanSummary | null {
+  return [...scans]
+    .filter((scan) => scan.stoppedAt !== undefined)
+    .sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
+}
+
+async function getAllCaptureScans(): Promise<CaptureScanSummary[]> {
   const db = await openCaptureDatabase();
   const scans = await new Promise<CaptureScanSummary[]>((resolve, reject) => {
     const tx = db.transaction(SCAN_STORE, 'readonly');
@@ -120,8 +136,7 @@ export async function getLatestCaptureScan(): Promise<CaptureScanSummary | null>
     request.onerror = () => reject(request.error);
   });
   db.close();
-  scans.sort((a, b) => b.startedAt - a.startedAt);
-  return scans[0] ?? null;
+  return scans;
 }
 
 async function runWrite(

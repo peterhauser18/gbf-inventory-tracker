@@ -19,6 +19,8 @@ app.innerHTML = `
       <p class="muted">Passively capture account data while you browse GBF normally.</p>
     </header>
 
+    <button id="dashboard" class="secondary dashboard-button" type="button">Open Dashboard</button>
+
     <div class="card">
       <div class="status-row">
         <span class="dot" id="status-dot"></span>
@@ -43,6 +45,7 @@ app.innerHTML = `
   </section>
 `;
 
+const dashboardButton = requiredButton('#dashboard');
 const status = requiredElement('#status');
 const detail = requiredElement('#detail');
 const dot = requiredElement('#status-dot');
@@ -53,6 +56,15 @@ const responseCount = requiredElement('#response-count');
 const categories = requiredElement('#categories');
 
 let latestStatus: CaptureStatusResponse | null = null;
+
+dashboardButton.addEventListener('click', async () => {
+  dashboardButton.disabled = true;
+  try {
+    await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+  } finally {
+    dashboardButton.disabled = false;
+  }
+});
 
 toggle.addEventListener('click', async () => {
   toggle.disabled = true;
