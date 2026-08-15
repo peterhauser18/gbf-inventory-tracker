@@ -49,6 +49,7 @@ export interface PlannerCard extends DashboardCard {
   kind: 'eternal' | 'evoker';
   masterId: string;
   targetLabel: string;
+  targetDisplay: string;
   targetReached?: boolean;
   materialPlan: GoalCalculation;
   prerequisiteEvidence: EvidenceRow[];
@@ -170,24 +171,29 @@ export function buildDashboardViewModel(snapshot: AccountSnapshot): DashboardVie
 
 function buildPlannerCard(master: SpecialCharacterMaster, snapshot: AccountSnapshot): PlannerCard {
   const character = snapshot.characters.find((candidate) => candidate.masterId === master.masterId);
-  const goal = findUpgradeGoal(master.goalId);
-  if (!goal) throw new Error(`Missing upgrade goal ${master.goalId}`);
-  const targetReached = targetState(character, snapshot.quality.characters, goal.targetUncap);
+  const selectedGoalId = character?.uncap !== undefined && character.uncap >= 5 && master.transcendenceGoalId
+    ? master.transcendenceGoalId
+    : master.goalId;
+  const goal = findUpgradeGoal(selectedGoalId);
+  if (!goal) throw new Error(`Missing upgrade goal ${selectedGoalId}`);
+  const targetReached = targetState(character, snapshot.quality.characters, goal.targetUncap, goal.targetLevel);
   const ownership = ownershipEvidence(character, snapshot.quality.characters);
-  const prerequisiteEvidence: EvidenceRow[] = [
-    ownership,
-    characterThresholdEvidence('At least 4★ uncap', character?.uncap, 4, ownership),
-    characterThresholdEvidence('Level 80', character?.level, 80, ownership),
-    ...(goal.prerequisiteNotes ?? []).map((label) => ({ label, state: 'unknown' as const })),
-  ];
+  const prerequisiteEvidence = goal.targetLevel === 110
+    ? transcendenceStage1Evidence(master.kind, character, ownership, snapshot.accountStatus?.rank, goal.prerequisiteNotes)
+    : [
+        ownership,
+        characterThresholdEvidence('At least 4★ uncap', character?.uncap, 4, ownership),
+        characterThresholdEvidence('Level 80', character?.level, 80, ownership),
+        ...(goal.prerequisiteNotes ?? []).map((label) => ({ label, state: 'unknown' as const })),
+      ];
 
   return {
     key: `${master.kind}:${master.masterId}`,
     kind: master.kind,
     title: master.name,
     subtitle: character
-      ? summaryParts([numberLabel('Lv', character.level), numberLabel('Uncap', character.uncap), `Target ${goal.targetUncap}★`])
-      : `Ownership ${ownership.state === 'known' ? 'not observed in complete roster' : 'unknown'} · Target ${goal.targetUncap}★`,
+      ? summaryParts([numberLabel('Lv', character.level), numberLabel('Uncap', character.uncap), `Target ${targetDisplay(goal.targetUncap, goal.targetLevel)}`])
+      : `Ownership ${ownership.state === 'known' ? 'not observed in complete roster' : 'unknown'} · Target ${targetDisplay(goal.targetUncap, goal.targetLevel)}`,
     quality: character ? 'known' : ownership.state === 'known' ? 'known' : 'unknown',
     wikiUrl: resolveWikiUrl({ wikiTitle: master.wikiTitle }),
     detailFields: [
@@ -199,11 +205,15 @@ function buildPlannerCard(master: SpecialCharacterMaster, snapshot: AccountSnaps
     ],
     masterId: master.masterId,
     targetLabel: goal.label,
+    targetDisplay: targetDisplay(goal.targetUncap, goal.targetLevel),
     targetReached,
     materialPlan: calculateGoal(goal, snapshot),
     prerequisiteEvidence,
     notes: targetReached
-      ? [`${goal.targetUncap}★ is already observed. Higher-stage requirements are not modeled in this milestone.`]
+      ? [master.transcendenceGoalId
+          ? `${targetDisplay(goal.targetUncap, goal.targetLevel)} is already observed; later supported stages are not modeled in this milestone.`
+          : '5★ is already observed. No currently supported higher target is mapped for this character.'
+        ]
       : [...(goal.prerequisiteNotes ?? [])],
   };
 }
@@ -291,10 +301,41 @@ function targetState(
   character: CharacterInstance | undefined,
   familyQuality: DataQuality,
   targetUncap: number,
+  targetLevel?: number,
 ): boolean | undefined {
+  if (targetLevel !== undefined && character?.level !== undefined) return character.level >= targetLevel;
   if (character?.uncap !== undefined) return character.uncap >= targetUncap;
   if (!character && familyQuality === 'known') return false;
   return undefined;
+}
+
+function transcendenceStage1Evidence(
+  kind: 'eternal' | 'evoker',
+  character: CharacterInstance | undefined,
+  ownership: EvidenceRow,
+  rank: number | undefined,
+  prerequisiteNotes: string[] | undefined,
+): EvidenceRow[] {
+  const minimumRank = kind === 'eternal' ? 150 : 200;
+  const awakening = kind === 'eternal' ? 7 : 10;
+  return [
+    ownership,
+    characterThresholdEvidence('5★ uncap', character?.uncap, 5, ownership),
+    characterThresholdEvidence('Level 100', character?.level, 100, ownership),
+    characterThresholdEvidence(`Awakening ${awakening}`, character?.awakeningLevel, awakening, ownership),
+    rankEvidence(minimumRank, rank),
+    ...(prerequisiteNotes ?? []).map((label) => ({ label, state: 'unknown' as const })),
+  ];
+}
+
+function rankEvidence(minimum: number, rank: number | undefined): EvidenceRow {
+  return rank === undefined
+    ? { label: `Player Rank ${minimum}`, state: 'unknown' }
+    : { label: `Player Rank ${minimum}`, state: 'known', satisfied: rank >= minimum, value: String(rank) };
+}
+
+function targetDisplay(targetUncap: number, targetLevel?: number): string {
+  return targetLevel === undefined ? `${targetUncap}★` : `Lv${targetLevel}`;
 }
 
 function valueField(label: string, value: number | undefined): DetailField {

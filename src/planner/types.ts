@@ -5,6 +5,8 @@ export type RequirementSource = 'treasures' | 'consumables' | 'tickets' | 'untra
 export interface MaterialRequirement {
   id: string;
   itemId?: string;
+  itemKindId?: string;
+  group?: string;
   name: string;
   quantity: number;
   source: RequirementSource;
@@ -16,6 +18,7 @@ export interface UpgradeGoal {
   label: string;
   characterMasterId: string;
   targetUncap: number;
+  targetLevel?: number;
   requirements: MaterialRequirement[];
   prerequisiteNotes?: string[];
 }

@@ -136,7 +136,7 @@ function renderOverview(view: DashboardViewModel): string {
       <div>
         <p class="eyebrow">PLANNER</p>
         <h3>Eternals & Evokers</h3>
-        <p class="muted">Selected final 5★ character recipes use proven local quantities only. Missing rows stay unknown instead of becoming zero. Preceding unlock paths and higher-stage recipes are deliberately not guessed.</p>
+        <p class="muted">The planner selects the next supported target from the observed character state. Material rows use proven local quantities only; unsupported prerequisites stay unknown instead of becoming zero.</p>
       </div>
       <div class="quality-list">
         ${qualityRow('Characters', view.quality.characters)}
@@ -161,7 +161,7 @@ function renderCardCollection(cards: DashboardCard[], total: number): string {
 
 function renderCard(card: DashboardCard): string {
   const target = isPlannerCard(card)
-    ? `<span class="target ${card.targetReached === true ? 'done' : ''}">${card.targetReached === true ? '5★ reached' : card.targetReached === false ? '5★ target' : '5★ target · state unknown'}</span>`
+    ? `<span class="target ${card.targetReached === true ? 'done' : ''}">${card.targetReached === true ? `${escapeHtml(card.targetDisplay)} reached` : card.targetReached === false ? `${escapeHtml(card.targetDisplay)} target` : `${escapeHtml(card.targetDisplay)} target · state unknown`}</span>`
     : '';
   return `
     <article class="entity-card">
@@ -324,8 +324,8 @@ function sectionLabel(value: DashboardSection): string {
 function sectionDescription(value: DashboardSection): string {
   switch (value) {
     case 'overview': return 'Snapshot coverage and planner readiness at a glance.';
-    case 'eternals': return 'Observed Eternal state and the final 5★ character uncap recipe; the preceding weapon/Fate unlock path remains explicit unknown evidence.';
-    case 'evokers': return 'Observed Evoker state and the final 5★ character uncap recipe with unsupported prerequisites kept explicit unknown.';
+    case 'eternals': return 'Observed Eternal state with a 5★ target or Stage 1 Transcendence (Lv110) when 5★ is already reached.';
+    case 'evokers': return 'Observed Evoker state with the next currently supported 5★ or Transcendence target and explicit unknown prerequisites.';
     case 'characters': return 'Character instances observed in the passive scan.';
     case 'weapons': return 'Primary weapon inventory. Filtered scans remain marked partial.';
     case 'summons': return 'Summon instances observed in the passive scan.';
