@@ -1,6 +1,13 @@
 import type { CapturedResponseRecord } from '../capture/types.ts';
 import { parseRaidParseExport } from './export.ts';
 import { mergeCombatObservation, parseCombatObservation } from './parser.ts';
+import {
+  isVerifiedCombatResponseUrl,
+  mergeVerifiedMultiraidObservation,
+  parseVerifiedMultiraidObservation,
+  type CombatParseContext,
+  type VerifiedCombatObservation,
+} from './multiraid.ts';
 import type { NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord } from './types.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-combat';
@@ -9,13 +16,27 @@ const LATEST_STORE = 'latest';
 const HISTORY_STORE = 'history';
 const PREFS_STORE = 'preferences';
 const LATEST_KEY = 'latest';
+const CONTEXT_KEY = 'gbfit:combat-context';
 
 interface LatestRow { key: typeof LATEST_KEY; parse: NormalizedRaidParse; }
 
 export async function ingestCapturedCombatRecord(record: CapturedResponseRecord): Promise<NormalizedRaidParse | null> {
+  const current = await getLatestCombatParse();
+  if (isVerifiedCombatResponseUrl(record.meta.url)) {
+    const context = await getCombatParseContext();
+    const parsed = parseVerifiedMultiraidObservation(record, context);
+    if (!parsed) return null;
+    const observation: VerifiedCombatObservation = !context && parsed.context
+      ? { ...parsed, forceNewRaid: true }
+      : parsed;
+    const next = mergeVerifiedMultiraidObservation(current, observation);
+    await saveLatest(next);
+    if (observation.context) await saveCombatParseContext(sanitizeCombatParseContext(observation.context));
+    if (isTerminal(next.result)) await upsertCapturedHistory(next);
+    return next;
+  }
   const observation = parseCombatObservation(record);
   if (!observation) return null;
-  const current = await getLatestCombatParse();
   const next = mergeCombatObservation(current, observation);
   await saveLatest(next);
   if (isTerminal(next.result)) await upsertCapturedHistory(next);
@@ -27,6 +48,29 @@ export async function getLatestCombatParse(): Promise<NormalizedRaidParse | null
   const value = await requestValue<LatestRow | undefined>(db.transaction(LATEST_STORE, 'readonly').objectStore(LATEST_STORE).get(LATEST_KEY));
   db.close();
   return value?.parse ?? null;
+}
+
+export async function clearCombatParseContext(): Promise<void> {
+  await chrome.storage.session.remove(CONTEXT_KEY);
+}
+
+async function getCombatParseContext(): Promise<CombatParseContext | undefined> {
+  const stored = await chrome.storage.session.get(CONTEXT_KEY);
+  return stored[CONTEXT_KEY] as CombatParseContext | undefined;
+}
+
+async function saveCombatParseContext(context: CombatParseContext): Promise<void> {
+  await chrome.storage.session.set({ [CONTEXT_KEY]: context });
+}
+
+function sanitizeCombatParseContext(context: CombatParseContext): CombatParseContext {
+  return {
+    ...context,
+    actorSlots: context.actorSlots.map((actor) => ({
+      id: actor.id,
+      name: actor.id && /^30[234]\d{7}$/.test(actor.id) ? actor.name : undefined,
+    })),
+  };
 }
 
 export async function getRaidHistory(): Promise<RaidHistoryRecord[]> {
@@ -44,6 +88,7 @@ export async function getAllDropPreferences(): Promise<RaidDropPreferences[]> {
 }
 
 export async function clearCombatStorage(): Promise<void> {
+  await clearCombatParseContext();
   const db = await openCombatDatabase();
   await transactionDone(
     db.transaction([LATEST_STORE, HISTORY_STORE, PREFS_STORE], 'readwrite'),
