@@ -29,3 +29,9 @@ button.secondary { background: #fff; color: #171717; border: 1px solid #bbb; }
 footer { color: #777; font-size: 11px; line-height: 1.4; }
 
 .dashboard-button { margin-top: 0; }
+.developer > summary { list-style: none; }
+.developer > summary::-webkit-details-marker { display: none; }
+.developer-summary { cursor: pointer; font-weight: 700; user-select: none; }
+.developer-summary::after { content: '+'; float: right; }
+.developer[open] > .developer-summary::after { content: '−'; }
+.developer-content { display: grid; gap: 14px; margin-top: 14px; }

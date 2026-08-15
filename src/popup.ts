@@ -29,34 +29,39 @@ app.innerHTML = `
       <button id="reset-account" class="secondary" type="button">Reset account data</button>
     </div>
 
-    <div class="card">
-      <div class="status-row">
-        <strong>Local storage</strong>
-      </div>
-      <p class="muted" id="storage-note">Diagnostic scans are limited to the 3 most recent scans. Cleanup only affects this extension's local data.</p>
-      <button id="clear-diagnostic" class="secondary" type="button">Diagnostic-Speicher leeren</button>
-      <button id="clear-except-account" class="secondary" type="button">Alles außer Account-Snapshot löschen</button>
-    </div>
+    <details class="developer">
+      <summary class="card developer-summary">Developer</summary>
+      <div class="developer-content">
+        <div class="card">
+          <div class="status-row">
+            <span class="dot" id="status-dot"></span>
+            <strong id="status">Checking diagnostic scan status…</strong>
+          </div>
+          <p class="muted" id="detail">The manual scan is optional developer/diagnostic tooling.</p>
+          <button id="toggle" type="button" disabled>Loading…</button>
+        </div>
 
-    <div class="card">
-      <div class="status-row">
-        <span class="dot" id="status-dot"></span>
-        <strong id="status">Checking diagnostic scan status…</strong>
-      </div>
-      <p class="muted" id="detail">The manual scan is optional developer/diagnostic tooling.</p>
-      <button id="toggle" type="button" disabled>Loading…</button>
-    </div>
+        <div class="card">
+          <div class="status-row">
+            <strong>Current / last diagnostic scan</strong>
+            <span class="count" id="response-count">0 JSON responses</span>
+          </div>
+          <div class="grid" id="categories"></div>
+          <p class="muted scan-note">“Seen” means a response candidate matched that category; it does not mean the category is complete.</p>
+          <button id="export" class="secondary" type="button" disabled>Export sanitized scan</button>
+          <p class="muted scan-note" id="export-note">Stop the diagnostic scan before exporting. The JSON file stays local until you explicitly share it.</p>
+        </div>
 
-    <div class="card">
-      <div class="status-row">
-        <strong>Current / last diagnostic scan</strong>
-        <span class="count" id="response-count">0 JSON responses</span>
+        <div class="card">
+          <div class="status-row">
+            <strong>Local storage</strong>
+          </div>
+          <p class="muted" id="storage-note">Diagnostic scans are limited to the 3 most recent scans. Cleanup only affects this extension's local data.</p>
+          <button id="clear-diagnostic" class="secondary" type="button">Diagnostic-Speicher leeren</button>
+          <button id="clear-except-account" class="secondary" type="button">Alles außer Account-Snapshot löschen</button>
+        </div>
       </div>
-      <div class="grid" id="categories"></div>
-      <p class="muted scan-note">“Seen” means a response candidate matched that category; it does not mean the category is complete.</p>
-      <button id="export" class="secondary" type="button" disabled>Export sanitized scan</button>
-      <p class="muted scan-note" id="export-note">Stop the diagnostic scan before exporting. The JSON file stays local until you explicitly share it.</p>
-    </div>
+    </details>
 
     <footer>Normal use requires no scan workflow or menu checklist. Start a diagnostic scan only when you intentionally need a sanitized capture export.</footer>
   </section>
