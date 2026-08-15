@@ -211,7 +211,7 @@ function parsePagedRecord<T>(
     structurallyComplete,
     resultCount: optionalNonNegativeInt(record.body.count),
     totalCount: options ? optionalNonNegativeInt(options.number) : undefined,
-    filtered: filterCheck?.(record.body),
+    filtered: filterCheck ? (filterCheck(record.body) ?? true) : false,
   };
 }
 

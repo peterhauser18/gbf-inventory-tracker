@@ -99,8 +99,12 @@ test('reports paginated families partial until every advertised page is observed
   assert.equal(partial.quality.characters, 'partial');
 
   const complete = normalizeCaptureScan([
-    record('https://game.granbluefantasy.jp/npc/list/1', page([character(1, '3001')], 1, 2), 10),
-    record('https://game.granbluefantasy.jp/npc/list/2', page([character(2, '3002')], 2, 2), 11),
+    record('https://game.granbluefantasy.jp/npc/list/1', page(
+      [character(1, '3001')], 1, 2, 2, 2, { '5': '11110', '6': '000000' },
+    ), 10),
+    record('https://game.granbluefantasy.jp/npc/list/2', page(
+      [character(2, '3002')], 2, 2, 2, 2, { '5': '11110', '6': '000000' },
+    ), 11),
   ]);
   assert.equal(complete.quality.characters, 'known');
   assert.equal(complete.characters.length, 2);
@@ -113,6 +117,14 @@ test('keeps a fully paged but filtered roster view partial', () => {
   ]);
   assert.equal(snapshot.summons.length, 2);
   assert.equal(snapshot.quality.summons, 'partial');
+});
+
+test('keeps roster coverage partial when filter metadata is missing', () => {
+  const snapshot = normalizeCaptureScan([
+    record('https://game.granbluefantasy.jp/npc/list/1', page([character(1, '3001')], 1, 1)),
+  ]);
+  assert.equal(snapshot.characters.length, 1);
+  assert.equal(snapshot.quality.characters, 'partial');
 });
 
 test('keeps an equal-count primary roster view partial when selector filters are active', () => {
