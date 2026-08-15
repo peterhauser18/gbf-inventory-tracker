@@ -176,13 +176,13 @@ function bytesToBase64(bytes: Uint8Array): string {
   let binary = '';
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary)
-    .replace(/=+$/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
+    .replace('=', '')
+    .replace('+', '-')
+    .replace('/', '_');
 }
 
 function base64ToBytes(value: string): Uint8Array {
-  let normalized = value.replace(/_/g, '/').replace(/-/g, '+');
+  let normalized = value.replace('_', '/').replace('-', '+');
   if (normalized.length % 4) normalized += '='.repeat(4 - (normalized.length % 4));
   const binary = atob(normalized);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
