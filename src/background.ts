@@ -10,10 +10,12 @@ import {
   saveCapturedResponse,
   startCaptureScan,
 } from './capture/storage.ts';
+import { ingestCapturedCombatRecord } from './combat/storage.ts';
 import type {
   CaptureMessage,
   CaptureResourceType,
   CaptureStatusResponse,
+  CapturedResponseRecord,
   DebuggerResponseBody,
   ObservedResponse,
   PassiveAccountResponseMessage,
@@ -228,11 +230,16 @@ async function handleDebuggerEvent(
             { requestId: id },
           )) as DebuggerResponseBody,
       },
-      saveCapturedResponse,
+      saveObservedResponse,
     );
   } catch {
     // Body can still be unavailable for redirects/cache races; skip only that candidate.
   }
+}
+
+async function saveObservedResponse(record: CapturedResponseRecord): Promise<void> {
+  const combat = await ingestCapturedCombatRecord(record);
+  if (!combat) await saveCapturedResponse(record);
 }
 
 async function handleUnexpectedDetach(tabId: number, reason: string): Promise<void> {

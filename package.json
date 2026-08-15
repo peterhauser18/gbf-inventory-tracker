@@ -10,7 +10,7 @@
     "dev": "vite build --watch",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/account/*.test.ts src/capture/*.test.ts src/dashboard/*.test.ts src/passive/*.test.ts src/planner/*.test.ts"
+    "test": "node --experimental-strip-types --test src/account/*.test.ts src/capture/*.test.ts src/dashboard/*.test.ts src/passive/*.test.ts src/planner/*.test.ts src/combat/*.test.ts"
   },
   "devDependencies": {
     "@types/chrome": "latest",

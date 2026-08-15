@@ -129,10 +129,11 @@ export function decodeCollectionTrackerCharacters(hash: string): DecodedTrackerC
     if (!encoded) continue;
     const buffer = base64ToBytes(encoded);
     for (let group = 0; group < Math.floor(buffer.length / 3); group += 1) {
+      const offset = group * 3;
       const evos =
-        buffer[group * 3] |
-        (buffer[group * 3 + 1] << 8) |
-        (buffer[group * 3 + 2] << 16);
+        buffer[offset]! |
+        (buffer[offset + 1]! << 8) |
+        (buffer[offset + 2]! << 16);
       for (let slot = 0; slot < 8; slot += 1) {
         const evo = (evos >> (slot * 3)) & 0x07;
         if (evo <= 0) continue;
