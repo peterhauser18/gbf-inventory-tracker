@@ -1,4 +1,4 @@
-import { CAPTURE_CATEGORIES, isSensitiveJsonKey, sanitizeResponseUrl } from './policy.ts';
+import { CAPTURE_CATEGORIES, isSensitiveJsonKey } from './policy.ts';
 import type {
   CaptureCategory,
   CaptureResourceType,
@@ -10,6 +10,7 @@ export const CAPTURE_EXPORT_SCHEMA = 'gbf-inventory-tracker.capture-export';
 export const CAPTURE_EXPORT_VERSION = 1 as const;
 
 const ACCOUNT_IDENTIFIER = '[account-identifier]';
+const ACCOUNT_IDENTIFIER_PATH = 'account-identifier';
 const ACCOUNT_CONTEXT_KEY = /^(account|player|profile|user|viewer)(?:s|_data|_info)?$/;
 const ACCOUNT_CONTEXT_IDENTIFIER_KEYS = new Set(['avatar', 'avatar_url', 'display_name', 'id', 'image', 'image_url', 'name', 'nickname', 'uid', 'uuid']);
 const ACCOUNT_IDENTIFIER_KEYS = new Set([
@@ -117,16 +118,17 @@ export function captureExportFilename(exportedAt: number): string {
 }
 
 function sanitizeExportRecord(record: CapturedResponseRecord): ExportedResponseRecord {
+  const url = sanitizeExportUrl(String(record.meta.url));
   return {
     meta: {
       requestId: String(record.meta.requestId),
-      url: sanitizeResponseUrl(String(record.meta.url)),
+      url,
       status: typeof record.meta.status === 'number' ? record.meta.status : undefined,
       mimeType: typeof record.meta.mimeType === 'string' ? record.meta.mimeType : undefined,
       resourceType: sanitizeResourceType(record.meta.resourceType),
       capturedAt: Number(record.meta.capturedAt),
     },
-    body: sanitizeExportJson(record.body),
+    body: sanitizeExportJson(record.body, hasAccountContextInUrl(url)),
     categories: CAPTURE_CATEGORIES.filter((category) => record.categories.includes(category)),
   };
 }
@@ -157,13 +159,37 @@ function sanitizeExportJson(value: unknown, accountContext = false): unknown {
 function sanitizeUrlString(value: string): string {
   try {
     const url = new URL(value);
-    if (url.protocol === 'http:' || url.protocol === 'https:') {
-      return `${url.origin}${url.pathname}`;
-    }
+    if (url.protocol === 'http:' || url.protocol === 'https:') return sanitizeExportUrl(value);
   } catch {
     // Not a URL; leave ordinary game strings untouched.
   }
   return value;
+}
+
+function sanitizeExportUrl(value: string): string {
+  const url = new URL(value);
+  const segments = url.pathname.split('/');
+  const accountPath = segments.some((segment) => ACCOUNT_CONTEXT_KEY.test(normalizeKey(segment)));
+  const sanitizedSegments = accountPath
+    ? segments.map((segment) =>
+        looksLikeAccountIdentifierSegment(segment) ? ACCOUNT_IDENTIFIER_PATH : segment,
+      )
+    : segments;
+  return `${url.origin}${sanitizedSegments.join('/')}`;
+}
+
+function hasAccountContextInUrl(value: string): boolean {
+  try {
+    return new URL(value).pathname
+      .split('/')
+      .some((segment) => ACCOUNT_CONTEXT_KEY.test(normalizeKey(segment)));
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeAccountIdentifierSegment(value: string): boolean {
+  return /^\d{5,}$/.test(value) || /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value);
 }
 
 function isAccountIdentifierKey(key: string): boolean {

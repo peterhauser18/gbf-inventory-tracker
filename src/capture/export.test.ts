@@ -27,7 +27,7 @@ const record: CapturedResponseRecord = {
   scanId: 'scan-1',
   meta: {
     requestId: 'request-1',
-    url: 'https://game.granbluefantasy.jp/weapon/list?user_id=123&token=url-secret',
+    url: 'https://game.granbluefantasy.jp/weapon/list?user_id=123&token=fixture-url-value',
     status: 200,
     mimeType: 'application/json',
     resourceType: 'xhr',
@@ -37,16 +37,16 @@ const record: CapturedResponseRecord = {
     viewerId: 123456,
     user_name: 'Example Captain',
     profile: { id: 999, uid: 'profile-uid', name: 'Profile Captain', avatar_url: 'https://example.invalid/avatar/999' },
-    session_token: 'body-secret',
+    session_token: 'fixture-session-value',
     nested: {
-      Authorization: 'Bearer secret',
-      csrf: 'csrf-secret',
-      password: 'password-secret',
+      Authorization: 'fixture-auth-value',
+      csrf: 'fixture-csrf-value',
+      password: 'fixture-password-value',
       weapon_id: 'weapon-123',
       master_id: 'master-456',
       instance_id: 'instance-789',
       name: 'Safe game object name',
-      asset_url: 'https://assets.example/weapon.png?signature=asset-secret',
+      asset_url: 'https://assets.example/weapon.png?signature=fixture-asset-value',
     },
   },
   categories: ['weapons', 'roster'],
@@ -57,8 +57,8 @@ test('builds a versioned export with a deterministic second-pass sanitizer', () 
     ...record,
     meta: {
       ...record.meta,
-      headers: { Cookie: 'cookie-secret', Authorization: 'header-secret' },
-      postData: 'password=post-secret',
+      headers: { Cookie: 'fixture-cookie-value', Authorization: 'fixture-header-value' },
+      postData: 'fixture-post-body',
     },
   } as CapturedResponseRecord;
 
@@ -105,18 +105,47 @@ test('builds a versioned export with a deterministic second-pass sanitizer', () 
   }
 
   for (const forbidden of [
-    'url-secret',
-    'body-secret',
-    'Bearer secret',
-    'csrf-secret',
-    'password-secret',
-    'cookie-secret',
-    'header-secret',
-    'post-secret',
-    'asset-secret',
+    'fixture-url-value',
+    'fixture-session-value',
+    'fixture-auth-value',
+    'fixture-csrf-value',
+    'fixture-password-value',
+    'fixture-cookie-value',
+    'fixture-header-value',
+    'fixture-post-body',
+    'fixture-asset-value',
   ]) {
     assert.equal(serialized.includes(forbidden), false, `${forbidden} must not be exported`);
   }
+});
+
+test('pseudonymizes generic identity fields and URL IDs in account-context responses', () => {
+  const profileRecord: CapturedResponseRecord = {
+    ...record,
+    meta: {
+      ...record.meta,
+      url: 'https://game.granbluefantasy.jp/profile/content/index/12345678?tracking=fixture-tracking-value',
+    },
+    body: {
+      id: 12345678,
+      name: 'Captain Name',
+      weapon_id: 'weapon-123',
+      profile_link: 'https://game.granbluefantasy.jp/user/12345678?token=fixture-profile-url-value',
+    },
+  };
+
+  const bundle = buildSanitizedExportBundle(completedScan, [profileRecord], 300);
+  assert.equal(
+    bundle.responses[0]?.meta.url,
+    'https://game.granbluefantasy.jp/profile/content/index/account-identifier',
+  );
+  assert.deepEqual(bundle.responses[0]?.body, {
+    id: '[account-identifier]',
+    name: '[account-identifier]',
+    weapon_id: 'weapon-123',
+    profile_link: 'https://game.granbluefantasy.jp/user/account-identifier',
+  });
+  assert.equal(serializeCaptureExport(bundle).includes('12345678'), false);
 });
 
 test('selects only records belonging to the requested scan', () => {
