@@ -1,36 +1,57 @@
-import type { TreasureCount } from '../types/account';
-import type { GoalCalculation, MaterialDeficit, UpgradeGoal } from './types';
+import type { AccountSnapshot, ConsumableCount, TicketCount, TreasureCount } from '../types/account.ts';
+import type { GoalCalculation, MaterialDeficit, MaterialRequirement, UpgradeGoal } from './types.ts';
 
-export function calculateGoal(goal: UpgradeGoal, inventory: TreasureCount[]): GoalCalculation {
-  const ownedById = new Map(inventory.map((item) => [item.itemId, item.quantity]));
-
-  const materials: MaterialDeficit[] = goal.requirements.map((requirement) => {
-    const owned = ownedById.get(requirement.itemId) ?? 0;
-    return {
-      ...requirement,
-      owned,
-      missing: Math.max(0, requirement.quantity - owned),
-    };
-  });
-
-  const unmetPrerequisites = (goal.prerequisites ?? []).filter((item) => !item.satisfied);
-
+export function calculateGoal(goal: UpgradeGoal, snapshot: AccountSnapshot): GoalCalculation {
+  const materials = goal.requirements.map((requirement) => calculateRequirement(requirement, snapshot));
+  const knownCount = materials.filter((material) => material.state === 'known').length;
+  const quality = knownCount === materials.length ? 'known' : knownCount === 0 ? 'unknown' : 'partial';
   return {
     goalId: goal.id,
-    complete: materials.every((item) => item.missing === 0) && unmetPrerequisites.length === 0,
+    quality,
+    complete: quality === 'known' ? materials.every((material) => material.missing === 0) : undefined,
     materials,
-    unmetPrerequisites,
   };
 }
 
 export function aggregateRequirements(goals: UpgradeGoal[]): Map<string, number> {
   const totals = new Map<string, number>();
-
   for (const goal of goals) {
     for (const requirement of goal.requirements) {
-      totals.set(requirement.itemId, (totals.get(requirement.itemId) ?? 0) + requirement.quantity);
+      const key = `${requirement.source}:${requirement.itemId ?? requirement.id}`;
+      totals.set(key, (totals.get(key) ?? 0) + requirement.quantity);
     }
   }
-
   return totals;
+}
+
+function calculateRequirement(requirement: MaterialRequirement, snapshot: AccountSnapshot): MaterialDeficit {
+  if (requirement.source === 'untracked' || !requirement.itemId) {
+    return { ...requirement, state: 'unknown' };
+  }
+
+  const item = findInventoryItem(requirement, snapshot);
+  if (!item) return { ...requirement, state: 'unknown' };
+
+  return {
+    ...requirement,
+    state: 'known',
+    owned: item.quantity,
+    missing: Math.max(0, requirement.quantity - item.quantity),
+  };
+}
+
+function findInventoryItem(
+  requirement: MaterialRequirement,
+  snapshot: AccountSnapshot,
+): TreasureCount | ConsumableCount | TicketCount | undefined {
+  switch (requirement.source) {
+    case 'treasures':
+      return snapshot.treasures.find((item) => item.itemId === requirement.itemId);
+    case 'consumables':
+      return snapshot.consumables.find((item) => item.itemId === requirement.itemId);
+    case 'tickets':
+      return snapshot.tickets.find((item) => item.itemId === requirement.itemId);
+    case 'untracked':
+      return undefined;
+  }
 }
