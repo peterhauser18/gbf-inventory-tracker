@@ -7,8 +7,10 @@ import type {
   DataQuality,
   SnapshotQuality,
   SummonInstance,
+  TicketCount,
   TreasureCount,
   WeaponInstance,
+  WeaponStashSnapshot,
 } from '../types/account.ts';
 import type { CapturedResponseRecord } from './types.ts';
 
@@ -21,6 +23,7 @@ interface PageObservation<T> {
   structurallyComplete: boolean;
   resultCount?: number;
   totalCount?: number;
+  filtered?: boolean;
 }
 
 const PATHS = {
@@ -28,6 +31,7 @@ const PATHS = {
   weapons: /^\/weapon\/list\/(\d+)$/,
   summons: /^\/summon\/list\/(\d+)$/,
   artifacts: /^\/rest\/artifact\/list\/(\d+)$/,
+  weaponStash: /^\/weapon\/container_list\/(\d+)\/([^/]+)$/,
 };
 
 export function normalizeCaptureScan(records: CapturedResponseRecord[]): AccountSnapshot {
@@ -38,10 +42,13 @@ export function normalizeCaptureScan(records: CapturedResponseRecord[]): Account
   const weaponPages: PageObservation<WeaponInstance>[] = [];
   const summonPages: PageObservation<SummonInstance>[] = [];
   const artifactPages: PageObservation<ArtifactInstance>[] = [];
+  const stashPages = new Map<string, PageObservation<WeaponInstance>[]>();
   const treasures = new Map<string, TreasureCount>();
   const consumables = new Map<string, ConsumableCount>();
+  const tickets = new Map<string, TicketCount>();
   let treasureQuality: DataQuality = 'unknown';
   let consumableQuality: DataQuality = 'unknown';
+  let ticketQuality: DataQuality = 'unknown';
   let accountStatusQuality: DataQuality = 'unknown';
   let accountStatus: AccountStatus | undefined;
 
@@ -49,17 +56,17 @@ export function normalizeCaptureScan(records: CapturedResponseRecord[]): Account
     const path = safePath(record.meta.url);
     if (!path) continue;
 
-    const characterPage = parsePagedRecord(record, PATHS.characters, parseCharacter);
+    const characterPage = parsePagedRecord(record, PATHS.characters, parseCharacter, isPrimaryRosterFiltered);
     if (characterPage) {
       characterPages.push(characterPage);
       continue;
     }
-    const weaponPage = parsePagedRecord(record, PATHS.weapons, parseWeapon);
+    const weaponPage = parsePagedRecord(record, PATHS.weapons, parseWeapon, isPrimaryRosterFiltered);
     if (weaponPage) {
       weaponPages.push(weaponPage);
       continue;
     }
-    const summonPage = parsePagedRecord(record, PATHS.summons, parseSummon);
+    const summonPage = parsePagedRecord(record, PATHS.summons, parseSummon, isPrimaryRosterFiltered);
     if (summonPage) {
       summonPages.push(summonPage);
       continue;
@@ -68,6 +75,18 @@ export function normalizeCaptureScan(records: CapturedResponseRecord[]): Account
     if (artifactPage) {
       artifactPages.push(artifactPage);
       continue;
+    }
+
+    const stashMatch = PATHS.weaponStash.exec(path);
+    if (stashMatch) {
+      const stashPage = parsePagedRecord(record, PATHS.weaponStash, parseWeapon, isWeaponStashFiltered);
+      const stashId = stashMatch[2];
+      if (stashPage && stashId) {
+        const pages = stashPages.get(stashId) ?? [];
+        pages.push(stashPage);
+        stashPages.set(stashId, pages);
+        continue;
+      }
     }
 
     if (path === '/item/article_list_by_filter_mode' && Array.isArray(record.body)) {
@@ -90,6 +109,28 @@ export function normalizeCaptureScan(records: CapturedResponseRecord[]): Account
       continue;
     }
 
+    if (path === '/item/gacha_ticket_and_others_list_by_filter_mode' && Array.isArray(record.body)) {
+      let complete = true;
+      for (const [groupIndex, groupValue] of record.body.entries()) {
+        if (!Array.isArray(groupValue)) {
+          complete = false;
+          continue;
+        }
+        const group = groupIndex === 0 ? 'tickets' : groupIndex === 1 ? 'others' : `group-${groupIndex}`;
+        for (const value of groupValue) {
+          const item = parseTicket(value, group, record.meta.capturedAt);
+          if (item) {
+            const key = `${item.group}:${item.itemKindId ?? ''}:${item.itemId}`;
+            tickets.set(key, item);
+          } else {
+            complete = false;
+          }
+        }
+      }
+      ticketQuality = complete ? 'known' : 'partial';
+      continue;
+    }
+
     if (path === '/user/status' && isObject(record.body)) {
       const status = isObject(record.body.status) ? record.body.status : undefined;
       if (status) {
@@ -104,6 +145,9 @@ export function normalizeCaptureScan(records: CapturedResponseRecord[]): Account
   const weapons = mergePages(weaponPages);
   const summons = mergePages(summonPages);
   const artifacts = mergePages(artifactPages);
+  const weaponStashes: WeaponStashSnapshot[] = [...stashPages.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([stashId, pages]) => ({ stashId, weapons: mergePages(pages), quality: pageQuality(pages) }));
   const quality: SnapshotQuality = {
     characters: pageQuality(characterPages),
     weapons: pageQuality(weaponPages),
@@ -111,6 +155,7 @@ export function normalizeCaptureScan(records: CapturedResponseRecord[]): Account
     artifacts: pageQuality(artifactPages),
     treasures: treasureQuality,
     consumables: consumableQuality,
+    tickets: ticketQuality,
     accountStatus: accountStatusQuality,
     progression: 'unknown',
   };
@@ -120,8 +165,10 @@ export function normalizeCaptureScan(records: CapturedResponseRecord[]): Account
     weapons,
     summons,
     artifacts,
+    weaponStashes,
     treasures: [...treasures.values()],
     consumables: [...consumables.values()],
+    tickets: [...tickets.values()],
     progression: [],
     accountStatus,
     quality,
@@ -141,6 +188,7 @@ function parsePagedRecord<T>(
   record: CapturedResponseRecord,
   pattern: RegExp,
   parseItem: (value: unknown, capturedAt: number) => T | null,
+  filterCheck?: (body: JsonObject) => boolean | undefined,
 ): PageObservation<T> | null {
   const path = safePath(record.meta.url);
   if (!path || !pattern.test(path) || !isObject(record.body) || !Array.isArray(record.body.list)) return null;
@@ -163,6 +211,7 @@ function parsePagedRecord<T>(
     structurallyComplete,
     resultCount: optionalNonNegativeInt(record.body.count),
     totalCount: options ? optionalNonNegativeInt(options.number) : undefined,
+    filtered: filterCheck ? (filterCheck(record.body) ?? true) : false,
   };
 }
 
@@ -187,7 +236,7 @@ function pageQuality<T>(pages: PageObservation<T>[]): DataQuality {
   const advertisedLast = Math.max(...[...newestByPage.values()].map((page) => page.last));
   for (let page = 1; page <= advertisedLast; page += 1) {
     const observation = newestByPage.get(page);
-    if (!observation || !observation.structurallyComplete) return 'partial';
+    if (!observation || !observation.structurallyComplete || observation.filtered) return 'partial';
     if (
       observation.resultCount === undefined ||
       observation.totalCount === undefined ||
@@ -267,6 +316,21 @@ function parseTreasure(value: unknown, capturedAt: number): TreasureCount | null
   return { itemId, name: optionalString(value.name), quantity, updatedAt: capturedAt };
 }
 
+function parseTicket(value: unknown, group: string, capturedAt: number): TicketCount | null {
+  if (!isObject(value)) return null;
+  const itemId = technicalId(value.item_id);
+  const quantity = requiredNonNegativeNumber(value.number);
+  if (!itemId || quantity === null) return null;
+  return {
+    itemId,
+    itemKindId: technicalId(value.item_kind_id ?? value.item_kind),
+    group,
+    name: optionalString(value.name),
+    quantity,
+    updatedAt: capturedAt,
+  };
+}
+
 function collectConsumables(
   value: unknown,
   group: string,
@@ -301,6 +365,35 @@ function collectConsumables(
   let complete = true;
   for (const child of Object.values(value)) complete = collectConsumables(child, group, capturedAt, sink) && complete;
   return complete;
+}
+
+function isPrimaryRosterFiltered(body: JsonObject): boolean | undefined {
+  return isSelectorFiltered(body, '11110');
+}
+
+function isWeaponStashFiltered(body: JsonObject): boolean | undefined {
+  return isSelectorFiltered(body, '00110');
+}
+
+function isSelectorFiltered(body: JsonObject, defaultRarityMask: string): boolean | undefined {
+  const options = isObject(body.options) ? body.options : undefined;
+  const filter = options && isObject(options.filter) ? options.filter : undefined;
+  if (!filter) return undefined;
+  for (const [key, value] of Object.entries(filter)) {
+    if (key === '5') {
+      if (value !== defaultRarityMask) return true;
+      continue;
+    }
+    if (!isEmptyFilterValue(value)) return true;
+  }
+  return false;
+}
+
+function isEmptyFilterValue(value: unknown): boolean {
+  if (value === null || value === undefined || value === false || value === 0) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'string') return value.length > 0 && /^0+$/.test(value);
+  return false;
 }
 
 function safePath(url: string): string | null {
