@@ -16,3 +16,8 @@ test('combat ingestion remains attached only to passive response-body capture', 
     assert.doesNotMatch(source, /fetch\s*\(\s*['"`]https:\/\/game\.granbluefantasy\.jp/i);
   }
 });
+
+test('recognized combat responses persist only normalized combat facts', () => {
+  assert.match(background, /const combat = await ingestCapturedCombatRecord\(record\);\s*if \(!combat\) await saveCapturedResponse\(record\);/s);
+  assert.doesNotMatch(background, /await saveCapturedResponse\(record\);\s*await ingestCapturedCombatRecord\(record\);/s);
+});
