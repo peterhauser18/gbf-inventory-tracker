@@ -51,7 +51,9 @@ The capture implementation uses the `activeTab` and `debugger` permissions only 
 
 After a scan is stopped, the popup can export that scan as a local, versioned JSON bundle. Export is explicit and applies a second sanitization pass that removes secret/auth fields, strips URL query values, and pseudonymizes clear account identifiers before the file is created. Nothing is uploaded automatically.
 
-The next milestone is to normalize the captured account data before implementing the complete upgrade requirement dataset and planner UI.
+The extension also includes a full-page **GBF Tool Dashboard** opened from the popup. It reads the latest completed local scan, normalizes it on demand, and exposes collection browsing plus an initial Eternal/Evoker 5★ planner with explicit `known` / `partial` / `unknown` states. The dashboard never performs GBF gameplay requests and does not persist a second normalized copy of account data.
+
+Dashboard entity cards include user-triggered GBF Wiki links. Images currently use local placeholders: the runtime does not request Cygames/GBF asset-CDN images and does not hotlink GBFAL. The image resolver is intentionally allowlisted so a separately approved asset host can be added later without weakening the account boundary.
 
 ## Safety / account risk
 
@@ -68,7 +70,7 @@ npm run typecheck
 npm run build
 ```
 
-Then load the generated `dist/` directory as an unpacked Chrome extension.
+Then load the generated `dist/` directory as an unpacked Chrome extension. Use the popup for scan controls and **Open Dashboard** for the full inventory/planner tab.
 
 ## Planned milestones
 
