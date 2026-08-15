@@ -39,7 +39,7 @@ function syncPanel(): void {
     <div>
       <p class="eyebrow">COLLECTION EXPORT</p>
       <h3>GBF Wiki Collection Tracker</h3>
-      <p class="muted">Generate a tracker link locally from the characters in this dashboard snapshot. Nothing is uploaded automatically.</p>
+      <p class="muted">Generate a tracker link locally from the latest completed local scan. Nothing is uploaded automatically.</p>
     </div>
     <div class="collection-export-state" data-collection-export-state>
       <span class="collection-export-spinner" aria-hidden="true"></span>
@@ -92,7 +92,7 @@ function renderReadyPanel(prepared: PreparedExport): string {
     : `${result.includedMasterIds.length} encoded; ${result.omitted.length} omitted because they could not be represented without guessing.`;
   const coverage = incompleteRoster
     ? `Roster coverage is ${rosterQuality}; this link contains only observed characters and must not be treated as a complete collection.`
-    : 'Roster coverage is known for this snapshot.';
+    : 'Roster coverage is known for the latest completed local scan.';
 
   return `
     <div>
