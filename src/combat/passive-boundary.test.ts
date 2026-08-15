@@ -10,6 +10,7 @@ const dashboard = readFileSync(new URL('./dashboard.ts', import.meta.url), 'utf8
 test('combat ingestion remains attached only to passive response-body capture', () => {
   assert.match(background, /Network\.getResponseBody/);
   assert.match(background, /ingestCapturedCombatRecord/);
+  assert.match(background, /isVerifiedCombatResponseUrl/);
   for (const source of [background, parser, storage, dashboard]) {
     assert.doesNotMatch(source, /Network\.replayXHR|Network\.setRequestInterception|Network\.continueInterceptedRequest/);
     assert.doesNotMatch(source, /XMLHttpRequest|chrome\.scripting|executeScript\s*\(/);
@@ -18,6 +19,16 @@ test('combat ingestion remains attached only to passive response-body capture', 
 });
 
 test('recognized combat responses persist only normalized combat facts', () => {
-  assert.match(background, /const combat = await ingestCapturedCombatRecord\(record\);\s*if \(!combat\) await saveCapturedResponse\(record\);/s);
+  assert.match(background, /const combat = await ingestCapturedCombatRecord\(record\);\s*if \(!combat && !isVerifiedCombatResponseUrl\(record\.meta\.url\)\) await saveCapturedResponse\(record\);/s);
   assert.doesNotMatch(background, /await saveCapturedResponse\(record\);\s*await ingestCapturedCombatRecord\(record\);/s);
+});
+
+test('raid instance correlation is session-only and strips non-public actor names', () => {
+  assert.match(storage, /const CONTEXT_KEY = 'gbfit:combat-context'/);
+  assert.match(storage, /chrome\.storage\.session\.get\(CONTEXT_KEY\)/);
+  assert.match(storage, /chrome\.storage\.session\.set\(\{ \[CONTEXT_KEY\]: context \}\)/);
+  assert.match(background, /clearCombatParseContext/);
+  assert.doesNotMatch(storage, /interface LatestRow[^\n]*context/);
+  assert.doesNotMatch(storage, /objectStore\(LATEST_STORE\)\.put\(\{ key: LATEST_KEY, parse, context/);
+  assert.match(storage, /\^30\[234\]\\d\{7\}\$/);
 });

@@ -11,7 +11,8 @@ import {
   saveCapturedResponse,
   startCaptureScan,
 } from './capture/storage.ts';
-import { clearCombatStorage, ingestCapturedCombatRecord } from './combat/storage.ts';
+import { isVerifiedCombatResponseUrl } from './combat/multiraid.ts';
+import { clearCombatParseContext, clearCombatStorage, ingestCapturedCombatRecord } from './combat/storage.ts';
 import type {
   CaptureMessage,
   CaptureResourceType,
@@ -165,6 +166,7 @@ async function startObservation(): Promise<CaptureStatusResponse> {
   let scanStarted = false;
   try {
     pendingResponses.clear();
+    await clearCombatParseContext();
     await chrome.debugger.attach(target, DEBUGGER_PROTOCOL_VERSION);
     await startCaptureScan(scanId);
     scanStarted = true;
@@ -191,6 +193,7 @@ async function stopObservation(): Promise<CaptureStatusResponse> {
   await setRuntimeState({ active: false, scanId: state.scanId });
   pendingResponses.clear();
   await finishCaptureScan(state.scanId);
+  await clearCombatParseContext();
   try {
     await chrome.debugger.detach({ tabId: state.tabId });
   } catch {
@@ -257,7 +260,7 @@ async function handleDebuggerEvent(
 
 async function saveObservedResponse(record: CapturedResponseRecord): Promise<void> {
   const combat = await ingestCapturedCombatRecord(record);
-  if (!combat) await saveCapturedResponse(record);
+  if (!combat && !isVerifiedCombatResponseUrl(record.meta.url)) await saveCapturedResponse(record);
 }
 
 async function handleUnexpectedDetach(tabId: number, reason: string): Promise<void> {
@@ -266,6 +269,7 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
 
   pendingResponses.clear();
   await finishCaptureScan(state.scanId);
+  await clearCombatParseContext();
   await setRuntimeState({
     active: false,
     scanId: state.scanId,
