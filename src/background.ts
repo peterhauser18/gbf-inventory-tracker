@@ -8,12 +8,13 @@ import {
   saveCapturedResponse,
   startCaptureScan,
 } from './capture/storage.ts';
+import { ingestCapturedCombatRecord } from './combat/storage.ts';
 import type {
   CaptureMessage,
   CaptureResourceType,
   CaptureStatusResponse,
+  CapturedResponseRecord,
   DebuggerResponseBody,
-  ObservedResponse,
 } from './capture/types.ts';
 
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
@@ -176,11 +177,16 @@ async function handleDebuggerEvent(
             { requestId: id },
           )) as DebuggerResponseBody,
       },
-      saveCapturedResponse,
+      saveObservedResponse,
     );
   } catch {
     // Body can still be unavailable for redirects/cache races; skip only that candidate.
   }
+}
+
+async function saveObservedResponse(record: CapturedResponseRecord): Promise<void> {
+  await saveCapturedResponse(record);
+  await ingestCapturedCombatRecord(record);
 }
 
 async function handleUnexpectedDetach(tabId: number, reason: string): Promise<void> {
