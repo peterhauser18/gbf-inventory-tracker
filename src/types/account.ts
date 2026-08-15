@@ -60,6 +60,21 @@ export interface ConsumableCount {
   updatedAt: number;
 }
 
+export interface TicketCount {
+  itemId: string;
+  itemKindId?: string;
+  group: string;
+  name?: string;
+  quantity: number;
+  updatedAt: number;
+}
+
+export interface WeaponStashSnapshot {
+  stashId: string;
+  weapons: WeaponInstance[];
+  quality: DataQuality;
+}
+
 export interface ProgressionState {
   key: string;
   value: string | number | boolean;
@@ -78,6 +93,7 @@ export interface SnapshotQuality {
   artifacts: DataQuality;
   treasures: DataQuality;
   consumables: DataQuality;
+  tickets: DataQuality;
   accountStatus: DataQuality;
   progression: DataQuality;
 }
@@ -87,8 +103,10 @@ export interface AccountSnapshot {
   weapons: WeaponInstance[];
   summons: SummonInstance[];
   artifacts: ArtifactInstance[];
+  weaponStashes: WeaponStashSnapshot[];
   treasures: TreasureCount[];
   consumables: ConsumableCount[];
+  tickets: TicketCount[];
   progression: ProgressionState[];
   accountStatus?: AccountStatus;
   quality: SnapshotQuality;

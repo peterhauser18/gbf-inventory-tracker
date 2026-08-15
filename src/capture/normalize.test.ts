@@ -13,7 +13,14 @@ function record(url: string, body: unknown, capturedAt = 10, requestId = String(
   };
 }
 
-function page(list: unknown[], current: number, last: number, total = list.length * last, held = total) {
+function page(
+  list: unknown[],
+  current: number,
+  last: number,
+  total = list.length * last,
+  held = total,
+  filter?: Record<string, unknown>,
+) {
   return {
     list,
     first: 1,
@@ -22,7 +29,7 @@ function page(list: unknown[], current: number, last: number, total = list.lengt
     next: current < last ? current + 1 : 0,
     count: total,
     current,
-    options: { number: held },
+    options: { number: held, ...(filter ? { filter } : {}) },
   };
 }
 
@@ -56,6 +63,13 @@ test('normalizes all supported families in one pass without inventing progressio
       '0': [{ item_id: '1', name: 'Fixture Recovery', number: '4' }],
       '1': [[{ item_id: '1', item_kind_id: 17, name: 'Fixture Uncap', number: 2 }]],
     }, 16),
+    record('https://game.granbluefantasy.jp/item/gacha_ticket_and_others_list_by_filter_mode', [
+      [{ item_id: '1', name: 'Fixture Ticket', number: '0' }],
+      [{ item_kind: 55, item_id: '1', name: 'Fixture Other', number: '3' }],
+    ], 16.5, 'tickets'),
+    record('https://game.granbluefantasy.jp/weapon/container_list/1/stash-a', page(
+      [weapon(51, '1002')], 1, 1, 1, 1, { '5': '00110', '6': '000000' },
+    ), 16.7, 'stash'),
     record('https://game.granbluefantasy.jp/user/status', { status: { level: '350' } }, 17),
     record('https://game.granbluefantasy.jp/listall/content/index', { data: 'Eternals Evokers progression template text' }, 18),
   ]);
@@ -71,6 +85,11 @@ test('normalizes all supported families in one pass without inventing progressio
   assert.deepEqual(findTreasureQuantity(snapshot, '502'), { state: 'known', quantity: 0 });
   assert.deepEqual(findTreasureQuantity(snapshot, 'missing'), { state: 'unknown' });
   assert.equal(snapshot.consumables.length, 2, 'same item_id in different consumable groups must not collide');
+  assert.equal(snapshot.tickets.length, 2, 'same item_id in ticket/other groups must not collide');
+  assert.equal(snapshot.tickets.find((item) => item.group === 'tickets')?.quantity, 0);
+  assert.equal(snapshot.quality.tickets, 'known');
+  assert.equal(snapshot.weaponStashes[0]?.stashId, 'stash-a');
+  assert.equal(snapshot.weaponStashes[0]?.quality, 'known');
 });
 
 test('reports paginated families partial until every advertised page is observed', () => {
@@ -94,6 +113,41 @@ test('keeps a fully paged but filtered roster view partial', () => {
   ]);
   assert.equal(snapshot.summons.length, 2);
   assert.equal(snapshot.quality.summons, 'partial');
+});
+
+test('keeps an equal-count primary roster view partial when selector filters are active', () => {
+  const snapshot = normalizeCaptureScan([
+    record('https://game.granbluefantasy.jp/npc/list/1', page(
+      [character(1, '3001')], 1, 1, 1, 1, { '5': '00010', '6': '000000' },
+    )),
+  ]);
+  assert.equal(snapshot.characters.length, 1);
+  assert.equal(snapshot.quality.characters, 'partial');
+});
+
+test('normalizes weapon stashes separately and uses the newest page coverage', () => {
+  const snapshot = normalizeCaptureScan([
+    record('https://game.granbluefantasy.jp/weapon/container_list/1/stash-a', page(
+      [weapon(51, '1002', '1')], 1, 1, 1, 4, { '5': '00110', '6': '010000' },
+    ), 10, 'filtered'),
+    record('https://game.granbluefantasy.jp/weapon/container_list/1/stash-a', page(
+      [weapon(51, '1002', '20')], 1, 2, 2, 2, { '5': '00110', '6': '000000' },
+    ), 20, 'full-1'),
+    record('https://game.granbluefantasy.jp/weapon/container_list/2/stash-a', page(
+      [weapon(52, '1003', '10')], 2, 2, 2, 2, { '5': '00110', '6': '000000' },
+    ), 21, 'full-2'),
+    record('https://game.granbluefantasy.jp/weapon/container_list/1/stash-b', page(
+      [weapon(61, '1010')], 1, 2, 2, 2, { '5': '00110', '6': '000000' },
+    ), 22, 'other-partial'),
+  ]);
+
+  assert.equal(snapshot.weaponStashes.length, 2);
+  const stashA = snapshot.weaponStashes.find((stash) => stash.stashId === 'stash-a');
+  const stashB = snapshot.weaponStashes.find((stash) => stash.stashId === 'stash-b');
+  assert.equal(stashA?.quality, 'known');
+  assert.equal(stashA?.weapons.length, 2);
+  assert.equal(stashA?.weapons.find((item) => item.id === '51')?.level, 20);
+  assert.equal(stashB?.quality, 'partial');
 });
 
 test('deduplicates repeated instance observations using the newest captured record', () => {
@@ -140,9 +194,14 @@ test('marks malformed observed inventory rows partial instead of treating them a
     record('https://game.granbluefantasy.jp/item/recovery_and_evolution_list_by_filter_mode', {
       '0': [{ item_id: '1', number: '2' }, { item_id: '2' }],
     }),
+    record('https://game.granbluefantasy.jp/item/gacha_ticket_and_others_list_by_filter_mode', [
+      [{ item_id: '1', number: '2' }, { item_id: '2' }],
+      [],
+    ]),
   ]);
   assert.equal(snapshot.quality.treasures, 'partial');
   assert.equal(snapshot.quality.consumables, 'partial');
+  assert.equal(snapshot.quality.tickets, 'partial');
 });
 
 test('normalization is pure and does not touch network or browser storage', () => {
