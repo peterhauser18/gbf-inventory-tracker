@@ -110,7 +110,7 @@ test('verified special and ability scenarios parse ougi/skill damage without inv
   assert.equal(parse.partyDamage, 1200);
   assert.equal(parse.log[0]?.actionKind, 'ougi');
   assert.deepEqual(parse.log[0]?.breakdown, { ougi: 1200 });
-  assert.equal(parse.log[0]?.breakdown.echo, undefined);
+  assert.equal('echo' in (parse.log[0]?.breakdown ?? {}), false);
 
   const ability = parseVerifiedMultiraidObservation(record({ scenario: [
     { cmd: 'ability', pos: 1, num: 1, name: 'Synthetic Burst', to: 'player' },
