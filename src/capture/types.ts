@@ -72,7 +72,9 @@ export type CaptureControlMessage =
   | { type: 'gbfit:get-status' }
   | { type: 'gbfit:start-observation' }
   | { type: 'gbfit:stop-observation' }
-  | { type: 'gbfit:reset-account-data' };
+  | { type: 'gbfit:reset-account-data' }
+  | { type: 'gbfit:clear-diagnostic-data' }
+  | { type: 'gbfit:clear-all-except-account' };
 
 export type CaptureMessage = CaptureControlMessage | PassiveAccountResponseMessage;
 
