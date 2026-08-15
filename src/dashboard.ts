@@ -366,6 +366,7 @@ function escapeAttribute(value: string): string {
   return escapeHtml(value);
 }
 
+
 function requiredApp(): HTMLElement {
   const element = document.querySelector<HTMLElement>('#dashboard-app');
   if (!element) throw new Error('Missing #dashboard-app root');
