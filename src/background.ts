@@ -185,8 +185,8 @@ async function handleDebuggerEvent(
 }
 
 async function saveObservedResponse(record: CapturedResponseRecord): Promise<void> {
-  await saveCapturedResponse(record);
-  await ingestCapturedCombatRecord(record);
+  const combat = await ingestCapturedCombatRecord(record);
+  if (!combat) await saveCapturedResponse(record);
 }
 
 async function handleUnexpectedDetach(tabId: number, reason: string): Promise<void> {
