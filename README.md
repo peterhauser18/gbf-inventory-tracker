@@ -45,9 +45,11 @@ Local account database
 
 ## Project status
 
-Early scaffold. The first milestone is to capture and normalize account data safely before implementing the complete upgrade requirement dataset and planner UI.
+Early implementation. The extension can now run an explicitly user-controlled passive scan: while observation is enabled, qualifying GBF XHR/fetch JSON responses produced by normal browsing are captured locally for later endpoint discovery and normalization.
 
-The initial manifest intentionally requests only local storage permission. Network-observation permissions will be added when the capture implementation lands so the extension starts with the smallest possible permission surface.
+The capture implementation uses the `activeTab` and `debugger` permissions only after the user starts observation from the extension popup. It does not replay or synthesize GBF requests. Captured URLs drop query values and credential-like JSON fields are redacted before local persistence.
+
+The next milestone is to normalize the captured account data before implementing the complete upgrade requirement dataset and planner UI.
 
 ## Safety / account risk
 
@@ -57,6 +59,7 @@ Granblue Fantasy does not provide a documented public account API for this use c
 
 ```bash
 npm install
+npm test
 npm run typecheck
 npm run build
 ```

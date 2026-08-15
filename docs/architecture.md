@@ -12,7 +12,9 @@
 
 ### Capture
 
-Responsible for observing GBF network responses and producing response metadata + parsed JSON input. The concrete Chrome DevTools Protocol implementation is intentionally deferred from the initial scaffold so permissions are introduced only alongside working code.
+The user explicitly starts observation from the extension popup while a `game.granbluefantasy.jp` tab is active. The background worker attaches Chrome's debugger transport, enables only the CDP Network observer, remembers qualifying XHR/fetch response metadata, and reads the already-received body after `Network.loadingFinished`.
+
+Only JSON bodies from the exact GBF game origin are retained. Request headers, cookies, post bodies, and auth material are never copied into capture records. Query values are removed from captured URLs and credential-like JSON fields are redacted before local persistence. The capture path does not replay, retry, synthesize, intercept, modify, or send GBF requests.
 
 ### Normalization
 
@@ -20,7 +22,7 @@ Transforms endpoint-specific payloads into stable internal records such as `Char
 
 ### Storage
 
-IndexedDB stores normalized records. Instance collections use their instance IDs; treasures use the GBF item/master ID.
+A dedicated IndexedDB database stores sanitized raw capture records and per-scan candidate status. The normalized account database remains separate; instance collections use their instance IDs and treasures use the GBF item/master ID.
 
 ### Planner
 
@@ -28,22 +30,24 @@ Consumes normalized treasure counts and progression state. It never depends dire
 
 ### UI
 
-Collection views and planner views consume only normalized local data.
+The popup controls observation and reports captured JSON-response counts plus heuristic category candidates. A category marked `seen` means only that matching response evidence was observed; it is not a completeness claim. Collection and planner views will consume normalized local data.
 
-## Capture workflow (planned)
+## Capture workflow
 
 ```text
 User opens GBF normally
        ↓
 User explicitly enables observation
        ↓
-Extension attaches read-only network observer
+Extension attaches passive Network observer
        ↓
-XHR/fetch response arrives
+User clicks through relevant GBF menus
        ↓
-URL + response schema matched to parser
+XHR/fetch response finishes loading
        ↓
-Normalized records written to IndexedDB
+JSON body sanitized + stored locally
        ↓
-UI updates scan completeness and planner deficits
+Candidate categories shown as seen/unknown
+       ↓
+Later normalizers consume the local capture set
 ```
