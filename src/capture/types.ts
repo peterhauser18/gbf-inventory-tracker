@@ -41,6 +41,17 @@ export interface ObservedResponse {
   resourceType: CaptureResourceType;
 }
 
+export interface PassiveAccountResponseMessage {
+  type: 'gbfit:passive-account-response';
+  response: {
+    url: string;
+    status?: number;
+    mimeType?: string;
+    resourceType: 'xhr' | 'fetch';
+    body: string;
+  };
+}
+
 export interface DebuggerResponseBody {
   body: string;
   base64Encoded?: boolean;
@@ -57,10 +68,13 @@ export interface CaptureParser<T> {
   parse(context: ParserContext): T | null;
 }
 
-export type CaptureMessage =
+export type CaptureControlMessage =
   | { type: 'gbfit:get-status' }
   | { type: 'gbfit:start-observation' }
-  | { type: 'gbfit:stop-observation' };
+  | { type: 'gbfit:stop-observation' }
+  | { type: 'gbfit:reset-account-data' };
+
+export type CaptureMessage = CaptureControlMessage | PassiveAccountResponseMessage;
 
 export interface CaptureStatusResponse {
   version: 1;

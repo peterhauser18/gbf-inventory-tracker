@@ -1,6 +1,6 @@
 import './dashboard/styles.css';
-import { getCapturedResponsesForScan, getLatestCompletedCaptureScan } from './capture/storage.ts';
-import { normalizeCaptureScan } from './capture/normalize.ts';
+import type { AccountFamily } from './account/database.ts';
+import { loadAccountDatabase } from './account/storage.ts';
 import {
   buildDashboardViewModel,
   type DashboardCard,
@@ -21,23 +21,24 @@ let section: DashboardSection = 'overview';
 let query = '';
 let detailKey: string | null = null;
 let metadataStatus: 'loading' | 'ready' | 'fallback' = 'loading';
+let observedAt: Partial<Record<AccountFamily, number>> = {};
 const expandedPlannerSteps = new Set<string>();
 
 void load();
 
 async function load(): Promise<void> {
-  app.innerHTML = loadingShell('Loading latest completed local scan…');
+  app.innerHTML = loadingShell('Loading local account database…');
   try {
-    const scan = await getLatestCompletedCaptureScan();
-    if (!scan) {
+    const account = await loadAccountDatabase();
+    if (!account) {
       app.innerHTML = emptyShell(
-        'No completed scan yet',
-        'Run passive observation from the extension popup, stop it, then open the dashboard again.',
+        'No account data observed yet',
+        'Keep playing and browsing GBF normally. Verified account responses will fill this dashboard automatically over time.',
       );
       return;
     }
-    const records = await getCapturedResponsesForScan(scan.id);
-    snapshot = normalizeCaptureScan(records);
+    snapshot = account.snapshot;
+    observedAt = account.observedAt;
     model = buildDashboardViewModel(snapshot);
     render();
 
@@ -75,10 +76,10 @@ function render(): void {
           `).join('')}
         </nav>
         <div class="sidebar-note">
-          <strong>Captured locally</strong>
-          <span>${escapeHtml(formatDate(model.capturedAt))}</span>
+          <strong>Tracked locally</strong>
+          <span>Latest observation: ${escapeHtml(formatDate(model.capturedAt))}</span>
           <span>${escapeHtml(metadataMessage(metadataStatus))}</span>
-          <span>No gameplay actions or GBF/Cygames asset-CDN requests.</span>
+          <span>Passive tracking sends no gameplay or refresh requests.</span>
         </div>
       </aside>
 
@@ -97,7 +98,7 @@ function render(): void {
           `}
         </header>
 
-        ${section === 'overview' ? renderOverview(model) : renderCardCollection(filtered, cards.length)}
+        ${section === 'overview' ? renderOverview(model, observedAt) : renderCardCollection(filtered, cards.length)}
       </main>
 
       ${detailKey ? renderDetail(model, detailKey) : ''}
@@ -157,7 +158,7 @@ function bindEvents(): void {
   });
 }
 
-function renderOverview(view: DashboardViewModel): string {
+function renderOverview(view: DashboardViewModel, freshness: Partial<Record<AccountFamily, number>>): string {
   return `
     <section class="overview-grid">
       ${view.stats.map((stat) => `
@@ -177,9 +178,11 @@ function renderOverview(view: DashboardViewModel): string {
         <p class="muted">Open an Eternal or Evoker to inspect each verified upgrade stage separately. Material rows use proven local quantities only; unsupported prerequisites stay unknown instead of becoming zero.</p>
       </div>
       <div class="quality-list">
-        ${qualityRow('Characters', view.quality.characters)}
-        ${qualityRow('Treasures', view.quality.treasures)}
-        ${qualityRow('Progression evidence', view.quality.progression)}
+        ${qualityFreshnessRow('Characters', view.quality.characters, freshness.characters)}
+        ${qualityFreshnessRow('Weapons', view.quality.weapons, freshness.weapons)}
+        ${qualityFreshnessRow('Summons', view.quality.summons, freshness.summons)}
+        ${qualityFreshnessRow('Treasures', view.quality.treasures, freshness.treasures)}
+        ${qualityFreshnessRow('Progression evidence', view.quality.progression, freshness.progression)}
       </div>
     </section>
   `;
@@ -187,7 +190,7 @@ function renderOverview(view: DashboardViewModel): string {
 
 function renderCardCollection(cards: DashboardCard[], total: number): string {
   if (cards.length === 0) {
-    return `<div class="empty"><strong>No matching entries</strong><span>${total === 0 ? 'No data was observed for this family.' : 'Try a different search.'}</span></div>`;
+    return `<div class="empty"><strong>No matching entries</strong><span>${total === 0 ? 'No data was observed for this family yet.' : 'Try a different search.'}</span></div>`;
   }
   return `
     <div class="result-count">Showing ${escapeHtml(formatNumber(cards.length))} of ${escapeHtml(formatNumber(total))}</div>
@@ -287,7 +290,7 @@ function renderPlannerStep(card: PlannerCard, step: PlannerStep): string {
 function renderPlannerStepBody(step: PlannerStep): string {
   return `
     <div class="planner-step-body">
-      <p class="muted">Have / Required / Missing uses only quantities explicitly present in the local scan. Untracked currencies and unsupported prerequisites stay unknown.</p>
+      <p class="muted">Have / Required / Missing uses only quantities explicitly present in the local account database. Untracked currencies and unsupported prerequisites stay unknown.</p>
       <div class="material-table" role="table" aria-label="${escapeAttribute(step.targetLabel)} material requirements">
         <div class="material-row header" role="row"><span>Material</span><span>Have</span><span>Required</span><span>Missing</span></div>
         ${step.materialPlan.materials.map((material) => {
@@ -381,8 +384,13 @@ function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
   return `<span class="quality ${quality}">${quality}</span>`;
 }
 
-function qualityRow(label: string, quality: 'known' | 'partial' | 'unknown'): string {
-  return `<div class="quality-row"><span>${escapeHtml(label)}</span>${qualityChip(quality)}</div>`;
+function qualityFreshnessRow(
+  label: string,
+  quality: 'known' | 'partial' | 'unknown',
+  lastObserved: number | undefined,
+): string {
+  const freshness = lastObserved === undefined ? 'never observed' : `last observed ${formatDate(lastObserved)}`;
+  return `<div class="quality-row"><span>${escapeHtml(label)} · <small class="muted">${escapeHtml(freshness)}</small></span>${qualityChip(quality)}</div>`;
 }
 
 function isPlannerCard(card: DashboardCard): card is PlannerCard {
@@ -395,13 +403,13 @@ function sectionLabel(value: DashboardSection): string {
 
 function sectionDescription(value: DashboardSection): string {
   switch (value) {
-    case 'overview': return 'Snapshot coverage and planner readiness at a glance.';
+    case 'overview': return 'Accumulated account coverage and planner readiness at a glance.';
     case 'eternals': return 'Observed Eternal state with each verified uncap/transcendence step available as an expandable material plan.';
     case 'evokers': return 'Observed Evoker state with each currently verified uncap/transcendence step and explicit unknown prerequisites.';
-    case 'characters': return 'Character instances observed in the passive scan, enriched with public GBF Wiki metadata when available.';
-    case 'weapons': return 'Primary weapon inventory. Filtered scans remain marked partial.';
-    case 'summons': return 'Summon instances observed in the passive scan.';
-    case 'treasures': return 'Treasure and material quantities returned by GBF.';
+    case 'characters': return 'Character instances accumulated from verified responses during normal GBF use, enriched with public GBF Wiki metadata when available.';
+    case 'weapons': return 'Primary weapon inventory. Incomplete observations remain marked partial.';
+    case 'summons': return 'Summon instances accumulated from verified passive responses.';
+    case 'treasures': return 'Treasure and material quantities explicitly observed from GBF responses.';
     case 'consumables': return 'Consumables, tickets and other item groups kept separate by technical context.';
     case 'stashes': return 'Observed weapon containers kept separate from the primary weapon inventory.';
   }

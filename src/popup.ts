@@ -6,7 +6,7 @@ import {
 } from './capture/export.ts';
 import { CAPTURE_CATEGORIES } from './capture/policy.ts';
 import { getCapturedResponsesForScan } from './capture/storage.ts';
-import type { CaptureMessage, CaptureStatusResponse } from './capture/types.ts';
+import type { CaptureControlMessage, CaptureStatusResponse } from './capture/types.ts';
 
 const app = document.querySelector<HTMLElement>('#app');
 if (!app) throw new Error('Missing #app root');
@@ -16,36 +16,46 @@ app.innerHTML = `
     <header>
       <p class="eyebrow">LOCAL-FIRST GBF COMPANION</p>
       <h1>GBF Inventory Tracker</h1>
-      <p class="muted">Passively capture account data while you browse GBF normally.</p>
+      <p class="muted">Account data is collected passively as you play and browse GBF normally.</p>
     </header>
 
     <button id="dashboard" class="secondary dashboard-button" type="button">Open Dashboard</button>
 
     <div class="card">
       <div class="status-row">
-        <span class="dot" id="status-dot"></span>
-        <strong id="status">Checking extension status…</strong>
+        <strong>Automatic account tracking</strong>
       </div>
-      <p class="muted" id="detail">No gameplay automation. Captured account data stays on this device.</p>
+      <p class="muted" id="tracking-note">Verified account responses are normalized locally. No extra GBF requests are sent.</p>
+      <button id="reset-account" class="secondary" type="button">Reset account data</button>
+    </div>
+
+    <div class="card">
+      <div class="status-row">
+        <span class="dot" id="status-dot"></span>
+        <strong id="status">Checking diagnostic scan status…</strong>
+      </div>
+      <p class="muted" id="detail">The manual scan is optional developer/diagnostic tooling.</p>
       <button id="toggle" type="button" disabled>Loading…</button>
     </div>
 
     <div class="card">
       <div class="status-row">
-        <strong>Current / last scan</strong>
+        <strong>Current / last diagnostic scan</strong>
         <span class="count" id="response-count">0 JSON responses</span>
       </div>
       <div class="grid" id="categories"></div>
       <p class="muted scan-note">“Seen” means a response candidate matched that category; it does not mean the category is complete.</p>
       <button id="export" class="secondary" type="button" disabled>Export sanitized scan</button>
-      <p class="muted scan-note" id="export-note">Stop observation before exporting. The JSON file stays local until you explicitly share it.</p>
+      <p class="muted scan-note" id="export-note">Stop the diagnostic scan before exporting. The JSON file stays local until you explicitly share it.</p>
     </div>
 
-    <footer>Start observation, click through the relevant GBF menus once, then stop observation and export the sanitized scan.</footer>
+    <footer>Normal use requires no scan workflow or menu checklist. Start a diagnostic scan only when you intentionally need a sanitized capture export.</footer>
   </section>
 `;
 
 const dashboardButton = requiredButton('#dashboard');
+const resetAccountButton = requiredButton('#reset-account');
+const trackingNote = requiredElement('#tracking-note');
 const status = requiredElement('#status');
 const detail = requiredElement('#detail');
 const dot = requiredElement('#status-dot');
@@ -63,6 +73,20 @@ dashboardButton.addEventListener('click', async () => {
     await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
   } finally {
     dashboardButton.disabled = false;
+  }
+});
+
+resetAccountButton.addEventListener('click', async () => {
+  if (!window.confirm('Clear GBF Tool\'s locally accumulated account data? This does not change your GBF account.')) return;
+  resetAccountButton.disabled = true;
+  trackingNote.textContent = 'Clearing local account data…';
+  try {
+    await sendMessage({ type: 'gbfit:reset-account-data' });
+    trackingNote.textContent = 'Local account data cleared. Automatic tracking will rebuild it from future normal GBF activity.';
+  } catch (error) {
+    trackingNote.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    resetAccountButton.disabled = false;
   }
 });
 
@@ -101,7 +125,7 @@ async function refresh(): Promise<void> {
   render(await sendMessage({ type: 'gbfit:get-status' }));
 }
 
-async function sendMessage(message: CaptureMessage): Promise<CaptureStatusResponse> {
+async function sendMessage(message: CaptureControlMessage): Promise<CaptureStatusResponse> {
   try {
     return await chrome.runtime.sendMessage(message) as CaptureStatusResponse;
   } catch (error) {
@@ -119,17 +143,17 @@ async function sendMessage(message: CaptureMessage): Promise<CaptureStatusRespon
 function render(response: CaptureStatusResponse): void {
   latestStatus = response;
   status.textContent = response.message;
-  detail.textContent = response.error ?? 'No gameplay automation. Captured account data stays on this device.';
+  detail.textContent = response.error ?? 'The manual scan is optional developer/diagnostic tooling.';
   dot.classList.toggle('active', response.active);
   toggle.disabled = false;
-  toggle.textContent = response.active ? 'Stop observation' : 'Start observation';
+  toggle.textContent = response.active ? 'Stop diagnostic scan' : 'Start diagnostic scan';
   responseCount.textContent = `${response.scan?.responseCount ?? 0} JSON responses`;
 
   const completed = !response.active && response.scan?.stoppedAt !== undefined;
   exportButton.disabled = !completed;
   exportNote.textContent = completed
     ? 'This export is sanitized again before download and stays local until you explicitly share it.'
-    : 'Stop observation before exporting. The JSON file stays local until you explicitly share it.';
+    : 'Stop the diagnostic scan before exporting. The JSON file stays local until you explicitly share it.';
 
   categories.innerHTML = CAPTURE_CATEGORIES.map((category) => {
     const seen = response.scan?.categories[category] ?? false;
