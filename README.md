@@ -59,6 +59,8 @@ Granblue Fantasy does not provide a documented public account API for this use c
 
 ## Development
 
+Requires **Node.js 22.12 or newer**. Windows PowerShell is supported directly; WSL is not required.
+
 ```bash
 npm install
 npm test
