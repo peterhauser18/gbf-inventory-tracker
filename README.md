@@ -45,13 +45,13 @@ Local account database
 
 ## Project status
 
-Early implementation. The extension can now run an explicitly user-controlled passive scan: while observation is enabled, qualifying GBF XHR/fetch JSON responses produced by normal browsing are captured locally for later endpoint discovery and normalization.
+The normal extension flow now passively observes **already verified account-response families** while the user plays or browses GBF normally. Those responses are normalized immediately and merged into a durable local account database, so the dashboard becomes progressively more complete without starting/stopping a scan or following a menu checklist.
 
-The capture implementation uses the `activeTab` and `debugger` permissions only after the user starts observation from the extension popup. It does not replay or synthesize GBF requests. Captured URLs drop query values and credential-like JSON fields are redacted before local persistence.
+Automatic tracking does not synthesize, replay, retry, poll, prefetch, or otherwise add GBF requests. The page observer only mirrors the response from the request GBF itself was already making, strips URL query values before handing it to the extension, and the background accepts only the verified account endpoint allowlist. Normal-mode persistence contains normalized account facts and coverage timestamps rather than raw response dumps, headers, cookies, request bodies, or session material.
 
-After a scan is stopped, the popup can export that scan as a local, versioned JSON bundle. Export is explicit and applies a second sanitization pass that removes secret/auth fields, strips URL query values, and pseudonymizes clear account identifiers before the file is created. Nothing is uploaded automatically.
+The existing `activeTab` + `debugger` scan remains available from the popup as optional developer/diagnostic tooling. It is not required for the dashboard. After a diagnostic scan is stopped, the popup can export that scan as a local, versioned JSON bundle; export is explicit and applies a second sanitization pass before download. Nothing is uploaded automatically.
 
-The extension also includes a full-page **GBF Tool Dashboard** opened from the popup. It reads the latest completed local scan, normalizes it on demand, and exposes collection browsing plus an Eternal/Evoker planner with explicit `known` / `partial` / `unknown` states. Eternal details expose 1★–5★ plus the modeled Transcendence stages through Lv150 as expandable steps; Evoker details expose 1★–5★ plus only currently verified Transcendence stages instead of guessing unreleased recipes. The dashboard never performs GBF gameplay requests and does not persist a second normalized copy of account data.
+The full-page **GBF Tool Dashboard** reads the cumulative local account database and exposes collection browsing plus an Eternal/Evoker planner with explicit `known` / `partial` / `unknown` states. Partial observations can refresh or add facts without deleting unseen cached entities; authoritative complete observations may replace stale members. Eternal details expose 1★–5★ plus the modeled Transcendence stages through Lv150 as expandable steps; Evoker details expose 1★–5★ plus only currently verified Transcendence stages instead of guessing unreleased recipes.
 
 Dashboard character, weapon and summon cards resolve public names and thumbnails from GBF Wiki metadata where available, including stash weapons. Wiki metadata/image requests are limited to `https://gbf.wiki/*`, omit credentials/referrers, and fall back to technical IDs plus local placeholders on failure. The runtime does not request Cygames/GBF asset-CDN images and does not hotlink GBFAL.
 
@@ -70,7 +70,7 @@ npm run typecheck
 npm run build
 ```
 
-Then load the generated `dist/` directory as an unpacked Chrome extension. Use the popup for scan controls and **Open Dashboard** for the full inventory/planner tab.
+Then load the generated `dist/` directory as an unpacked Chrome extension. Browse/play GBF normally to let the local database fill over time, and use **Open Dashboard** for the full inventory/planner tab. The manual scan controls in the popup are diagnostic/export tooling only.
 
 ## Planned milestones
 
