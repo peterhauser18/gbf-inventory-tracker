@@ -23,11 +23,13 @@ export function parseCombatObservation(record: CapturedResponseRecord): CombatOb
     boss: boss(body), participants: participants(body), actions, actionsFieldPresent: source.present,
     unparsedActionCount: source.actions.length - actions.length, drops: dropResult.items, dropsQuality: dropResult.quality,
   };
-  return observation.startObserved || observation.result !== undefined || observation.boss || observation.participants || actions.length || observation.drops.length ? observation : null;
+  return observation.startObserved || observation.result !== undefined || observation.boss || observation.participants || actions.length || observation.dropsQuality !== 'unknown' ? observation : null;
 }
 
 export function mergeCombatObservation(current: NormalizedRaidParse | null, observation: CombatObservation): NormalizedRaidParse {
-  const base = current?.raidTechnicalId === observation.raidTechnicalId ? current : emptyRaidParse(observation.raidTechnicalId, observation.observedAt);
+  const base = current && shouldContinueExistingRaid(current, observation)
+    ? current
+    : emptyRaidParse(observation.raidTechnicalId, observation.observedAt);
   const coverage = {
     startObserved: base.coverage.startObserved || observation.startObserved,
     terminalObserved: base.coverage.terminalObserved || Boolean(observation.result && TERMINAL.has(observation.result)),
@@ -50,13 +52,19 @@ export function mergeCombatObservation(current: NormalizedRaidParse | null, obse
     partyDamage: hasDamage ? log.reduce((sum, entry) => sum + entry.damage, 0) : base.partyDamage,
     characterDamage: characterDamage(log, damageQuality), boss: mergeBoss(base.boss, observation.boss),
     participants: mergeParticipants(base.participants, observation.participants), stats: stats(log, damageQuality), log,
-    drops: observation.drops.length ? observation.drops : base.drops,
+    drops: observation.dropsQuality !== 'unknown' ? observation.drops : base.drops,
     dropsQuality: stronger(base.dropsQuality, observation.dropsQuality), coverage, lastObservedAt: observation.observedAt,
   };
 }
 
 export function emptyRaidParse(raidTechnicalId: string, observedAt: number): NormalizedRaidParse {
   return { schemaVersion: 1, raidTechnicalId, result: 'active', resultQuality: 'unknown', parserQuality: 'unknown', damageQuality: 'unknown', characterDamage: [], stats: { quality: 'unknown' }, log: [], drops: [], dropsQuality: 'unknown', coverage: { startObserved: false, terminalObserved: false, parseGapObserved: false }, lastObservedAt: observedAt };
+}
+
+function shouldContinueExistingRaid(current: NormalizedRaidParse, observation: CombatObservation): boolean {
+  if (current.raidTechnicalId !== observation.raidTechnicalId) return false;
+  if (!TERMINAL.has(current.result)) return true;
+  return !observation.startObserved && observation.actions.length === 0 && observation.dropsQuality !== 'unknown';
 }
 
 function combatPath(url: string): boolean { try { return /(?:battle|raid|combat|result|reward)/.test(new URL(url).pathname.toLowerCase()); } catch { return false; } }
