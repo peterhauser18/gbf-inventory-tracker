@@ -255,6 +255,7 @@ function weaponCard(weapon: WeaponInstance, quality: DataQuality): DashboardCard
   };
 }
 
+
 function stashWeaponCard(weapon: WeaponInstance, quality: DataQuality, stashId: string): DashboardCard {
   const card = weaponCard(weapon, quality);
   return {
