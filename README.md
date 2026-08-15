@@ -49,6 +49,8 @@ Early implementation. The extension can now run an explicitly user-controlled pa
 
 The capture implementation uses the `activeTab` and `debugger` permissions only after the user starts observation from the extension popup. It does not replay or synthesize GBF requests. Captured URLs drop query values and credential-like JSON fields are redacted before local persistence.
 
+After a scan is stopped, the popup can export that scan as a local, versioned JSON bundle. Export is explicit and applies a second sanitization pass that removes secret/auth fields, strips URL query values, and pseudonymizes clear account identifiers before the file is created. Nothing is uploaded automatically.
+
 The next milestone is to normalize the captured account data before implementing the complete upgrade requirement dataset and planner UI.
 
 ## Safety / account risk

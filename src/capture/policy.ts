@@ -14,7 +14,7 @@ export const CAPTURE_CATEGORIES: CaptureCategory[] = [
   'roster',
 ];
 
-const SENSITIVE_KEY = /(?:^|[_-])(authorization|cookie|cookies|csrf|password|passwd|secret|session|sid|token)(?:$|[_-])/i;
+const SENSITIVE_KEY = /(?:^|[_-])(auth|authorization|cookie|cookies|credential|credentials|csrf|password|passwd|secret|session|sid|token)(?:$|[_-])/i;
 const REDACTED = '[redacted]';
 
 export function isGbfPageUrl(url: string | undefined): boolean {
@@ -46,12 +46,12 @@ export function redactSensitiveJson(value: unknown): unknown {
   const source = value as Record<string, unknown>;
   const sanitized: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(source)) {
-    sanitized[key] = isSensitiveKey(key) ? REDACTED : redactSensitiveJson(nested);
+    sanitized[key] = isSensitiveJsonKey(key) ? REDACTED : redactSensitiveJson(nested);
   }
   return sanitized;
 }
 
-function isSensitiveKey(key: string): boolean {
+export function isSensitiveJsonKey(key: string): boolean {
   const normalized = key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
   return SENSITIVE_KEY.test(normalized);
 }

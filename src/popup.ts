@@ -1,5 +1,11 @@
 import './styles.css';
+import {
+  buildSanitizedExportBundle,
+  captureExportFilename,
+  serializeCaptureExport,
+} from './capture/export.ts';
 import { CAPTURE_CATEGORIES } from './capture/policy.ts';
+import { getCapturedResponsesForScan } from './capture/storage.ts';
 import type { CaptureMessage, CaptureStatusResponse } from './capture/types.ts';
 
 const app = document.querySelector<HTMLElement>('#app');
@@ -29,9 +35,11 @@ app.innerHTML = `
       </div>
       <div class="grid" id="categories"></div>
       <p class="muted scan-note">“Seen” means a response candidate matched that category; it does not mean the category is complete.</p>
+      <button id="export" class="secondary" type="button" disabled>Export sanitized scan</button>
+      <p class="muted scan-note" id="export-note">Stop observation before exporting. The JSON file stays local until you explicitly share it.</p>
     </div>
 
-    <footer>Start observation, click through the relevant GBF menus once, then stop observation.</footer>
+    <footer>Start observation, click through the relevant GBF menus once, then stop observation and export the sanitized scan.</footer>
   </section>
 `;
 
@@ -39,6 +47,8 @@ const status = requiredElement('#status');
 const detail = requiredElement('#detail');
 const dot = requiredElement('#status-dot');
 const toggle = requiredButton('#toggle');
+const exportButton = requiredButton('#export');
+const exportNote = requiredElement('#export-note');
 const responseCount = requiredElement('#response-count');
 const categories = requiredElement('#categories');
 
@@ -46,9 +56,31 @@ let latestStatus: CaptureStatusResponse | null = null;
 
 toggle.addEventListener('click', async () => {
   toggle.disabled = true;
+  exportButton.disabled = true;
   const type = latestStatus?.active ? 'gbfit:stop-observation' : 'gbfit:start-observation';
   const response = await sendMessage({ type });
   render(response);
+});
+
+exportButton.addEventListener('click', async () => {
+  const scan = latestStatus?.scan;
+  if (!scan || scan.stoppedAt === undefined || latestStatus?.active) return;
+
+  toggle.disabled = true;
+  exportButton.disabled = true;
+  exportNote.textContent = 'Preparing sanitized local export…';
+  try {
+    const records = await getCapturedResponsesForScan(scan.id);
+    const exportedAt = Date.now();
+    const bundle = buildSanitizedExportBundle(scan, records, exportedAt);
+    downloadJson(captureExportFilename(exportedAt), serializeCaptureExport(bundle));
+    exportNote.textContent = 'Sanitized JSON exported locally. Nothing was uploaded.';
+  } catch (error) {
+    exportNote.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    toggle.disabled = false;
+    exportButton.disabled = false;
+  }
 });
 
 void refresh();
@@ -81,10 +113,29 @@ function render(response: CaptureStatusResponse): void {
   toggle.textContent = response.active ? 'Stop observation' : 'Start observation';
   responseCount.textContent = `${response.scan?.responseCount ?? 0} JSON responses`;
 
+  const completed = !response.active && response.scan?.stoppedAt !== undefined;
+  exportButton.disabled = !completed;
+  exportNote.textContent = completed
+    ? 'This export is sanitized again before download and stays local until you explicitly share it.'
+    : 'Stop observation before exporting. The JSON file stays local until you explicitly share it.';
+
   categories.innerHTML = CAPTURE_CATEGORIES.map((category) => {
     const seen = response.scan?.categories[category] ?? false;
     return `<div class="stat"><span>${label(category)}</span><strong class="candidate ${seen ? 'seen' : ''}">${seen ? 'seen' : '—'}</strong></div>`;
   }).join('');
+}
+
+function downloadJson(filename: string, content: string): void {
+  const blob = new Blob([content], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function label(category: (typeof CAPTURE_CATEGORIES)[number]): string {
