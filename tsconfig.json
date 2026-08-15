@@ -11,7 +11,8 @@
     ],
     "types": [
       "chrome",
-      "node"
+      "node",
+      "vite/client"
     ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
