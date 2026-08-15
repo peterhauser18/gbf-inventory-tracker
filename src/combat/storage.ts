@@ -43,6 +43,19 @@ export async function getAllDropPreferences(): Promise<RaidDropPreferences[]> {
   return values;
 }
 
+export async function clearCombatStorage(): Promise<void> {
+  const db = await openCombatDatabase();
+  await transactionDone(
+    db.transaction([LATEST_STORE, HISTORY_STORE, PREFS_STORE], 'readwrite'),
+    (tx) => {
+      tx.objectStore(LATEST_STORE).clear();
+      tx.objectStore(HISTORY_STORE).clear();
+      tx.objectStore(PREFS_STORE).clear();
+    },
+  );
+  db.close();
+}
+
 export async function saveDropPreferences(preference: RaidDropPreferences): Promise<void> {
   const db = await openCombatDatabase();
   await transactionDone(db.transaction(PREFS_STORE, 'readwrite'), (tx) => tx.objectStore(PREFS_STORE).put(preference));

@@ -5,6 +5,12 @@ const DB_NAME = 'gbf-inventory-tracker-captures';
 const DB_VERSION = 1;
 const RESPONSE_STORE = 'responses';
 const SCAN_STORE = 'scans';
+export const MAX_DIAGNOSTIC_SCANS = 3;
+
+export interface CapturePrunePlan {
+  scanIds: string[];
+  responseIds: string[];
+}
 
 async function openCaptureDatabase(): Promise<IDBDatabase> {
   return await new Promise((resolve, reject) => {
@@ -26,11 +32,76 @@ async function openCaptureDatabase(): Promise<IDBDatabase> {
 export async function startCaptureScan(id: string, startedAt = Date.now()): Promise<CaptureScanSummary> {
   const summary = emptyCaptureSummary(id, startedAt);
   const db = await openCaptureDatabase();
-  await runWrite(db, [SCAN_STORE], (tx) => {
-    tx.objectStore(SCAN_STORE).put(summary);
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([RESPONSE_STORE, SCAN_STORE], 'readwrite');
+    const responses = tx.objectStore(RESPONSE_STORE);
+    const scans = tx.objectStore(SCAN_STORE);
+    const scansRequest = scans.getAll();
+
+    scansRequest.onsuccess = () => {
+      const existingScans = scansRequest.result as CaptureScanSummary[];
+      const allScans = [...existingScans, summary];
+      if (allScans.length <= MAX_DIAGNOSTIC_SCANS) {
+        scans.put(summary);
+        return;
+      }
+
+      const responsesRequest = responses.getAll();
+      responsesRequest.onsuccess = () => {
+        const plan = buildCapturePrunePlan(
+          allScans,
+          responsesRequest.result as CapturedResponseRecord[],
+          MAX_DIAGNOSTIC_SCANS,
+          id,
+        );
+        for (const responseId of plan.responseIds) responses.delete(responseId);
+        for (const scanId of plan.scanIds) scans.delete(scanId);
+        scans.put(summary);
+      };
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('Capture storage transaction failed'));
+    tx.onabort = () => reject(tx.error ?? new Error('Capture storage transaction aborted'));
   });
   db.close();
   return summary;
+}
+
+export function buildCapturePrunePlan(
+  scans: CaptureScanSummary[],
+  records: CapturedResponseRecord[],
+  maxScanCount: number,
+  protectedScanId?: string,
+): CapturePrunePlan {
+  const overflow = Math.max(0, scans.length - maxScanCount);
+  if (overflow === 0) return { scanIds: [], responseIds: [] };
+
+  const candidates = [...scans]
+    .filter((scan) => scan.id !== protectedScanId)
+    .sort((a, b) => {
+      const aCompleted = a.stoppedAt !== undefined;
+      const bCompleted = b.stoppedAt !== undefined;
+      if (aCompleted !== bCompleted) return aCompleted ? -1 : 1;
+      return a.startedAt - b.startedAt || a.id.localeCompare(b.id);
+    });
+  const scanIds = candidates.slice(0, overflow).map((scan) => scan.id);
+  const pruned = new Set(scanIds);
+  return {
+    scanIds,
+    responseIds: records
+      .filter((record) => pruned.has(record.scanId))
+      .map((record) => record.id),
+  };
+}
+
+export async function clearCaptureStorage(): Promise<void> {
+  const db = await openCaptureDatabase();
+  await runWrite(db, [RESPONSE_STORE, SCAN_STORE], (tx) => {
+    tx.objectStore(RESPONSE_STORE).clear();
+    tx.objectStore(SCAN_STORE).clear();
+  });
+  db.close();
 }
 
 export async function saveCapturedResponse(record: CapturedResponseRecord): Promise<void> {
