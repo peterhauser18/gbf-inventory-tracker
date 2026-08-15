@@ -1,4 +1,5 @@
 import './dashboard/styles.css';
+import type { AccountFamily } from './account/database.ts';
 import { loadAccountDatabase } from './account/storage.ts';
 import {
   buildDashboardViewModel,
@@ -20,6 +21,7 @@ let section: DashboardSection = 'overview';
 let query = '';
 let detailKey: string | null = null;
 let metadataStatus: 'loading' | 'ready' | 'fallback' = 'loading';
+let observedAt: Partial<Record<AccountFamily, number>> = {};
 const expandedPlannerSteps = new Set<string>();
 
 void load();
@@ -36,6 +38,7 @@ async function load(): Promise<void> {
       return;
     }
     snapshot = account.snapshot;
+    observedAt = account.observedAt;
     model = buildDashboardViewModel(snapshot);
     render();
 
@@ -95,7 +98,7 @@ function render(): void {
           `}
         </header>
 
-        ${section === 'overview' ? renderOverview(model) : renderCardCollection(filtered, cards.length)}
+        ${section === 'overview' ? renderOverview(model, observedAt) : renderCardCollection(filtered, cards.length)}
       </main>
 
       ${detailKey ? renderDetail(model, detailKey) : ''}
@@ -155,7 +158,7 @@ function bindEvents(): void {
   });
 }
 
-function renderOverview(view: DashboardViewModel): string {
+function renderOverview(view: DashboardViewModel, freshness: Partial<Record<AccountFamily, number>>): string {
   return `
     <section class="overview-grid">
       ${view.stats.map((stat) => `
@@ -175,9 +178,11 @@ function renderOverview(view: DashboardViewModel): string {
         <p class="muted">Open an Eternal or Evoker to inspect each verified upgrade stage separately. Material rows use proven local quantities only; unsupported prerequisites stay unknown instead of becoming zero.</p>
       </div>
       <div class="quality-list">
-        ${qualityRow('Characters', view.quality.characters)}
-        ${qualityRow('Treasures', view.quality.treasures)}
-        ${qualityRow('Progression evidence', view.quality.progression)}
+        ${qualityFreshnessRow('Characters', view.quality.characters, freshness.characters)}
+        ${qualityFreshnessRow('Weapons', view.quality.weapons, freshness.weapons)}
+        ${qualityFreshnessRow('Summons', view.quality.summons, freshness.summons)}
+        ${qualityFreshnessRow('Treasures', view.quality.treasures, freshness.treasures)}
+        ${qualityFreshnessRow('Progression evidence', view.quality.progression, freshness.progression)}
       </div>
     </section>
   `;
@@ -379,8 +384,13 @@ function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
   return `<span class="quality ${quality}">${quality}</span>`;
 }
 
-function qualityRow(label: string, quality: 'known' | 'partial' | 'unknown'): string {
-  return `<div class="quality-row"><span>${escapeHtml(label)}</span>${qualityChip(quality)}</div>`;
+function qualityFreshnessRow(
+  label: string,
+  quality: 'known' | 'partial' | 'unknown',
+  lastObserved: number | undefined,
+): string {
+  const freshness = lastObserved === undefined ? 'never observed' : `last observed ${formatDate(lastObserved)}`;
+  return `<div class="quality-row"><span>${escapeHtml(label)} · <small class="muted">${escapeHtml(freshness)}</small></span>${qualityChip(quality)}</div>`;
 }
 
 function isPlannerCard(card: DashboardCard): card is PlannerCard {
