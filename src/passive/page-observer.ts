@@ -10,7 +10,7 @@ export interface PassiveAccountResponse {
 
 export type PassiveResponseEmitter = (response: PassiveAccountResponse) => void;
 
-const VERIFIED_PATHS = [
+const VERIFIED_ACCOUNT_PATHS = [
   /^\/npc\/list\/\d+$/,
   /^\/weapon\/list\/\d+$/,
   /^\/summon\/list\/\d+$/,
@@ -18,21 +18,39 @@ const VERIFIED_PATHS = [
   /^\/weapon\/container_list\/\d+\/[^/]+$/,
 ];
 
-const VERIFIED_EXACT_PATHS = new Set([
+const VERIFIED_ACCOUNT_EXACT_PATHS = new Set([
   '/item/article_list_by_filter_mode',
   '/item/recovery_and_evolution_list_by_filter_mode',
   '/item/gacha_ticket_and_others_list_by_filter_mode',
   '/user/status',
 ]);
 
+const VERIFIED_COMBAT_EXACT_PATHS = new Set([
+  '/rest/multiraid/start.json',
+  '/rest/multiraid/normal_attack_result.json',
+  '/rest/multiraid/ability_result.json',
+  '/rest/multiraid/summon_result.json',
+  '/rest/multiraid/temporary_item_result.json',
+  '/rest/multiraid/multi_member_info',
+]);
+
+const VERIFIED_COMBAT_PATHS = [
+  /^\/resultmulti\/content\/index\/[^/]+\/?$/,
+];
+
 export function isVerifiedPassiveAccountUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' || parsed.hostname !== 'game.granbluefantasy.jp') return false;
-    return VERIFIED_EXACT_PATHS.has(parsed.pathname) || VERIFIED_PATHS.some((pattern) => pattern.test(parsed.pathname));
-  } catch {
-    return false;
-  }
+  const path = verifiedGbfPath(url);
+  return path !== null && isVerifiedAccountPath(path);
+}
+
+export function isVerifiedPassiveCombatUrl(url: string): boolean {
+  const path = verifiedGbfPath(url);
+  return path !== null && isVerifiedCombatPath(path);
+}
+
+export function isVerifiedPassiveResponseUrl(url: string): boolean {
+  const path = verifiedGbfPath(url);
+  return path !== null && (isVerifiedAccountPath(path) || isVerifiedCombatPath(path));
 }
 
 export function wrapFetch(nativeFetch: typeof fetch, emit: PassiveResponseEmitter): typeof fetch {
@@ -55,7 +73,7 @@ export function installPassivePageObserver(host: Window & typeof globalThis, emi
 }
 
 async function observeFetchResponse(response: Response, emit: PassiveResponseEmitter): Promise<void> {
-  if (!isVerifiedPassiveAccountUrl(response.url)) return;
+  if (!isVerifiedPassiveResponseUrl(response.url)) return;
   try {
     const clone = response.clone();
     emit({
@@ -71,7 +89,7 @@ async function observeFetchResponse(response: Response, emit: PassiveResponseEmi
 }
 
 function observeXhrResponse(xhr: XMLHttpRequest, emit: PassiveResponseEmitter): void {
-  if (!isVerifiedPassiveAccountUrl(xhr.responseURL)) return;
+  if (!isVerifiedPassiveResponseUrl(xhr.responseURL)) return;
   try {
     let body: string;
     if (xhr.responseType === '' || xhr.responseType === 'text') body = xhr.responseText;
@@ -88,6 +106,24 @@ function observeXhrResponse(xhr: XMLHttpRequest, emit: PassiveResponseEmitter): 
   } catch {
     // Unsupported response bodies are ignored rather than changing page behavior.
   }
+}
+
+function verifiedGbfPath(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' || parsed.hostname !== 'game.granbluefantasy.jp') return null;
+    return parsed.pathname;
+  } catch {
+    return null;
+  }
+}
+
+function isVerifiedAccountPath(path: string): boolean {
+  return VERIFIED_ACCOUNT_EXACT_PATHS.has(path) || VERIFIED_ACCOUNT_PATHS.some((pattern) => pattern.test(path));
+}
+
+function isVerifiedCombatPath(path: string): boolean {
+  return VERIFIED_COMBAT_EXACT_PATHS.has(path) || VERIFIED_COMBAT_PATHS.some((pattern) => pattern.test(path));
 }
 
 function sanitizeUrl(url: string): string {
