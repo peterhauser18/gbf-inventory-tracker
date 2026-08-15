@@ -7,15 +7,21 @@ import {
   type DashboardSection,
   type DashboardViewModel,
   type PlannerCard,
+  type PlannerStep,
 } from './dashboard/model.ts';
 import { resolveWikiUrl } from './dashboard/resolver.ts';
+import { loadWikiEntityMetadata } from './dashboard/wiki-metadata.ts';
+import type { AccountSnapshot } from './types/account.ts';
 
 const app = requiredApp();
 
+let snapshot: AccountSnapshot | null = null;
 let model: DashboardViewModel | null = null;
 let section: DashboardSection = 'overview';
 let query = '';
 let detailKey: string | null = null;
+let metadataStatus: 'loading' | 'ready' | 'fallback' = 'loading';
+const expandedPlannerSteps = new Set<string>();
 
 void load();
 
@@ -31,8 +37,20 @@ async function load(): Promise<void> {
       return;
     }
     const records = await getCapturedResponsesForScan(scan.id);
-    model = buildDashboardViewModel(normalizeCaptureScan(records));
+    snapshot = normalizeCaptureScan(records);
+    model = buildDashboardViewModel(snapshot);
     render();
+
+    try {
+      const metadata = await loadWikiEntityMetadata();
+      if (!snapshot) return;
+      model = buildDashboardViewModel(snapshot, metadata);
+      metadataStatus = 'ready';
+      render();
+    } catch {
+      metadataStatus = 'fallback';
+      render();
+    }
   } catch (error) {
     app.innerHTML = emptyShell('Dashboard could not load', error instanceof Error ? error.message : String(error));
   }
@@ -59,7 +77,8 @@ function render(): void {
         <div class="sidebar-note">
           <strong>Captured locally</strong>
           <span>${escapeHtml(formatDate(model.capturedAt))}</span>
-          <span>No gameplay actions or GBF image-CDN requests.</span>
+          <span>${escapeHtml(metadataMessage(metadataStatus))}</span>
+          <span>No gameplay actions or GBF/Cygames asset-CDN requests.</span>
         </div>
       </aside>
 
@@ -94,6 +113,7 @@ function bindEvents(): void {
       section = button.dataset.section as DashboardSection;
       query = '';
       detailKey = null;
+      expandedPlannerSteps.clear();
       render();
     });
   });
@@ -109,13 +129,31 @@ function bindEvents(): void {
   app.querySelectorAll<HTMLButtonElement>('[data-detail]').forEach((button) => {
     button.addEventListener('click', () => {
       detailKey = button.dataset.detail ?? null;
+      expandedPlannerSteps.clear();
       render();
     });
   });
 
-  app.querySelector<HTMLButtonElement>('[data-close-detail]')?.addEventListener('click', () => {
-    detailKey = null;
-    render();
+  app.querySelectorAll<HTMLElement>('[data-close-detail]').forEach((element) => {
+    element.addEventListener('click', () => {
+      detailKey = null;
+      expandedPlannerSteps.clear();
+      render();
+    });
+  });
+
+  app.querySelectorAll<HTMLButtonElement>('[data-planner-step]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const key = button.dataset.plannerStep;
+      if (!key) return;
+      if (expandedPlannerSteps.has(key)) expandedPlannerSteps.delete(key);
+      else expandedPlannerSteps.add(key);
+      render();
+    });
+  });
+
+  app.querySelectorAll<HTMLImageElement>('[data-entity-image]').forEach((image) => {
+    image.addEventListener('error', () => image.remove(), { once: true });
   });
 }
 
@@ -136,7 +174,7 @@ function renderOverview(view: DashboardViewModel): string {
       <div>
         <p class="eyebrow">PLANNER</p>
         <h3>Eternals & Evokers</h3>
-        <p class="muted">The planner selects the next supported target from the observed character state. Material rows use proven local quantities only; unsupported prerequisites stay unknown instead of becoming zero.</p>
+        <p class="muted">Open an Eternal or Evoker to inspect each verified upgrade stage separately. Material rows use proven local quantities only; unsupported prerequisites stay unknown instead of becoming zero.</p>
       </div>
       <div class="quality-list">
         ${qualityRow('Characters', view.quality.characters)}
@@ -161,19 +199,19 @@ function renderCardCollection(cards: DashboardCard[], total: number): string {
 
 function renderCard(card: DashboardCard): string {
   const target = isPlannerCard(card)
-    ? `<span class="target ${card.targetReached === true ? 'done' : ''}">${card.targetReached === true ? `${escapeHtml(card.targetDisplay)} reached` : card.targetReached === false ? `${escapeHtml(card.targetDisplay)} target` : `${escapeHtml(card.targetDisplay)} target · state unknown`}</span>`
+    ? `<span class="target ${card.targetReached === true ? 'done' : ''}">${card.targetReached === true ? `${escapeHtml(card.targetDisplay)} reached` : card.targetReached === false ? `${escapeHtml(card.targetDisplay)} next` : `${escapeHtml(card.targetDisplay)} · state unknown`}</span>`
     : '';
   return `
     <article class="entity-card">
       <button class="card-open" type="button" data-detail="${escapeAttribute(card.key)}">
-        <span class="placeholder" aria-hidden="true">${escapeHtml(initials(card.title))}</span>
+        ${renderVisual(card)}
         <span class="card-copy">
           <strong>${escapeHtml(card.title)}</strong>
           <span>${escapeHtml(card.subtitle)}</span>
           <span class="card-meta">${qualityChip(card.quality)} ${target}</span>
         </span>
       </button>
-      <a class="wiki-link" href="${escapeAttribute(card.wikiUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${escapeAttribute(card.title)} on GBF Wiki">Wiki ↗</a>
+      <a class="wiki-link" href="${escapeAttribute(card.wikiUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" aria-label="Open ${escapeAttribute(card.title)} on GBF Wiki">Wiki ↗</a>
     </article>
   `;
 }
@@ -190,7 +228,7 @@ function renderDetail(view: DashboardViewModel, key: string): string {
     <aside class="detail-panel" aria-label="${escapeAttribute(card.title)} detail">
       <div class="detail-head">
         <div class="detail-title">
-          <span class="placeholder large" aria-hidden="true">${escapeHtml(initials(card.title))}</span>
+          ${renderVisual(card, true)}
           <div>
             <p class="eyebrow">${escapeHtml(card.kind.toUpperCase())}</p>
             <h3>${escapeHtml(card.title)}</h3>
@@ -200,7 +238,7 @@ function renderDetail(view: DashboardViewModel, key: string): string {
         <button class="close" type="button" data-close-detail aria-label="Close detail">×</button>
       </div>
       <div class="detail-actions">
-        <a class="external-button" href="${escapeAttribute(card.wikiUrl)}" target="_blank" rel="noopener noreferrer">Open GBF Wiki ↗</a>
+        <a class="external-button" href="${escapeAttribute(card.wikiUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open GBF Wiki ↗</a>
       </div>
       <section class="detail-section">
         <h4>Observed facts</h4>
@@ -217,25 +255,45 @@ function renderDetail(view: DashboardViewModel, key: string): string {
 }
 
 function renderPlannerDetail(card: PlannerCard): string {
-  if (card.targetReached === true) {
-    return `
-      <section class="detail-section planner-section">
-        <div class="section-heading"><h4>${escapeHtml(card.targetLabel)}</h4>${qualityChip('known')}</div>
-        <div class="notice success"><strong>Target already reached</strong><span>${escapeHtml(card.notes[0] ?? 'The selected target is already observed.')}</span></div>
-      </section>
-    `;
-  }
-
   return `
     <section class="detail-section planner-section">
-      <div class="section-heading"><h4>${escapeHtml(card.targetLabel)}</h4>${qualityChip(card.materialPlan.quality)}</div>
-      <p class="muted">Have / Required / Missing uses only quantities explicitly present in the local scan. Rupies and unsupported prerequisites remain unknown.</p>
-      <div class="material-table" role="table" aria-label="Material requirements">
+      <div class="section-heading"><h4>Upgrade stages</h4><span class="step-count">${card.steps.length} modeled</span></div>
+      <p class="muted">Click a stage to show or hide its Have / Required / Missing table. Only verified recipes are modeled; later unsupported stages are not guessed.</p>
+      <div class="planner-steps">
+        ${card.steps.map((step) => renderPlannerStep(card, step)).join('')}
+      </div>
+      ${card.notes.length ? `<div class="notice"><strong>Later stages</strong><span>${escapeHtml(card.notes.join(' '))}</span></div>` : ''}
+    </section>
+  `;
+}
+
+function renderPlannerStep(card: PlannerCard, step: PlannerStep): string {
+  const key = plannerStepKey(card, step);
+  const expanded = expandedPlannerSteps.has(key);
+  const state = step.targetReached === true ? 'reached' : step.targetReached === false ? 'not reached' : 'state unknown';
+  return `
+    <article class="planner-step ${expanded ? 'expanded' : ''}">
+      <button class="planner-step-toggle" type="button" data-planner-step="${escapeAttribute(key)}" aria-expanded="${expanded}">
+        <span class="step-target">${escapeHtml(step.targetDisplay)}</span>
+        <span class="step-copy"><strong>${escapeHtml(step.targetLabel)}</strong><span>${escapeHtml(state)}</span></span>
+        ${qualityChip(step.materialPlan.quality)}
+        <span class="chevron" aria-hidden="true">${expanded ? '−' : '+'}</span>
+      </button>
+      ${expanded ? renderPlannerStepBody(step) : ''}
+    </article>
+  `;
+}
+
+function renderPlannerStepBody(step: PlannerStep): string {
+  return `
+    <div class="planner-step-body">
+      <p class="muted">Have / Required / Missing uses only quantities explicitly present in the local scan. Untracked currencies and unsupported prerequisites stay unknown.</p>
+      <div class="material-table" role="table" aria-label="${escapeAttribute(step.targetLabel)} material requirements">
         <div class="material-row header" role="row"><span>Material</span><span>Have</span><span>Required</span><span>Missing</span></div>
-        ${card.materialPlan.materials.map((material) => {
+        ${step.materialPlan.materials.map((material) => {
           const wikiUrl = resolveWikiUrl({ wikiTitle: material.wikiTitle, displayName: material.name, publicId: material.itemId });
           return `<div class="material-row" role="row">
-            <span><a href="${escapeAttribute(wikiUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(material.name)} ↗</a></span>
+            <span><a href="${escapeAttribute(wikiUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">${escapeHtml(material.name)} ↗</a></span>
             <span>${material.state === 'known' ? escapeHtml(formatNumber(material.owned ?? 0)) : '?'}</span>
             <span>${escapeHtml(formatNumber(material.quantity))}</span>
             <span class="${material.state === 'known' && (material.missing ?? 0) === 0 ? 'enough' : ''}">${material.state === 'known' ? escapeHtml(formatNumber(material.missing ?? 0)) : '?'}</span>
@@ -244,24 +302,38 @@ function renderPlannerDetail(card: PlannerCard): string {
       </div>
       <div class="prerequisites">
         <h4>Prerequisite evidence</h4>
-        ${card.prerequisiteEvidence.map((evidence) => `
+        ${step.prerequisiteEvidence.map((evidence) => `
           <div class="evidence-row">
             <span>${escapeHtml(evidence.label)}</span>
             <strong class="${evidence.state === 'unknown' ? 'unknown' : evidence.satisfied ? 'enough' : 'missing'}">${evidence.state === 'unknown' ? 'unknown' : evidence.satisfied ? 'yes' : 'no'}${evidence.value ? ` · ${escapeHtml(evidence.value)}` : ''}</strong>
           </div>
         `).join('')}
       </div>
-    </section>
+    </div>
   `;
 }
 
 function renderCompactChild(card: DashboardCard): string {
   return `
     <div class="child-row">
-      <button type="button" data-detail="${escapeAttribute(card.key)}"><strong>${escapeHtml(card.title)}</strong><span>${escapeHtml(card.subtitle)}</span></button>
-      <a href="${escapeAttribute(card.wikiUrl)}" target="_blank" rel="noopener noreferrer">Wiki ↗</a>
+      <button type="button" data-detail="${escapeAttribute(card.key)}">
+        ${renderVisual(card, false, true)}
+        <span class="child-copy"><strong>${escapeHtml(card.title)}</strong><span>${escapeHtml(card.subtitle)}</span></span>
+      </button>
+      <a href="${escapeAttribute(card.wikiUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Wiki ↗</a>
     </div>
   `;
+}
+
+function renderVisual(card: DashboardCard, large = false, compact = false): string {
+  const classes = ['entity-visual', card.kind, large ? 'large' : '', compact ? 'compact' : ''].filter(Boolean).join(' ');
+  const placeholder = `<span class="placeholder ${large ? 'large' : ''}" aria-hidden="true">${escapeHtml(initials(card.title))}</span>`;
+  if (!card.imageUrl) return `<span class="${classes}">${placeholder}</span>`;
+  return `<span class="${classes}">${placeholder}<img data-entity-image src="${escapeAttribute(card.imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></span>`;
+}
+
+function plannerStepKey(card: PlannerCard, step: PlannerStep): string {
+  return `${card.key}:${step.goalId}`;
 }
 
 function cardsForSection(view: DashboardViewModel, selected: DashboardSection): DashboardCard[] {
@@ -324,14 +396,22 @@ function sectionLabel(value: DashboardSection): string {
 function sectionDescription(value: DashboardSection): string {
   switch (value) {
     case 'overview': return 'Snapshot coverage and planner readiness at a glance.';
-    case 'eternals': return 'Observed Eternal state with a 5★ target or Stage 1 Transcendence (Lv110) when 5★ is already reached.';
-    case 'evokers': return 'Observed Evoker state with the next currently supported 5★ or Transcendence target and explicit unknown prerequisites.';
-    case 'characters': return 'Character instances observed in the passive scan.';
+    case 'eternals': return 'Observed Eternal state with each verified uncap/transcendence step available as an expandable material plan.';
+    case 'evokers': return 'Observed Evoker state with each currently verified uncap/transcendence step and explicit unknown prerequisites.';
+    case 'characters': return 'Character instances observed in the passive scan, enriched with public GBF Wiki metadata when available.';
     case 'weapons': return 'Primary weapon inventory. Filtered scans remain marked partial.';
     case 'summons': return 'Summon instances observed in the passive scan.';
     case 'treasures': return 'Treasure and material quantities returned by GBF.';
     case 'consumables': return 'Consumables, tickets and other item groups kept separate by technical context.';
     case 'stashes': return 'Observed weapon containers kept separate from the primary weapon inventory.';
+  }
+}
+
+function metadataMessage(status: typeof metadataStatus): string {
+  switch (status) {
+    case 'loading': return 'Resolving public names/images from GBF Wiki…';
+    case 'ready': return 'Public names/images resolved from GBF Wiki.';
+    case 'fallback': return 'GBF Wiki metadata unavailable; technical-ID fallback active.';
   }
 }
 
@@ -365,7 +445,6 @@ function escapeHtml(value: string): string {
 function escapeAttribute(value: string): string {
   return escapeHtml(value);
 }
-
 
 function requiredApp(): HTMLElement {
   const element = document.querySelector<HTMLElement>('#dashboard-app');
