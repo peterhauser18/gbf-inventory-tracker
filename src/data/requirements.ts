@@ -9,13 +9,33 @@ const item = (itemId: string, name: string, quantity: number): MaterialRequireme
   wikiTitle: name,
 });
 
-const rupies = (): MaterialRequirement => ({
-  id: 'currency:rupies',
-  name: 'Rupies',
-  quantity: 100_000,
-  source: 'untracked',
-  wikiTitle: 'Rupie',
+const consumable = (
+  itemId: string,
+  itemKindId: string,
+  group: string,
+  name: string,
+  quantity: number,
+): MaterialRequirement => ({
+  id: `consumable:${group}:${itemKindId}:${itemId}`,
+  itemId,
+  itemKindId,
+  group,
+  name,
+  quantity,
+  source: 'consumables',
+  wikiTitle: name,
 });
+
+const untracked = (id: string, name: string, quantity: number, wikiTitle = name): MaterialRequirement => ({
+  id,
+  name,
+  quantity,
+  source: 'untracked',
+  wikiTitle,
+});
+
+const rupies = (quantity = 100_000): MaterialRequirement =>
+  untracked('currency:rupies', 'Rupies', quantity, 'Rupie');
 
 const eternal = (
   id: string,
@@ -30,6 +50,34 @@ const eternal = (
   requirements: [...requirements, rupies()],
   prerequisiteNotes: [
     'The Eternal-specific weapon/Fate unlock path is not proven by the current passive snapshot.',
+  ],
+});
+
+const eternalTranscendenceStage1 = (
+  id: string,
+  label: string,
+  characterMasterId: string,
+  silverShard: MaterialRequirement,
+  relicName: string,
+  elementDrop: MaterialRequirement,
+  halos: MaterialRequirement[],
+): UpgradeGoal => ({
+  id,
+  label: `${label} Transcendence Stage 1 (Lv110)`,
+  characterMasterId,
+  targetUncap: 6,
+  targetLevel: 110,
+  requirements: [
+    GOLD_BRICK(1),
+    silverShard,
+    untracked(`weapon-relic:${relicName}`, relicName, 30),
+    elementDrop,
+    ...halos,
+    DAMASCUS_CRYSTAL(20),
+    rupies(),
+  ],
+  prerequisiteNotes: [
+    'Fourth skill learned: unknown from the current passive snapshot.',
   ],
 });
 
@@ -48,6 +96,37 @@ const evoker = (
     'All Domain of the Evoker bonuses: unknown from the current snapshot.',
     'Associated New World Foundation weapon at 5★: not mapped as a proven prerequisite yet.',
     'The New World unlock in Zone Mundus: unknown from the current snapshot.',
+  ],
+});
+
+const evokerTranscendenceStage1 = (
+  id: string,
+  label: string,
+  characterMasterId: string,
+  beliefName: string,
+  wheelName: string,
+  fellcore: MaterialRequirement,
+  idean: MaterialRequirement,
+  astra: MaterialRequirement,
+): UpgradeGoal => ({
+  id,
+  label: `${label} Transcendence Stage 1 (Lv110)`,
+  characterMasterId,
+  targetUncap: 6,
+  targetLevel: 110,
+  requirements: [
+    untracked(`belief:${beliefName}`, beliefName, 40),
+    untracked(`wheel:${wheelName}`, wheelName, 8),
+    untracked('treasure:allotropic-agate', 'Allotropic Agate', 1),
+    NEW_WORLD_QUARTZ(20),
+    fellcore,
+    idean,
+    astra,
+    rupies(),
+  ],
+  prerequisiteNotes: [
+    'Fourth skill unlocked: unknown from the current passive snapshot.',
+    'Two Evoking Solomonis expeditions with the Evoker Party: unknown from the current passive snapshot.',
   ],
 });
 
@@ -71,6 +150,29 @@ const WIND_GRIMOIRE = (quantity: number) => item('20741', 'Wind Grimoire', quant
 const FIRE_GRIMOIRE = (quantity: number) => item('20711', 'Fire Grimoire', quantity);
 const RAINBOW_PRISM = (quantity: number) => item('1204', 'Rainbow Prism', quantity);
 
+const GOLD_BRICK = (quantity: number) => consumable('20004', '17', '1', 'Gold Brick', quantity);
+const DAMASCUS_CRYSTAL = (quantity: number) => item('203', 'Damascus Crystal', quantity);
+const SILVER_SPEAR_SHARD = (quantity: number) => item('5431', 'Silver Spear Shard', quantity);
+const SILVER_BOW_SHARD = (quantity: number) => item('5481', 'Silver Bow Shard', quantity);
+const SILVER_AXE_SHARD = (quantity: number) => item('5441', 'Silver Axe Shard', quantity);
+const SILVER_DAGGER_SHARD = (quantity: number) => item('5421', 'Silver Dagger Shard', quantity);
+const SILVER_STAFF_SHARD = (quantity: number) => item('5451', 'Silver Staff Shard', quantity);
+const SILVER_GAUNTLET_SHARD = (quantity: number) => item('5471', 'Silver Gauntlet Shard', quantity);
+const SILVER_SWORD_SHARD = (quantity: number) => item('5411', 'Silver Sword Shard', quantity);
+const SILVER_KATANA_SHARD = (quantity: number) => item('5501', 'Silver Katana Shard', quantity);
+const SILVER_HARP_SHARD = (quantity: number) => item('5491', 'Silver Harp Shard', quantity);
+const SILVER_GUN_SHARD = (quantity: number) => item('5461', 'Silver Gun Shard', quantity);
+const SMOLDERING_RUBBLE = (quantity: number) => item('549', 'Smoldering Rubble', quantity);
+const ABYSSAL_TRAGEDY = (quantity: number) => item('550', 'Abyssal Tragedy', quantity);
+const INSULAR_CORE = (quantity: number) => item('551', 'Insular Core', quantity);
+const GALE_ROCK = (quantity: number) => item('552', 'Gale Rock', quantity);
+const THUNDERBOLT_WHEEL = (quantity: number) => item('553', 'Thunderbolt Wheel', quantity);
+const TODESSTRIEB = (quantity: number) => item('554', 'Todestrieb', quantity);
+const FIRE_HALO = (quantity: number) => item('5211', 'Fire Halo', quantity);
+const WATER_HALO = (quantity: number) => item('5221', 'Water Halo', quantity);
+const EARTH_HALO = (quantity: number) => item('5231', 'Earth Halo', quantity);
+const WIND_HALO = (quantity: number) => item('5241', 'Wind Halo', quantity);
+
 const SEPHIRA_EVOLITE = (quantity: number) => item('25036', 'Sephira Evolite', quantity);
 const GOSPEL_ANALIPSIS = (quantity: number) => item('25086', 'Gospel of Analipsis', quantity);
 const GOSPEL_EGEIRO = (quantity: number) => item('25085', 'Gospel of Egeiro', quantity);
@@ -81,9 +183,15 @@ const TERRA_LUSTER = (quantity: number) => item('25072', 'Terra Luster', quantit
 const IGNIS_LUSTER = (quantity: number) => item('25070', 'Ignis Luster', quantity);
 const VENTUS_LUSTER = (quantity: number) => item('25073', 'Ventus Luster', quantity);
 const SEPHIRA_STONE = (quantity: number) => item('25000', 'Sephira Stone', quantity);
+const NEW_WORLD_QUARTZ = (quantity: number) => item('25074', 'New World Quartz', quantity);
+const NIHUYVINTAE_FELLCORE = (quantity: number) => item('628', 'Nihuyvintae Fellcore', quantity);
+const JUSTICE_IDEAN = (quantity: number) => item('25007', 'Justice Idean', quantity);
+const HANGED_MAN_IDEAN = (quantity: number) => item('25008', 'Hanged Man Idean', quantity);
+const AQUABORNE_ASTRA = (quantity: number) => item('25002', 'Aquaborne Astra', quantity);
+const EARTHBORNE_ASTRA = (quantity: number) => item('25003', 'Earthborne Astra', quantity);
 
-// These goals model the final 5★ character uncap payment. Complex unlock paths remain
-// prerequisite notes until the normalized snapshot can prove their account state.
+// 5★ goals model the final character uncap payment. Complex unlock paths remain explicit
+// prerequisites until the passive snapshot can prove their account state.
 export const upgradeGoals: readonly UpgradeGoal[] = [
   eternal('eternal-anre-5star', 'Anre', '3040030000', [INDICUS(30), WATER_URN(10), MURKY(2), WATER_GRIMOIRE(30), RAINBOW_PRISM(100)]),
   eternal('eternal-tweyen-5star', 'Tweyen', '3040031000', [NIVEUS(30), LIGHT_URN(10), BRIGHT(2), FIRE_GRIMOIRE(15), WIND_GRIMOIRE(15), RAINBOW_PRISM(100)]),
@@ -96,6 +204,17 @@ export const upgradeGoals: readonly UpgradeGoal[] = [
   eternal('eternal-niyon-5star', 'Niyon', '3040038000', [GALBINUS(30), WIND_URN(10), BRIGHT(2), WIND_GRIMOIRE(30), RAINBOW_PRISM(100)]),
   eternal('eternal-tien-5star', 'Tien', '3040039000', [RUBEUS(30), FIRE_URN(10), BRIGHT(2), FIRE_GRIMOIRE(30), RAINBOW_PRISM(100)]),
 
+  eternalTranscendenceStage1('eternal-anre-transcendence-1', 'Anre', '3040030000', SILVER_SPEAR_SHARD(200), 'Sapphire Lance Relic', ABYSSAL_TRAGEDY(50), [WATER_HALO(80)]),
+  eternalTranscendenceStage1('eternal-tweyen-transcendence-1', 'Tweyen', '3040031000', SILVER_BOW_SHARD(200), 'Pearl Bow Relic', THUNDERBOLT_WHEEL(50), [FIRE_HALO(40), WIND_HALO(40)]),
+  eternalTranscendenceStage1('eternal-threo-transcendence-1', 'Threo', '3040032000', SILVER_AXE_SHARD(200), 'Amber Axe Relic', INSULAR_CORE(50), [EARTH_HALO(80)]),
+  eternalTranscendenceStage1('eternal-feower-transcendence-1', 'Feower', '3040033000', SILVER_DAGGER_SHARD(200), 'Sapphire Dagger Relic', ABYSSAL_TRAGEDY(50), [WATER_HALO(80)]),
+  eternalTranscendenceStage1('eternal-fif-transcendence-1', 'Fif', '3040034000', SILVER_STAFF_SHARD(200), 'Pearl Staff Relic', THUNDERBOLT_WHEEL(50), [FIRE_HALO(40), WIND_HALO(40)]),
+  eternalTranscendenceStage1('eternal-seox-transcendence-1', 'Seox', '3040035000', SILVER_GAUNTLET_SHARD(200), 'Onyx Gauntlet Relic', TODESSTRIEB(50), [WATER_HALO(40), EARTH_HALO(40)]),
+  eternalTranscendenceStage1('eternal-seofon-transcendence-1', 'Seofon', '3040036000', SILVER_SWORD_SHARD(200), 'Jade Sword Relic', GALE_ROCK(50), [WIND_HALO(80)]),
+  eternalTranscendenceStage1('eternal-eahta-transcendence-1', 'Eahta', '3040037000', SILVER_KATANA_SHARD(200), 'Amber Katana Relic', INSULAR_CORE(50), [EARTH_HALO(80)]),
+  eternalTranscendenceStage1('eternal-niyon-transcendence-1', 'Niyon', '3040038000', SILVER_HARP_SHARD(200), 'Jade Harp Relic', GALE_ROCK(50), [WIND_HALO(80)]),
+  eternalTranscendenceStage1('eternal-tien-transcendence-1', 'Tien', '3040039000', SILVER_GUN_SHARD(200), 'Ruby Gun Relic', SMOLDERING_RUBBLE(50), [FIRE_HALO(80)]),
+
   evoker('evoker-maria-5star', 'Maria Theresa', '3040160000', [SEPHIRA_EVOLITE(1), GOSPEL_ANALIPSIS(50), AQUA_LUSTER(50), SEPHIRA_STONE(200)]),
   evoker('evoker-fraux-5star', 'Fraux', '3040161000', [SEPHIRA_EVOLITE(1), GOSPEL_EGEIRO(50), IGNIS_LUSTER(50), SEPHIRA_STONE(200)]),
   evoker('evoker-geisenborger-5star', 'Geisenborger', '3040162000', [SEPHIRA_EVOLITE(1), GOSPEL_EGEIRO(25), GOSPEL_GENEA(25), IGNIS_LUSTER(25), VENTUS_LUSTER(25), SEPHIRA_STONE(200)]),
@@ -106,6 +225,9 @@ export const upgradeGoals: readonly UpgradeGoal[] = [
   evoker('evoker-alanaan-5star', 'Alanaan', '3040167000', [SEPHIRA_EVOLITE(1), GOSPEL_EGEIRO(50), IGNIS_LUSTER(50), SEPHIRA_STONE(200)]),
   evoker('evoker-haaselia-5star', 'Haaselia', '3040168000', [SEPHIRA_EVOLITE(1), GOSPEL_ANALIPSIS(50), AQUA_LUSTER(50), SEPHIRA_STONE(200)]),
   evoker('evoker-nier-5star', 'Nier', '3040169000', [SEPHIRA_EVOLITE(1), GOSPEL_ANALIPSIS(25), GOSPEL_THYSIA(25), AQUA_LUSTER(25), TERRA_LUSTER(25), SEPHIRA_STONE(200)]),
+
+  evokerTranscendenceStage1('evoker-maria-transcendence-1', 'Maria Theresa', '3040160000', 'Belief in Justice', 'Wheel of Aqua', NIHUYVINTAE_FELLCORE(60), JUSTICE_IDEAN(120), AQUABORNE_ASTRA(240)),
+  evokerTranscendenceStage1('evoker-caim-transcendence-1', 'Caim', '3040164000', 'Belief in The Hanged Man', 'Wheel of Terra', untracked('fellcore:narophirmidas', 'Narophirmidas Fellcore', 60), HANGED_MAN_IDEAN(120), EARTHBORNE_ASTRA(240)),
 ] as const;
 
 const GOALS_BY_ID = new Map(upgradeGoals.map((goal) => [goal.id, goal]));

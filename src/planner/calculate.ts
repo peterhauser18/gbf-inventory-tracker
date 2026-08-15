@@ -48,9 +48,17 @@ function findInventoryItem(
     case 'treasures':
       return snapshot.treasures.find((item) => item.itemId === requirement.itemId);
     case 'consumables':
-      return snapshot.consumables.find((item) => item.itemId === requirement.itemId);
+      return snapshot.consumables.find((item) =>
+        item.itemId === requirement.itemId &&
+        (requirement.itemKindId === undefined || item.itemKindId === requirement.itemKindId) &&
+        (requirement.group === undefined || item.group === requirement.group),
+      );
     case 'tickets':
-      return snapshot.tickets.find((item) => item.itemId === requirement.itemId);
+      return snapshot.tickets.find((item) =>
+        item.itemId === requirement.itemId &&
+        (requirement.itemKindId === undefined || item.itemKindId === requirement.itemKindId) &&
+        (requirement.group === undefined || item.group === requirement.group),
+      );
     case 'untracked':
       return undefined;
   }

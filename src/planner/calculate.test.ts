@@ -75,3 +75,23 @@ test('reports a fully known goal complete only when every explicit quantity is o
   assert.equal(result.quality, 'known');
   assert.equal(result.complete, true);
 });
+
+test('matches consumable requirements by group and item kind instead of item id alone', () => {
+  const contextual: UpgradeGoal = {
+    id: 'contextual-consumable',
+    label: 'Contextual consumable',
+    characterMasterId: 'fixture-character',
+    targetUncap: 6,
+    requirements: [
+      { id: 'brick', itemId: '1', itemKindId: '17', group: 'uncap', name: 'Fixture Brick', quantity: 2, source: 'consumables' },
+    ],
+  };
+  const base = snapshot([]);
+  base.consumables = [
+    { itemId: '1', itemKindId: '99', group: 'recovery', quantity: 99, updatedAt: 1 },
+    { itemId: '1', itemKindId: '17', group: 'uncap', quantity: 1, updatedAt: 1 },
+  ];
+  const result = calculateGoal(contextual, base);
+  assert.equal(result.materials[0]?.owned, 1);
+  assert.equal(result.materials[0]?.missing, 1);
+});

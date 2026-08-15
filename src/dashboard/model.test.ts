@@ -48,6 +48,7 @@ test('builds all dashboard families and keeps missing special characters unknown
   assert.equal(model.evokers.length, 10);
   const anre = model.eternals.find((card) => card.title === 'Anre');
   const tweyen = model.eternals.find((card) => card.title === 'Tweyen');
+  assert.equal(anre?.targetDisplay, '5★');
   assert.equal(anre?.targetReached, false);
   assert.equal(anre?.materialPlan.materials.find((row) => row.name === 'Indicus Centrum')?.missing, 0);
   assert.equal(anre?.materialPlan.materials.find((row) => row.name === 'Water Urn')?.missing, 5);
@@ -56,13 +57,48 @@ test('builds all dashboard families and keeps missing special characters unknown
   assert.equal(model.stashes[0]?.quality, 'known');
 });
 
-test('marks an observed 5-star target reached and does not pretend higher stages are modeled', () => {
+test('selects Eternal Stage 1 Transcendence as the next target after 5-star', () => {
   const model = buildDashboardViewModel(snapshot({
     characters: [
-      { id: 'fixture-caim', masterId: '3040164000', level: 100, uncap: 5, updatedAt: 1 },
+      { id: 'fixture-seofon', masterId: '3040036000', level: 100, uncap: 5, awakeningLevel: 9, updatedAt: 1 },
+    ],
+    accountStatus: { rank: 394, updatedAt: 1 },
+    treasures: [
+      { itemId: '5411', name: 'Silver Sword Shard', quantity: 75, updatedAt: 1 },
+      { itemId: '552', name: 'Gale Rock', quantity: 60, updatedAt: 1 },
+      { itemId: '5241', name: 'Wind Halo', quantity: 90, updatedAt: 1 },
+      { itemId: '203', name: 'Damascus Crystal', quantity: 25, updatedAt: 1 },
+    ],
+    consumables: [
+      { itemId: '20004', itemKindId: '17', group: '1', name: 'Gold Brick', quantity: 3, updatedAt: 1 },
     ],
   }));
+
+  const seofon = model.eternals.find((card) => card.title === 'Seofon');
+  assert.equal(seofon?.targetDisplay, 'Lv110');
+  assert.equal(seofon?.targetReached, false);
+  assert.match(seofon?.targetLabel ?? '', /Transcendence Stage 1/);
+  assert.equal(seofon?.materialPlan.materials.find((row) => row.name === 'Gold Brick')?.missing, 0);
+  assert.equal(seofon?.materialPlan.materials.find((row) => row.name === 'Silver Sword Shard')?.missing, 125);
+  assert.equal(seofon?.prerequisiteEvidence.find((row) => row.label === 'Player Rank 150')?.satisfied, true);
+  assert.equal(seofon?.prerequisiteEvidence.find((row) => row.label === 'Awakening 7')?.satisfied, true);
+  assert.equal(seofon?.prerequisiteEvidence.find((row) => row.label.startsWith('Fourth skill'))?.state, 'unknown');
+});
+
+test('selects current Evoker Stage 1 target where supported and leaves unavailable higher targets truthful', () => {
+  const model = buildDashboardViewModel(snapshot({
+    characters: [
+      { id: 'fixture-caim', masterId: '3040164000', level: 100, uncap: 5, awakeningLevel: 10, updatedAt: 1 },
+      { id: 'fixture-katzelia', masterId: '3040166000', level: 100, uncap: 5, awakeningLevel: 10, updatedAt: 1 },
+    ],
+    accountStatus: { rank: 394, updatedAt: 1 },
+  }));
   const caim = model.evokers.find((card) => card.title === 'Caim');
-  assert.equal(caim?.targetReached, true);
-  assert.match(caim?.notes[0] ?? '', /Higher-stage requirements are not modeled/);
+  const katzelia = model.evokers.find((card) => card.title === 'Katzelia');
+  assert.equal(caim?.targetDisplay, 'Lv110');
+  assert.equal(caim?.targetReached, false);
+  assert.match(caim?.targetLabel ?? '', /Transcendence Stage 1/);
+  assert.equal(katzelia?.targetDisplay, '5★');
+  assert.equal(katzelia?.targetReached, true);
+  assert.match(katzelia?.notes[0] ?? '', /No currently supported higher target/);
 });
