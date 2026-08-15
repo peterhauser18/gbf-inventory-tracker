@@ -3,7 +3,7 @@
   "name": "GBF Inventory Tracker",
   "version": "0.1.0",
   "description": "Local-first Granblue Fantasy collection tracker and Eternal/Evoker planner.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "activeTab", "debugger"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
