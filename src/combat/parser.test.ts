@@ -100,6 +100,51 @@ test('multi-target hits remain one observed total with target evidence', () => {
   assert.equal(parse.log[0]?.breakdown.echo, 50);
 });
 
+test('a new run of the same raid type does not inherit the completed run', () => {
+  const firstStart = parseCombatObservation(record({
+    raid: { technicalId: 'raid-repeat', started: true },
+    combat: { actions: [{ actor_id: 'c1', type: 'attack', damage: 100 }] },
+  }, 1000));
+  assert.ok(firstStart);
+  let parse = mergeCombatObservation(null, firstStart);
+
+  const firstEnd = parseCombatObservation(record({
+    raid: { technicalId: 'raid-repeat' },
+    result: { status: 'victory', rewardsComplete: true, rewards: [{ item_id: 'old-drop', quantity: 1 }] },
+  }, 2000));
+  assert.ok(firstEnd);
+  parse = mergeCombatObservation(parse, firstEnd);
+  assert.equal(parse.result, 'victory');
+  assert.equal(parse.partyDamage, 100);
+  assert.equal(parse.drops[0]?.itemId, 'old-drop');
+
+  const secondStart = parseCombatObservation(record({
+    raid: { technicalId: 'raid-repeat', started: true },
+    combat: { actions: [{ actor_id: 'c2', type: 'skill', damage: 250 }] },
+  }, 3000));
+  assert.ok(secondStart);
+  parse = mergeCombatObservation(parse, secondStart);
+  assert.equal(parse.result, 'active');
+  assert.equal(parse.resultQuality, 'unknown');
+  assert.equal(parse.partyDamage, 250);
+  assert.equal(parse.log.length, 1);
+  assert.deepEqual(parse.drops, []);
+  assert.equal(parse.dropsQuality, 'unknown');
+  assert.equal(parse.observedStartedAt, 3000);
+});
+
+test('complete empty rewards are preserved as a known zero-drop observation', () => {
+  const reward = parseCombatObservation(record({
+    raid: { technicalId: 'raid-empty' },
+    result: { status: 'victory', rewardsComplete: true, rewards: [] },
+  }, 4000));
+  assert.ok(reward);
+  const parse = mergeCombatObservation(null, reward);
+  assert.equal(parse.result, 'victory');
+  assert.equal(parse.dropsQuality, 'known');
+  assert.deepEqual(parse.drops, []);
+});
+
 test('unsupported and non-combat payloads are ignored instead of inventing state', () => {
   assert.equal(parseCombatObservation(record({ raid: { technicalId: 'x' } }, 1, 'https://game.granbluefantasy.jp/inventory/list')), null);
   assert.equal(parseCombatObservation(record({ status: 'ok' }, 1)), null);
