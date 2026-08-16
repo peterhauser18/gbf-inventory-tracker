@@ -1,15 +1,19 @@
+import './dashboard/theme.css';
 import { ACCOUNT_DATABASE_STORAGE_KEY } from './account/storage.ts';
 import {
   changedAccountEvidence,
   sectionUsesAccountEvidence,
   type AccountEvidenceKey,
 } from './dashboard/live-refresh.ts';
+import { DASHBOARD_THEME_STORAGE_KEY, parseDashboardTheme } from './dashboard/theme.ts';
 
 const RESTORE_SECTION_KEY = 'gbfit:dashboard-restore-section';
 const dirtyEvidence = new Set<AccountEvidenceKey>();
 const enhancementLoads = new Map<string, Promise<void>>();
 const loadedEnhancements = new Set<string>();
 let reloadTimer: number | undefined;
+
+applyStoredTheme();
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
@@ -21,8 +25,14 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   for (const key of changed) dirtyEvidence.add(key);
 
   const section = activeSection();
-  if (section && sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
+  if (!section || !sectionUsesAccountEvidence(section, changed)) return;
+  if (document.visibilityState === 'visible') scheduleReload(section, 500);
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') flushDirtyEvidence();
+});
+window.addEventListener('focus', flushDirtyEvidence);
 
 document.addEventListener('click', (event) => {
   if (dirtyEvidence.size === 0) return;
@@ -172,6 +182,13 @@ function keepObservationCopyAccurate(): void {
   observer.observe(app, { childList: true, subtree: true });
 }
 
+function flushDirtyEvidence(): void {
+  if (dirtyEvidence.size === 0 || document.visibilityState !== 'visible') return;
+  const section = activeSection();
+  if (!section || !sectionUsesAccountEvidence(section, [...dirtyEvidence])) return;
+  scheduleReload(section, 0);
+}
+
 function restoreSectionWhenReady(section: string): void {
   const restore = (): boolean => {
     const button = document.querySelector<HTMLButtonElement>(`.nav-item[data-section="${cssEscape(section)}"]`);
@@ -200,6 +217,17 @@ function scheduleReload(section: string | undefined, delay: number): void {
   if (section) sessionStorage.setItem(RESTORE_SECTION_KEY, section);
   if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => window.location.reload(), delay);
+}
+
+function applyStoredTheme(): void {
+  let theme: 'light' | 'dark' = 'dark';
+  try {
+    theme = parseDashboardTheme(localStorage.getItem(DASHBOARD_THEME_STORAGE_KEY));
+  } catch {
+    // Keep the default dark first paint when localStorage is unavailable.
+  }
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
 }
 
 function cssEscape(value: string): string {
