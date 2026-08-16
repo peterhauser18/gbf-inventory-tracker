@@ -105,12 +105,9 @@ function treasureNameFromRow(row: string): string | undefined {
   for (const match of row.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
     const attributes = match[1] ?? '';
     const href = htmlAttribute(attributes, 'href');
-    if (!href) continue;
-    const title = wikiArticleTitle(href);
-    if (!title) continue;
+    if (!href || !wikiArticleTitle(href)) continue;
     const text = stripHtml(match[2] ?? '');
-    if (!text) continue;
-    return text;
+    if (text) return text;
   }
   for (const match of row.matchAll(/<img\b([^>]*)>/gi)) {
     const alt = htmlAttribute(match[1] ?? '', 'alt');
