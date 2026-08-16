@@ -1,13 +1,19 @@
+import './dashboard/theme.css';
 import { ACCOUNT_DATABASE_STORAGE_KEY } from './account/storage.ts';
 import {
   changedAccountEvidence,
   sectionUsesAccountEvidence,
   type AccountEvidenceKey,
 } from './dashboard/live-refresh.ts';
+import { DASHBOARD_THEME_STORAGE_KEY, parseDashboardTheme } from './dashboard/theme.ts';
 
 const RESTORE_SECTION_KEY = 'gbfit:dashboard-restore-section';
 const dirtyEvidence = new Set<AccountEvidenceKey>();
+const enhancementLoads = new Map<string, Promise<void>>();
+const loadedEnhancements = new Set<string>();
 let reloadTimer: number | undefined;
+
+applyStoredTheme();
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
@@ -19,8 +25,14 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   for (const key of changed) dirtyEvidence.add(key);
 
   const section = activeSection();
-  if (!section || sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
+  if (!section || !sectionUsesAccountEvidence(section, changed)) return;
+  if (document.visibilityState === 'visible') scheduleReload(section, 500);
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') flushDirtyEvidence();
+});
+window.addEventListener('focus', flushDirtyEvidence);
 
 document.addEventListener('click', (event) => {
   if (dirtyEvidence.size === 0) return;
@@ -33,15 +45,122 @@ document.addEventListener('click', (event) => {
   scheduleReload(targetSection, 0);
 }, true);
 
+document.addEventListener('click', handleEnhancementIntent, true);
+
 void bootDashboard();
 
 async function bootDashboard(): Promise<void> {
+  const app = document.querySelector<HTMLElement>('#dashboard-app');
+  if (!app) return;
+
+  const initialRender = waitForInitialDashboardRender(app);
   await import('./dashboard.ts');
+  await initialRender;
+
   keepObservationCopyAccurate();
 
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
   if (!restoreSection) return;
   restoreSectionWhenReady(restoreSection);
+}
+
+function waitForInitialDashboardRender(app: HTMLElement): Promise<void> {
+  const isReady = (): boolean =>
+    app.children.length > 0 && !app.textContent?.includes('Loading local account database…');
+
+  if (isReady()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const observer = new MutationObserver(() => {
+      if (!isReady()) return;
+      observer.disconnect();
+      resolve();
+    });
+    observer.observe(app, { childList: true, subtree: true });
+  });
+}
+
+function handleEnhancementIntent(event: MouseEvent): void {
+  const target = event.target as Element | null;
+  const nav = target?.closest<HTMLButtonElement>('.nav-item[data-section]');
+  const section = nav?.dataset.section;
+
+  if (nav && section === 'goals') {
+    interceptUntilLoaded(event, nav, 'goals-page', async () => {
+      await import('./dashboard/goals-ui.ts');
+      await import('./dashboard/farming-ui.ts');
+    });
+    return;
+  }
+
+  if (nav && (section === 'combat' || section === 'raids')) {
+    interceptUntilLoaded(event, nav, 'combat', () => Promise.all([
+      import('./combat/ui.ts'),
+      import('./combat/combat-compare-ui.ts'),
+    ]).then(() => undefined));
+    return;
+  }
+
+  if (nav && section === 'roster') {
+    interceptUntilLoaded(event, nav, 'roster', async () => {
+      await import('./dashboard/roster-ui.ts');
+    });
+    return;
+  }
+
+  if (nav && section === 'characters') {
+    void ensureEnhancement('collection', async () => {
+      await import('./dashboard/collection-tracker-ui.ts');
+    });
+  }
+
+  if (nav && (section === 'eternals' || section === 'evokers')) {
+    void ensureEnhancement('goals-core', async () => {
+      await import('./dashboard/goals-ui.ts');
+    });
+  }
+
+  if (nav && section === 'settings') {
+    void ensureEnhancement('settings', () => Promise.all([
+      import('./dashboard/theme-toggle.ts'),
+      import('./dashboard/phase5-ui.ts'),
+    ]).then(() => undefined));
+  }
+
+  const themeToggle = target?.closest<HTMLButtonElement>('[data-theme-toggle]');
+  if (themeToggle && !loadedEnhancements.has('settings')) {
+    interceptUntilLoaded(event, themeToggle, 'settings', () => Promise.all([
+      import('./dashboard/theme-toggle.ts'),
+      import('./dashboard/phase5-ui.ts'),
+    ]).then(() => undefined));
+  }
+}
+
+function interceptUntilLoaded(
+  event: MouseEvent,
+  element: HTMLElement,
+  key: string,
+  load: () => Promise<void>,
+): void {
+  if (loadedEnhancements.has(key)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  void ensureEnhancement(key, load).then(() => element.click()).catch(() => {});
+}
+
+function ensureEnhancement(key: string, load: () => Promise<void>): Promise<void> {
+  if (loadedEnhancements.has(key)) return Promise.resolve();
+  const existing = enhancementLoads.get(key);
+  if (existing) return existing;
+
+  const pending = load()
+    .then(() => {
+      loadedEnhancements.add(key);
+    })
+    .finally(() => {
+      enhancementLoads.delete(key);
+    });
+  enhancementLoads.set(key, pending);
+  return pending;
 }
 
 function keepObservationCopyAccurate(): void {
@@ -57,11 +176,21 @@ function keepObservationCopyAccurate(): void {
         element.textContent = 'Open the extension Dashboard from an active GBF tab to start observation, then browse or play normally.';
       }
     }
+    for (const heading of app.querySelectorAll<HTMLElement>('.system-card h3')) {
+      if (heading.textContent === 'Observation control') heading.closest<HTMLElement>('.system-card')?.remove();
+    }
   };
 
   update();
   const observer = new MutationObserver(update);
   observer.observe(app, { childList: true, subtree: true });
+}
+
+function flushDirtyEvidence(): void {
+  if (dirtyEvidence.size === 0 || document.visibilityState !== 'visible') return;
+  const section = activeSection();
+  if (!section || !sectionUsesAccountEvidence(section, [...dirtyEvidence])) return;
+  scheduleReload(section, 0);
 }
 
 function restoreSectionWhenReady(section: string): void {
@@ -92,6 +221,17 @@ function scheduleReload(section: string | undefined, delay: number): void {
   if (section) sessionStorage.setItem(RESTORE_SECTION_KEY, section);
   if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => window.location.reload(), delay);
+}
+
+function applyStoredTheme(): void {
+  let theme: 'light' | 'dark' = 'dark';
+  try {
+    theme = parseDashboardTheme(localStorage.getItem(DASHBOARD_THEME_STORAGE_KEY));
+  } catch {
+    // Keep the default dark first paint when localStorage is unavailable.
+  }
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
 }
 
 function cssEscape(value: string): string {
