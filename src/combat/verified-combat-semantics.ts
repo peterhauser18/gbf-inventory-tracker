@@ -54,31 +54,69 @@ function enrichVerifiedSummonContext(body: Obj, observation: VerifiedCombatObser
   const context = observation.context;
   if (!context) return;
 
-  const startSummons = verifiedSummonRoster(body.summon);
+  const startSummons = verifiedSummonRoster(body.summon, body.supporter);
   if (startSummons.length > 0) context.summons = startSummons;
 
   const status = obj(body.status) ? body.status : undefined;
-  const statusSummons = status && Array.isArray(status.summon) ? status.summon : undefined;
-  if (!statusSummons || !context.summons?.length) return;
+  if (status && context.summons?.length) {
+    const statusSummons = Array.isArray(status.summon) ? status.summon : undefined;
+    if (statusSummons) {
+      context.summons = context.summons.map((summon, index) => {
+        if (index >= 5) return summon;
+        const value = statusSummons[index];
+        if (!obj(value)) return summon;
+        const cooldown = num(value.recast);
+        return cooldown === undefined ? summon : { ...summon, cooldown };
+      });
+    }
 
-  context.summons = context.summons.map((summon, index) => {
-    const value = statusSummons[index];
-    if (!obj(value)) return summon;
-    const cooldown = num(value.recast);
-    return cooldown === undefined ? summon : { ...summon, cooldown };
-  });
+    const supporter = obj(status.supporter) ? status.supporter : undefined;
+    const supporterCooldown = supporter ? num(supporter.recast) : undefined;
+    if (supporterCooldown !== undefined && context.summons[5]) {
+      context.summons[5] = { ...context.summons[5], cooldown: supporterCooldown };
+    }
+  }
+
+  markObservedSummonUse(body.scenario, context.summons);
 }
 
-function verifiedSummonRoster(value: unknown): CombatSummonContext[] {
-  if (!Array.isArray(value)) return [];
-  return value.slice(0, 6).flatMap((entry) => {
-    if (!obj(entry)) return [];
-    const id = str(entry.id);
-    const name = str(entry.name);
-    const cooldown = num(entry.recast);
-    if (!id && !name) return [];
-    return [{ id, name, cooldown, used: false }];
-  });
+function verifiedSummonRoster(value: unknown, supporterValue: unknown): CombatSummonContext[] {
+  const summons = Array.isArray(value)
+    ? value.slice(0, 5).flatMap((entry) => {
+        if (!obj(entry)) return [];
+        const id = str(entry.id);
+        const name = str(entry.name);
+        const cooldown = num(entry.recast);
+        if (!id && !name) return [];
+        return [{ id, name, cooldown, used: false }];
+      })
+    : [];
+
+  if (summons.length === 5 && obj(supporterValue)) {
+    const cooldown = num(supporterValue.recast);
+    if (cooldown !== undefined) summons.push({ cooldown, used: false });
+  }
+  return summons;
+}
+
+function markObservedSummonUse(scenario: unknown, summons: CombatSummonContext[] | undefined): void {
+  if (!Array.isArray(scenario) || !summons?.length) return;
+  for (const raw of scenario) {
+    if (!obj(raw) || str(raw.cmd)?.toLowerCase() !== 'summon') continue;
+    const name = str(raw.name);
+    if (!name) continue;
+    const normalizedName = name.toLowerCase();
+    let index = summons.findIndex((summon) => summon.name?.trim().toLowerCase() === normalizedName);
+    if (
+      index < 0 &&
+      summons.length === 6 &&
+      !summons[5]?.name &&
+      summons.slice(0, 5).every((summon) => Boolean(summon.name))
+    ) {
+      index = 5;
+    }
+    if (index >= 0) summons[index] = { ...summons[index], name: summons[index]?.name ?? name, used: true };
+  }
 }
 
 function verifiedNormalGroups(scenario: unknown[]): ParsedDamageHit[][] {
