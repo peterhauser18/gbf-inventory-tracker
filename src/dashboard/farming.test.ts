@@ -53,6 +53,15 @@ test('Wiki Obtain parsing accepts plain raid links only when the source text exp
   assert.deepEqual(wiki.raids.map((source) => source.name), ['Luminiera Omega']);
 });
 
+test('plain Drop from parsing does not promote incidental links on the same line to raid sources', () => {
+  const wiki = parseWikiObtainRaidSources(`
+== Obtain ==
+* Drop from [[Luminiera Omega]]; see [[Treasure Trade]] for another acquisition method.
+`, 'True Light Anima', 'https://gbf.wiki/True_Light_Anima');
+  assert.equal(wiki.state, 'known');
+  assert.deepEqual(wiki.raids.map((source) => source.name), ['Luminiera Omega']);
+});
+
 test('Wiki source parser recognizes Raids namespace links and does not turn no recognized raid into a negative claim', () => {
   const withRaid = parseWikiObtainRaidSources(`
 == Obtain ==
