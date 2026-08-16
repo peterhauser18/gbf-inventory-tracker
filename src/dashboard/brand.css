@@ -1,0 +1,16 @@
+.sidebar .brand .brand-mark {
+  color: transparent;
+  font-size: 0;
+  border-color: #2b3d49;
+  background: url('/icons/icon128.png') center / cover no-repeat;
+}
+
+.sidebar .brand h1 {
+  font-size: 0;
+}
+
+.sidebar .brand h1::after {
+  content: 'GBF Tracker';
+  font-size: 20px;
+  letter-spacing: -.025em;
+}
