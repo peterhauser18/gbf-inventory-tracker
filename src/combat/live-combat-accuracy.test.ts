@@ -215,7 +215,7 @@ test('live Combat UI renders context-first party, account-name MC, one summon su
   assert.match(layouts, /Cooldown \$\{formatNumber\(summon\.cooldown\)\}/);
   assert.doesNotMatch(layouts, /accordion\(view, 'summons', 'Summons', renderSummonStrip\(view\)\)/);
   assert.match(layouts, /const self = ownParticipant\(view\)/);
-  assert.match(layouts, /≈ \$\{formatNumber\(raid\.participants\.contribution\)\} \(partial\)/);
+  assert.match(layouts, /≈ \$\{formatNumber\(raid\.participants\.contribution\)\} \(estimated\)/);
   assert.match(layouts, /GBF Tracker does not request the Players list/);
 
   assert.match(semantics, /verifiedSummonRoster\(body\.summon, body\.supporter\)/);
