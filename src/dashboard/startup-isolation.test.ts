@@ -75,6 +75,16 @@ test('hidden dashboard defers account reload and flushes relevant dirty evidence
   assert.doesNotMatch(entry, /if \(!section \|\| sectionUsesAccountEvidence/);
 });
 
+test('zero-state dashboard reloads when the first valid account snapshot is persisted', () => {
+  assert.match(entry, /ACCOUNT_DATABASE_VERSION/);
+  assert.match(entry, /let firstAccountSnapshotPending = false/);
+  assert.match(entry, /!hasStoredAccountSnapshot\(change\.oldValue\) && hasStoredAccountSnapshot\(change\.newValue\)/);
+  assert.match(entry, /if \(firstSnapshotAvailable && !activeSection\(\)\)/);
+  assert.match(entry, /if \(firstAccountSnapshotPending && !activeSection\(\)\)/);
+  assert.match(entry, /function scheduleFirstSnapshotReload\(\)/);
+  assert.match(entry, /scheduleReload\(undefined, 0\)/);
+});
+
 test('obsolete Dashboard Developer observation card is removed from the rendered local UI', () => {
   assert.match(entry, /heading\.textContent === 'Observation control'/);
   assert.match(entry, /heading\.closest<HTMLElement>\('\.system-card'\)\?\.remove\(\)/);
