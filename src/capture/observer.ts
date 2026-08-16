@@ -15,9 +15,12 @@ export type CaptureRecordSink = (record: CapturedResponseRecord) => Promise<void
 const RESPONSE_BODY_RETRY_DELAYS_MS = [25, 100] as const;
 
 export class ResponseBodyUnavailableError extends Error {
-  constructor(readonly requestId: string) {
+  readonly requestId: string;
+
+  constructor(requestId: string) {
     super(`Debugger response body unavailable for request ${requestId}`);
     this.name = 'ResponseBodyUnavailableError';
+    this.requestId = requestId;
   }
 }
 
