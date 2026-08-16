@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { CapturedResponseRecord } from '../capture/types.ts';
-import { ingestAccountRecord, isVerifiedAccountResponseUrl } from './ingest.ts';
+import {
+  accountEvidenceForVerifiedResponseUrl,
+  ingestAccountRecord,
+  isVerifiedAccountResponseUrl,
+} from './ingest.ts';
 
 function record(path: string, body: unknown, capturedAt = 100): CapturedResponseRecord {
   return {
@@ -35,6 +39,14 @@ test('malformed payloads on a verified path do not become account facts', () => 
   assert.equal(ingestAccountRecord(null, record('/npc/list/1', { list: 'not-an-array' })), null);
 });
 
+test('verified paths expose only the affected account evidence family', () => {
+  assert.equal(accountEvidenceForVerifiedResponseUrl('https://game.granbluefantasy.jp/user/status'), 'accountStatus');
+  assert.equal(accountEvidenceForVerifiedResponseUrl('https://game.granbluefantasy.jp/item/article_list_by_filter_mode'), 'treasures');
+  assert.equal(accountEvidenceForVerifiedResponseUrl('https://game.granbluefantasy.jp/npc/list/1'), 'characters');
+  assert.equal(accountEvidenceForVerifiedResponseUrl('https://game.granbluefantasy.jp/weapon/container_list/1/2'), 'weaponStashes');
+  assert.equal(accountEvidenceForVerifiedResponseUrl('https://game.granbluefantasy.jp/quest/start'), null);
+});
+
 test('identical complete Treasure observations do not rewrite the cumulative database', () => {
   const path = '/item/article_list_by_filter_mode';
   const first = ingestAccountRecord(null, record(path, [
@@ -58,4 +70,40 @@ test('identical complete Treasure observations do not rewrite the cumulative dat
   assert.notEqual(changed, first);
   assert.equal(changed.snapshot.treasures.find((item) => item.itemId === '1')?.quantity, 4);
   assert.equal(changed.observedAt.treasures, 300);
+});
+
+test('identical account status does not rewrite only because capture time changed', () => {
+  const first = ingestAccountRecord(null, record('/user/status', { status: { level: 395 } }, 100));
+  assert.ok(first);
+
+  const duplicate = ingestAccountRecord(first, record('/user/status', { status: { level: 395 } }, 200));
+  assert.equal(duplicate, first);
+  assert.equal(duplicate.observedAt.accountStatus, 100);
+
+  const changed = ingestAccountRecord(first, record('/user/status', { status: { level: 396 } }, 300));
+  assert.ok(changed);
+  assert.notEqual(changed, first);
+  assert.equal(changed.snapshot.accountStatus?.rank, 396);
+});
+
+test('identical partial roster page does not rewrite while a changed value still does', () => {
+  const path = '/npc/list/1';
+  const body = {
+    list: [{ param: { id: '1', level: 80, evolution: 4 }, master: { id: '3040030000' } }],
+    options: { current_page: 1, last_page: 2, result_count: 1, total_count: 1 },
+  };
+  const first = ingestAccountRecord(null, record(path, body, 100));
+  assert.ok(first);
+
+  const duplicate = ingestAccountRecord(first, record(path, body, 200));
+  assert.equal(duplicate, first);
+
+  const changedBody = {
+    ...body,
+    list: [{ param: { id: '1', level: 81, evolution: 4 }, master: { id: '3040030000' } }],
+  };
+  const changed = ingestAccountRecord(first, record(path, changedBody, 300));
+  assert.ok(changed);
+  assert.notEqual(changed, first);
+  assert.equal(changed.snapshot.characters[0]?.level, 81);
 });
