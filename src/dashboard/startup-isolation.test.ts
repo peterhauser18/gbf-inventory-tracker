@@ -39,10 +39,15 @@ test('stored theme CSS and preference are applied by core boot without loading t
   assert.match(entry, /document\.documentElement\.dataset\.theme = theme/);
 });
 
-test('Goals loads its own owner without starting Farming in the same click path', () => {
-  assert.match(entry, /section === 'goals'/);
-  assert.match(entry, /import\('\.\/dashboard\/goals-ui\.ts'\)/);
-  assert.doesNotMatch(entry, /farming-ui\.ts/);
+test('Goals and Farming load only on the Goals click path and in sequence', () => {
+  const goalsStart = entry.indexOf("if (nav && section === 'goals')");
+  const goalsEnd = entry.indexOf("if (nav && (section === 'combat'", goalsStart);
+  assert.ok(goalsStart >= 0 && goalsEnd > goalsStart);
+  const goalsSource = entry.slice(goalsStart, goalsEnd);
+  const goalsImport = goalsSource.indexOf("import('./dashboard/goals-ui.ts')");
+  const farmingImport = goalsSource.indexOf("import('./dashboard/farming-ui.ts')");
+  assert.ok(goalsImport >= 0);
+  assert.ok(farmingImport > goalsImport);
 });
 
 test('external dashboard destinations load their owner before replaying the click', () => {
