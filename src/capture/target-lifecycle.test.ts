@@ -41,6 +41,19 @@ test('combat lock is keyed by the existing raid instance id and only the same in
   assert.match(background, /isTerminalResult\(result\)/);
 });
 
+test('moving a locked fight tab preserves its raid instance and reattaches the same tab', () => {
+  assert.match(background, /chrome\.tabs\.onAttached\.addListener\(\(tabId\) => \{\s*void recoverMovedCombatTarget\(tabId\);\s*\}\)/s);
+  const start = background.indexOf('async function handleUnexpectedDetach');
+  const end = background.indexOf('function normalizeResourceType', start);
+  assert.ok(start >= 0 && end > start);
+  const detachSource = background.slice(start, end);
+  assert.match(detachSource, /if \(reason === 'canceled_by_user'\) \{\s*await clearCombatParseContext\(\)/s);
+  assert.doesNotMatch(detachSource.replace(/if \(reason === 'canceled_by_user'\)[\s\S]*?return;\s*\}/, ''), /clearCombatParseContext\(\)/);
+  assert.match(detachSource, /delete next\.tabId/);
+  assert.match(detachSource, /state\.combatTabId === tabId && state\.combatInstanceId/);
+  assert.match(detachSource, /queueObservationRetarget\(tabId\)/);
+});
+
 test('cross-window lifecycle adds no broader browser or GBF host permission', () => {
   assert.deepEqual([...(manifest.permissions ?? [])].sort(), ['activeTab', 'debugger', 'storage']);
   assert.deepEqual(manifest.host_permissions ?? [], ['https://gbf.wiki/*']);
