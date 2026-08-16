@@ -11,13 +11,13 @@ const popupStyles = readFileSync(new URL('../styles.css', import.meta.url), 'utf
 
 test('unpacked extension icon slots use local PNG mascot assets', () => {
   for (const size of ['16', '32', '48', '128']) {
-    assert.equal(manifest.icons[size], `icons/icon${size}.png`);
-    assert.equal(manifest.action.default_icon[size], `icons/icon${size}.png`);
+    assert.equal(manifest.icons[size], `icons/gbf-tracker-${size}.png`);
+    assert.equal(manifest.action.default_icon[size], `icons/gbf-tracker-${size}.png`);
   }
 });
 
 test('popup and dashboard brand surfaces use the mascot and GBF Tracker name', () => {
-  assert.match(popupStyles, /icons\/icon128\.png/);
-  assert.match(dashboardBrand, /icons\/icon128\.png/);
+  assert.match(popupStyles, /icons\/gbf-tracker-128\.png/);
+  assert.match(dashboardBrand, /icons\/gbf-tracker-128\.png/);
   assert.match(dashboardBrand, /GBF Tracker/);
 });
