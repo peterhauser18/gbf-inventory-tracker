@@ -1,5 +1,5 @@
+import { readObservedTreasureIconBlob } from '../treasure-icon-cache.ts';
 import { resolveSafeExternalImageUrl } from './resolver.ts';
-import { loadWikiTreasureImage } from './wiki-treasure-images.ts';
 
 export const MAX_WIKI_IMAGE_CONCURRENCY = 5;
 export const WIKI_IMAGE_CACHE_NAME = 'gbfit:wiki-images:v1';
@@ -231,6 +231,7 @@ let scopeKey = '';
 let scopeGeneration = 0;
 let treasureHydration: Promise<void> | null = null;
 let imageAssignmentGuardInstalled = false;
+const treasureObjectUrls = new Set<string>();
 
 export function installWikiImageDomLoader(): void {
   if (domInstalled || typeof document === 'undefined' || typeof window === 'undefined') return;
@@ -245,7 +246,11 @@ export function installWikiImageDomLoader(): void {
   document.addEventListener('toggle', scheduleDomScan, true);
   window.addEventListener('scroll', scheduleDomScan, { passive: true });
   window.addEventListener('resize', scheduleDomScan, { passive: true });
-  window.addEventListener('pagehide', () => domLoader?.dispose(), { once: true });
+  window.addEventListener('pagehide', () => {
+    domLoader?.dispose();
+    for (const url of treasureObjectUrls) URL.revokeObjectURL(url);
+    treasureObjectUrls.clear();
+  }, { once: true });
   scheduleDomScan();
 }
 
@@ -310,41 +315,53 @@ async function hydrateTreasureVisuals(): Promise<void> {
   if (treasureHydration || typeof document === 'undefined') return;
   const visuals = Array.from(document.querySelectorAll<HTMLElement>('.entity-visual.treasure'))
     .filter((visual) => !visual.querySelector('img')
-      && visual.dataset.wikiTreasureImage !== 'attempted'
+      && visual.dataset.observedTreasureImage !== 'attempted'
       && !isHiddenByCollapsedSurface(visual)
       && isNearViewport(visual));
   if (visuals.length === 0) return;
 
   treasureHydration = Promise.all(visuals.map(async (visual) => {
     if (!visual.isConnected || visual.querySelector('img')) return;
-    const title = treasureVisualTitle(visual);
-    visual.dataset.wikiTreasureImage = 'attempted';
-    if (!title) return;
-    const remoteUrl = await loadWikiTreasureImage(title);
-    const deferred = deferWikiImageUrl(remoteUrl);
-    if (!deferred || !visual.isConnected || visual.querySelector('img')) return;
+    visual.dataset.observedTreasureImage = 'attempted';
+    const itemId = treasureVisualItemId(visual);
+    if (!itemId) return;
+    const blob = await readObservedTreasureIconBlob(itemId);
+    if (!blob) return;
+    const objectUrl = URL.createObjectURL(blob);
+    if (!visual.isConnected || visual.querySelector('img')) {
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+    treasureObjectUrls.add(objectUrl);
     const image = document.createElement('img');
     image.dataset.entityImage = 'true';
-    image.src = deferred;
+    image.src = objectUrl;
     image.alt = '';
     image.loading = 'lazy';
     image.decoding = 'async';
-    image.referrerPolicy = 'no-referrer';
     visual.append(image);
   })).then(() => undefined)
     .catch(() => {})
     .finally(() => {
       treasureHydration = null;
-      scheduleDomScan();
     });
   await treasureHydration;
 }
 
-function treasureVisualTitle(visual: HTMLElement): string | undefined {
-  const card = visual.closest<HTMLElement>('.entity-card');
-  const cardTitle = card?.querySelector<HTMLElement>('.card-copy > strong')?.textContent?.trim();
-  if (cardTitle) return cardTitle;
-  return visual.closest<HTMLElement>('.detail-panel')?.querySelector<HTMLElement>('.detail-title h3')?.textContent?.trim() || undefined;
+function treasureVisualItemId(visual: HTMLElement): string | undefined {
+  const detailKey = visual.closest<HTMLElement>('[data-detail]')?.dataset.detail;
+  if (detailKey?.startsWith('treasure:')) {
+    const itemId = detailKey.slice('treasure:'.length);
+    return /^\d+$/.test(itemId) ? itemId : undefined;
+  }
+  const panel = visual.closest<HTMLElement>('.detail-panel');
+  if (!panel) return undefined;
+  for (const row of panel.querySelectorAll<HTMLElement>('.facts > div')) {
+    if (row.querySelector('dt')?.textContent?.trim() !== 'Item ID') continue;
+    const itemId = row.querySelector('dd')?.textContent?.trim().match(/^\d+/)?.[0];
+    if (itemId) return itemId;
+  }
+  return undefined;
 }
 
 function activeDashboardScope(): string {
