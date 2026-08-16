@@ -17,8 +17,9 @@ test('debugger observation preserves response payloads without changing GBF requ
   assert.doesNotMatch(background, /Network\.loadNetworkResource/);
 });
 
-test('body-read failures are surfaced with only the allowlisted URL path', () => {
-  assert.match(background, /safeObservedPath\(url\)/);
-  assert.match(background, /Allowlisted response skipped \(\$\{path\}\)/);
-  assert.doesNotMatch(background, /error instanceof Error \? error\.message/);
+test('body-read failures surface only a sanitized allowlisted path and bounded reason', () => {
+  assert.match(background, /const path = safeObservedPath\(url\)/);
+  assert.match(background, /Allowlisted response skipped \(\$\{path\}\): \$\{reason\}/);
+  assert.match(background, /Edge did not expose the completed response body after three debugger reads\./);
+  assert.match(background, /Local processing of the observed response failed\./);
 });
