@@ -9,6 +9,7 @@ import {
   parseGoalPins,
   resolvePinnedGoals,
   type GoalMaterialDeficit,
+  type PinnedGoalSummary,
 } from './goals.ts';
 import {
   buildFarmingFocus,
@@ -17,14 +18,19 @@ import {
   type FarmingFocusEntry,
   type WikiMaterialRaidSources,
 } from './farming.ts';
+import { loadWikiMaterialThumbnails } from './wiki-assets.ts';
 import { loadWikiMaterialRaidSources } from './wiki-sources.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 const wikiSources = new Map<string, WikiMaterialRaidSources>();
 const wikiQueued = new Set<string>();
 const wikiQueue: string[] = [];
+const goalThumbnailUrls = new Map<string, string | undefined>();
+const hydratedGoalSources = new WeakSet<HTMLDetailsElement>();
+const iconHydrationInFlight = new WeakMap<HTMLDetailsElement, Promise<void>>();
 const MAX_WIKI_CONCURRENCY = 4;
 let wikiActive = 0;
+let goalThumbnailPrefetch: Promise<void> | null = null;
 let plannerCards: PlannerCard[] = [];
 let raids: RaidHistoryRecord[] = [];
 let preferences: RaidDropPreferences[] = [];
@@ -33,29 +39,51 @@ let syncQueued = false;
 let refreshQueued = false;
 
 if (app) {
-  app.addEventListener('click', handleClick, true);
-  const observer = new MutationObserver(scheduleSync);
-  observer.observe(app, { childList: true, subtree: true });
+  document.addEventListener('click', handleClick, true);
+  document.addEventListener('toggle', handleToggle, true);
+  queueMicrotask(() => void prefetchGoalMaterialThumbnails());
   void refreshLocalData();
 }
 
 async function refreshLocalData(): Promise<void> {
   if (refreshQueued) return;
   refreshQueued = true;
+  localState = 'loading';
+  scheduleSync();
   try {
-    const [account, raidHistory, dropPreferences] = await Promise.all([
-      loadAccountDatabase(),
-      getRaidHistory(),
-      getAllDropPreferences(),
-    ]);
-    if (account) {
-      const view = buildDashboardViewModel(account.snapshot);
-      plannerCards = [...view.eternals, ...view.evokers];
-    } else {
+    const pins = readPins();
+    if (pins.length === 0) {
       plannerCards = [];
+      raids = [];
+      preferences = [];
+      localState = 'ready';
+      return;
     }
-    raids = raidHistory;
-    preferences = dropPreferences;
+
+    const account = await loadAccountDatabase();
+    if (!account) {
+      plannerCards = [];
+      raids = [];
+      preferences = [];
+      localState = 'ready';
+      return;
+    }
+
+    const view = buildDashboardViewModel(account.snapshot);
+    plannerCards = [...view.eternals, ...view.evokers];
+    const activeGoals = resolvePinnedGoals(plannerCards, pins).goals.filter((goal) => goal.targetReached !== true);
+    const deficits = aggregatePinnedMaterialDeficits(activeGoals)
+      .filter((material) => material.state === 'known' && (material.missing ?? 0) > 0);
+
+    if (deficits.length === 0) {
+      raids = [];
+      preferences = [];
+      localState = 'ready';
+      return;
+    }
+
+    raids = await getRaidHistory();
+    preferences = await getAllDropPreferences();
     localState = 'ready';
   } catch {
     plannerCards = [];
@@ -88,8 +116,132 @@ function handleClick(event: MouseEvent): void {
     return;
   }
 
+  if (target?.closest<HTMLButtonElement>('[data-goal-pin]')) {
+    queueMicrotask(() => {
+      void prefetchGoalMaterialThumbnails();
+      void refreshLocalData();
+    });
+    return;
+  }
+
   const nav = target?.closest<HTMLButtonElement>('.nav-item[data-section="overview"], .nav-item[data-section="goals"]');
-  if (nav) queueMicrotask(() => void refreshLocalData());
+  if (nav) {
+    queueMicrotask(() => {
+      void prefetchGoalMaterialThumbnails();
+      void refreshLocalData();
+    });
+  }
+}
+
+function handleToggle(event: Event): void {
+  const details = event.target instanceof HTMLDetailsElement ? event.target : null;
+  if (!details?.matches('[data-goal-requirements]') || !details.open) return;
+  void hydrateGoalRequirements(details);
+}
+
+async function prefetchGoalMaterialThumbnails(): Promise<void> {
+  if (!app?.querySelector('[data-goals-view]') || localState !== 'ready') return;
+  if (goalThumbnailPrefetch) return goalThumbnailPrefetch;
+
+  const titles = [...new Set(Array.from(app.querySelectorAll<HTMLImageElement>('[data-goal-material-icon]'))
+    .map((image) => image.dataset.wikiTitle?.trim())
+    .filter((title): title is string => Boolean(title)))]
+    .filter((title) => !goalThumbnailUrls.has(normalizeWikiTitle(title)));
+  if (titles.length === 0) return;
+
+  const itemIdsByTitle = resolvedGoalItemIdsByTitle();
+  goalThumbnailPrefetch = loadWikiMaterialThumbnails(titles, { itemIdsByTitle })
+    .then((thumbnails) => {
+      for (const title of titles) {
+        const key = normalizeWikiTitle(title);
+        if (thumbnails.has(key)) goalThumbnailUrls.set(key, thumbnails.get(key));
+      }
+    })
+    .finally(() => {
+      goalThumbnailPrefetch = null;
+    });
+  await goalThumbnailPrefetch;
+}
+
+async function hydrateGoalRequirements(details: HTMLDetailsElement): Promise<void> {
+  if (!details.isConnected || !details.open || localState !== 'ready') return;
+  await hydrateGoalRequirementIcons(details);
+  if (!details.isConnected || !details.open || hydratedGoalSources.has(details)) return;
+
+  const goal = goalForDetails(details);
+  if (!goal) return;
+  hydratedGoalSources.add(details);
+  const missing = goal.materials.filter((material) => material.state === 'known' && (material.missing ?? 0) > 0);
+  queueMissingWikiSources(missing);
+  scheduleSync();
+}
+
+async function hydrateGoalRequirementIcons(details: HTMLDetailsElement): Promise<void> {
+  if (!details.isConnected || !details.open || localState !== 'ready') return;
+  applyPrefetchedGoalIcons(details);
+
+  const existing = iconHydrationInFlight.get(details);
+  if (existing) return existing;
+
+  const images = Array.from(details.querySelectorAll<HTMLImageElement>('[data-goal-material-icon]'))
+    .filter((image) => !image.getAttribute('src') && image.dataset.wikiTitle?.trim());
+  if (images.length === 0) return;
+  const titles = [...new Set(images.map((image) => image.dataset.wikiTitle!.trim()))];
+  const itemIdsByTitle = resolvedGoalItemIdsByTitle();
+
+  const hydration = loadWikiMaterialThumbnails(titles, { itemIdsByTitle }).then((thumbnails) => {
+    for (const title of titles) {
+      const key = normalizeWikiTitle(title);
+      if (thumbnails.has(key)) goalThumbnailUrls.set(key, thumbnails.get(key));
+    }
+    if (details.isConnected) applyPrefetchedGoalIcons(details);
+  }).finally(() => {
+    iconHydrationInFlight.delete(details);
+  });
+  iconHydrationInFlight.set(details, hydration);
+  await hydration;
+}
+
+function applyPrefetchedGoalIcons(details: HTMLDetailsElement): void {
+  details.querySelectorAll<HTMLImageElement>('[data-goal-material-icon]').forEach((image) => {
+    if (image.getAttribute('src')) return;
+    const title = image.dataset.wikiTitle?.trim();
+    if (!title) return;
+    const key = normalizeWikiTitle(title);
+    if (!goalThumbnailUrls.has(key)) return;
+    const url = goalThumbnailUrls.get(key);
+    if (url) image.src = url;
+  });
+}
+
+function resolvedGoalItemIdsByTitle(): Map<string, string> {
+  const result = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  const goals = resolvePinnedGoals(plannerCards, readPins()).goals;
+  for (const goal of goals) {
+    for (const material of goal.materials) {
+      const title = material.wikiTitle?.trim();
+      const itemId = material.itemId?.trim();
+      if (!title || !itemId) continue;
+      const key = normalizeWikiTitle(title);
+      const current = result.get(key);
+      if (current && current !== itemId) {
+        result.delete(key);
+        ambiguous.add(key);
+      } else if (!ambiguous.has(key)) {
+        result.set(key, itemId);
+      }
+    }
+  }
+  return result;
+}
+
+function goalForDetails(details: HTMLDetailsElement): PinnedGoalSummary | undefined {
+  const card = details.closest<HTMLElement>('[data-goal-key]');
+  const goalKey = card?.dataset.goalKey;
+  if (!goalKey) return undefined;
+  const active = resolvePinnedGoals(plannerCards, readPins()).goals.filter((goal) => goal.targetReached !== true);
+  return active.find((goal) => goal.key === goalKey);
 }
 
 async function trackInRaids(raidTechnicalId: string, itemId: string): Promise<void> {
@@ -116,17 +268,33 @@ function syncUi(): void {
   if (!app) return;
   const goalsView = app.querySelector<HTMLElement>('[data-goals-view]');
   const overviewActive = Boolean(app.querySelector('.nav-item.active[data-section="overview"]'));
-  if (!goalsView && !overviewActive) {
+
+  if (goalsView) {
+    app.querySelectorAll('[data-farming-focus]').forEach((node) => node.remove());
+    void prefetchGoalMaterialThumbnails();
+    app.querySelectorAll<HTMLDetailsElement>('[data-goal-requirements][open]').forEach((details) => {
+      void hydrateGoalRequirementIcons(details);
+    });
+    if (localState !== 'ready') return;
+    const activeGoals = resolvePinnedGoals(plannerCards, readPins()).goals.filter((goal) => goal.targetReached !== true);
+    app.querySelectorAll<HTMLDetailsElement>('[data-goal-requirements][open]').forEach((details) => {
+      void hydrateGoalRequirements(details);
+    });
+    syncGoalInlineFarming(activeGoals);
+    return;
+  }
+
+  if (!overviewActive) {
     app.querySelectorAll('[data-farming-focus]').forEach((node) => node.remove());
     return;
   }
 
   if (localState === 'loading') {
-    renderFocusSurface(goalsView ? 'goals' : 'overview', '<div class="farming-empty"><strong>Loading farming focus</strong><span>Reading local goals and raid history…</span></div>');
+    renderFocusSurface('<div class="farming-empty"><strong>Loading farming focus</strong><span>Reading local goals and raid history…</span></div>');
     return;
   }
   if (localState === 'error') {
-    renderFocusSurface(goalsView ? 'goals' : 'overview', '<div class="farming-empty"><strong>Farming focus unavailable</strong><span>Local planner or raid history could not be read.</span></div>');
+    renderFocusSurface('<div class="farming-empty"><strong>Farming focus unavailable</strong><span>Local planner or raid history could not be read.</span></div>');
     return;
   }
 
@@ -136,7 +304,36 @@ function syncUi(): void {
     .filter((material) => material.state === 'known' && (material.missing ?? 0) > 0);
   queueMissingWikiSources(deficits);
   const focus = buildFarmingFocus(deficits, wikiSources, raids, preferences);
-  renderFocusSurface(goalsView ? 'goals' : 'overview', renderFarmingFocus(focus, goalsView ? 12 : 5));
+  renderFocusSurface(renderFarmingFocus(focus, 5));
+}
+
+function syncGoalInlineFarming(goals: readonly PinnedGoalSummary[]): void {
+  if (!app) return;
+  for (const goal of goals) {
+    const card = Array.from(app.querySelectorAll<HTMLElement>('[data-goal-key]'))
+      .find((candidate) => candidate.dataset.goalKey === goal.key);
+    if (!card) continue;
+    for (const material of goal.materials) {
+      if (material.state !== 'known' || (material.missing ?? 0) <= 0) continue;
+      const row = Array.from(card.querySelectorAll<HTMLElement>('[data-goal-material-key]'))
+        .find((candidate) => candidate.dataset.goalMaterialKey === material.key);
+      const target = row?.querySelector<HTMLElement>('[data-goal-material-farming]');
+      if (!target) continue;
+      const entry = buildFarmingFocus([material], wikiSources, raids, preferences)[0];
+      const body = entry ? renderGoalMaterialFarming(entry) : '';
+      if (target.innerHTML !== body) target.innerHTML = body;
+    }
+  }
+}
+
+function renderGoalMaterialFarming(entry: FarmingFocusEntry): string {
+  const title = entry.material.wikiTitle?.trim();
+  const wiki = entry.wiki;
+  if (!title || !wiki || wiki.state === 'unavailable') return '';
+  return `<div class="goal-inline-farming">
+    <div class="goal-inline-farming-head"><strong>Wiki farming sources</strong><a href="${escapeAttribute(wiki.sourceUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Material page ↗</a></div>
+    <div class="farming-source-list">${entry.sources.map((source) => renderFarmingSource(source, entry.material)).join('')}</div>
+  </div>`;
 }
 
 function readPins() {
@@ -175,24 +372,18 @@ function pumpWikiQueue(): void {
   }
 }
 
-function renderFocusSurface(mode: 'overview' | 'goals', body: string): void {
+function renderFocusSurface(body: string): void {
   if (!app) return;
-  let container = app.querySelector<HTMLElement>(`[data-farming-focus="${mode}"]`);
+  let container = app.querySelector<HTMLElement>('[data-farming-focus="overview"]');
   if (!container) {
     container = document.createElement('section');
-    container.dataset.farmingFocus = mode;
-    container.className = `farming-focus farming-focus-${mode}`;
-    if (mode === 'goals') {
-      const header = app.querySelector<HTMLElement>('[data-goals-view]');
-      if (!header) return;
-      header.insertAdjacentElement('afterend', container);
-    } else {
-      const goalsOverview = app.querySelector<HTMLElement>('[data-goal-overview]');
-      const header = app.querySelector<HTMLElement>('.content .content-header');
-      if (goalsOverview) goalsOverview.insertAdjacentElement('afterend', container);
-      else if (header) header.insertAdjacentElement('afterend', container);
-      else return;
-    }
+    container.dataset.farmingFocus = 'overview';
+    container.className = 'farming-focus farming-focus-overview';
+    const goalsOverview = app.querySelector<HTMLElement>('[data-goal-overview]');
+    const header = app.querySelector<HTMLElement>('.content .content-header');
+    if (goalsOverview) goalsOverview.insertAdjacentElement('afterend', container);
+    else if (header) header.insertAdjacentElement('afterend', container);
+    else return;
   }
   app.querySelectorAll<HTMLElement>('[data-farming-focus]').forEach((node) => {
     if (node !== container) node.remove();

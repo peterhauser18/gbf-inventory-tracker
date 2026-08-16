@@ -19,6 +19,14 @@ export interface CombatActorContext {
   alive?: boolean;
 }
 
+export interface CombatSummonContext {
+  id?: string;
+  name?: string;
+  cooldown?: number;
+  available?: boolean;
+  used?: boolean;
+}
+
 export interface CombatParticipantDisplay {
   name: string;
   placement?: number;
@@ -34,6 +42,10 @@ export interface CombatParseContext {
   instanceId?: string;
   actorSlots: CombatActorContext[];
   actors?: CombatActorContext[];
+  mainCharacterId?: string;
+  accountDisplayName?: string;
+  turn?: number;
+  summons?: CombatSummonContext[];
   participants?: CombatParticipantDisplay[];
 }
 
@@ -126,25 +138,38 @@ function parseVerifiedStart(
     previous?.raidTechnicalId === raidTechnicalId &&
     (!instanceId || !previous.instanceId || instanceId === previous.instanceId);
   const actorSlots = parsedActors.length > 0
-    ? parsedActors
+    ? sameRaid && previous?.actorSlots.length
+      ? refreshActiveActorSlots(previous.actorSlots, parsedActors)
+      : parsedActors
     : sameRaid
       ? previous?.actorSlots ?? []
       : [];
+  const turn = num(body.turn);
+  const mainCharacterId = sameRaid
+    ? previous?.mainCharacterId ?? parsedActors[0]?.id
+    : actorSlots[0]?.id;
+  const accountDisplayName = sameRaid
+    ? previous?.accountDisplayName ?? parsedActors[0]?.name
+    : actorSlots[0]?.name;
   const context: CombatParseContext = {
     raidTechnicalId,
     instanceId,
     actorSlots,
-    actors: mergeActorHistory(sameRaid ? previous?.actors : undefined, actorSlots),
-    participants: sameRaid ? previous?.participants : undefined,
+    actors: mergeActorHistory(sameRaid ? previous?.actors : undefined, parsedActors.length > 0 ? parsedActors : actorSlots),
+    mainCharacterId,
+    accountDisplayName,
+    turn: turn ?? (sameRaid ? previous?.turn : undefined),
+    summons: sameRaid ? previous?.summons?.map((summon) => ({ ...summon })) : undefined,
+    participants: sameRaid ? previous?.participants?.map((participant) => ({ ...participant })) : undefined,
   };
   const bossState = verifiedStartBoss(body);
-  const turn = num(body.turn);
   const host = bool(body.is_host);
   return {
     raidTechnicalId,
     raidName: str(body.quest_name) ?? bossState?.name,
     role: host === undefined ? undefined : host ? 'host' : 'joined',
     observedAt,
+    observedTurn: turn,
     startObserved: turn === 1,
     boss: bossState,
     actions: [],
@@ -157,6 +182,18 @@ function parseVerifiedStart(
   };
 }
 
+function refreshActiveActorSlots(
+  activeSlots: readonly CombatActorContext[],
+  snapshot: readonly CombatActorContext[],
+): CombatActorContext[] {
+  const byId = new Map(snapshot.flatMap((actor) => actor.id ? [[actor.id, actor] as const] : []));
+  return activeSlots.map((actor) => {
+    if (!actor.id) return { ...actor };
+    const observed = byId.get(actor.id);
+    return observed ? { ...actor, ...observed } : { ...actor };
+  });
+}
+
 function parseVerifiedScenario(
   body: Obj,
   family: Exclude<VerifiedFamily, 'start' | 'members' | 'result'>,
@@ -167,6 +204,9 @@ function parseVerifiedScenario(
   const parsed = family === 'temporary-item'
     ? { actions: [] as ParsedCombatAction[], gaps: 0, context: verifiedScenarioContext(scenario, context) }
     : verifiedScenarioActions(scenario, observedAt, context);
+  const actionTurns = parsed.actions.flatMap((action) => action.turn === undefined ? [] : [action.turn]);
+  const observedTurn = actionTurns.length ? Math.max(...actionTurns) : parsed.context.turn;
+  if (family === 'normal-attack' && observedTurn !== undefined) parsed.context.turn = observedTurn + 1;
   const bossState = verifiedScenarioBoss(scenario);
   const contributionDelta = verifiedScenarioContribution(scenario);
   const resultState = verifiedScenarioResult(scenario);
@@ -179,6 +219,7 @@ function parseVerifiedScenario(
   return {
     raidTechnicalId: context.raidTechnicalId,
     observedAt,
+    observedTurn,
     startObserved: false,
     result: resultState,
     boss: bossState,
@@ -205,6 +246,7 @@ function parseVerifiedMembers(
   return {
     raidTechnicalId: context.raidTechnicalId,
     observedAt,
+    observedTurn: context.turn,
     startObserved: false,
     participants: { count: members?.length ?? display.length, quality: 'known' },
     actions: [],
@@ -233,6 +275,7 @@ function parseVerifiedResult(
   return {
     raidTechnicalId: context.raidTechnicalId,
     observedAt,
+    observedTurn: context.turn,
     startObserved: false,
     actions: [],
     actionsFieldPresent: false,
@@ -270,6 +313,9 @@ function verifiedScenarioActions(
     applyScenarioPartyState(nextContext, raw);
     const cmd = str(raw.cmd)?.toLowerCase();
     if (!cmd) continue;
+    const directTurn = num(raw.turn, raw.turn_number);
+    if (directTurn !== undefined) nextContext.turn = directTurn;
+    const turn = nextContext.turn;
 
     if (cmd === 'attack') {
       flushAbility();
@@ -295,6 +341,7 @@ function verifiedScenarioActions(
         flushNormal();
         pendingNormal = {
           observedAt,
+          turn,
           actorId: actor?.id,
           actorName: actor?.name,
           kind: 'normal',
@@ -314,6 +361,7 @@ function verifiedScenarioActions(
       if (!actor) continue;
       pendingAbility = {
         observedAt,
+        turn,
         actorId: actor.id,
         actorName: actor.name,
         kind: 'skill',
@@ -334,7 +382,7 @@ function verifiedScenarioActions(
         continue;
       }
       if (pendingAbility) pendingAbility.hits.push(...actionHits);
-      else actions.push({ observedAt, kind: 'other', hits: actionHits });
+      else actions.push({ observedAt, turn, kind: 'other', hits: actionHits });
       continue;
     }
 
@@ -349,6 +397,7 @@ function verifiedScenarioActions(
       const actor = actorAt(nextContext, num(raw.pos));
       actions.push({
         observedAt,
+        turn,
         actorId: actor?.id,
         actorName: actor?.name,
         kind: 'ougi',
@@ -360,9 +409,10 @@ function verifiedScenarioActions(
 
     if (cmd === 'summon') {
       flushAbility();
+      applySummonUse(nextContext, raw);
       const actionHits = verifiedDamageHits(raw.list, 'other');
       if (actionHits.length) {
-        actions.push({ observedAt, kind: 'summon', name: str(raw.name), hits: actionHits });
+        actions.push({ observedAt, turn, kind: 'summon', name: str(raw.name), hits: actionHits });
       }
     }
   }
@@ -455,6 +505,10 @@ function cloneContext(context: CombatParseContext): CombatParseContext {
     instanceId: context.instanceId,
     actorSlots: context.actorSlots.map((actor) => ({ ...actor })),
     actors: (context.actors ?? context.actorSlots).map((actor) => ({ ...actor })),
+    mainCharacterId: context.mainCharacterId,
+    accountDisplayName: context.accountDisplayName,
+    turn: context.turn,
+    summons: context.summons?.map((summon) => ({ ...summon })),
     participants: context.participants?.map((participant) => ({ ...participant })),
   };
 }
@@ -484,7 +538,7 @@ function verifiedParticipantDisplay(body: Obj): CombatParticipantDisplay[] {
   const memberByName = uniqueByDisplayName(members);
   const source = members.length > 0 ? members : ranking;
 
-  return source.slice(0, 30).flatMap((value, index) => {
+  return source.slice(0, 30).flatMap((value) => {
     const name = str(value.nickname, value.name);
     if (!name) return [];
     const member = members.length > 0 ? value : memberByName.get(name) ?? undefined;
@@ -515,6 +569,22 @@ function uniqueByDisplayName(values: Obj[]): Map<string, Obj | null> {
     result.set(name, result.has(name) ? null : value);
   }
   return result;
+}
+
+function applySummonUse(context: CombatParseContext, raw: Obj): void {
+  const name = str(raw.name);
+  if (!name) return;
+  const normalizedName = name.toLowerCase();
+  const summons = context.summons ?? [];
+  const index = summons.findIndex((summon) => summon.name?.trim().toLowerCase() === normalizedName);
+  const next: CombatSummonContext = {
+    ...(index >= 0 ? summons[index] : {}),
+    name,
+    used: true,
+  };
+  if (index >= 0) summons[index] = next;
+  else summons.push(next);
+  context.summons = summons.slice(0, 6);
 }
 
 function verifiedDamageHits(value: unknown, kind: DamageKind): ParsedDamageHit[] {
