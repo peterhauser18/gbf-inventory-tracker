@@ -1,0 +1,155 @@
+import { classifyVerifiedNormalDamage, criticalDecision } from './damage-semantics.ts';
+import type { CombatObservation, NormalizedRaidParse, ParsedCombatAction, ParsedDamageHit } from './types.ts';
+
+type Obj = Record<string, unknown>;
+
+export function enrichVerifiedScenarioSemantics(body: unknown, observation: CombatObservation): void {
+  if (!obj(body) || !Array.isArray(body.scenario)) return;
+  const rawGroups = verifiedNormalGroups(body.scenario);
+  const normalActions = observation.actions.filter((action) => action.kind === 'normal');
+  const count = Math.min(rawGroups.length, normalActions.length);
+
+  for (let index = 0; index < count; index += 1) {
+    const rawHits = rawGroups[index];
+    const action = normalActions[index];
+    if (!rawHits || !action || !sameDamageSequence(rawHits, action.hits)) continue;
+    action.hits = classifyVerifiedNormalDamage(rawHits);
+    action.critical = criticalDecision(rawHits);
+  }
+}
+
+export function preserveVerifiedNormalFacts(
+  parse: NormalizedRaidParse,
+  actions: readonly ParsedCombatAction[],
+): void {
+  const firstNewLogIndex = Math.max(0, parse.log.length - actions.length);
+  for (let index = 0; index < actions.length; index += 1) {
+    const action = actions[index];
+    if (action?.kind !== 'normal') continue;
+    const entry = parse.log[firstNewLogIndex + index];
+    if (!entry || entry.actionKind !== 'normal') continue;
+    entry.critical = action.critical;
+    if (action.hits.some(hasVerifiedHitStructure)) {
+      entry.damageInstances = action.hits.map((hit) => ({
+        amount: hit.amount,
+        kind: hit.kind,
+        critical: hit.critical,
+        attackCount: hit.attackCount,
+        concurrentAttackCount: hit.concurrentAttackCount,
+        isRandomAttack: hit.isRandomAttack,
+      }));
+    }
+  }
+
+  const normalEntries = parse.log.filter((entry) => entry.actionKind === 'normal');
+  parse.stats.criticalHits = normalEntries.length > 0 && normalEntries.every((entry) => entry.critical !== undefined)
+    ? normalEntries.filter((entry) => entry.critical).length
+    : undefined;
+}
+
+function verifiedNormalGroups(scenario: unknown[]): ParsedDamageHit[][] {
+  const groups: ParsedDamageHit[][] = [];
+  let pending: ParsedDamageHit[] | undefined;
+  let pendingPos: number | undefined;
+
+  const flush = () => {
+    if (pending?.length) groups.push(pending);
+    pending = undefined;
+    pendingPos = undefined;
+  };
+
+  for (const value of scenario) {
+    if (!obj(value)) continue;
+    const cmd = str(value.cmd)?.toLowerCase();
+    if (cmd !== 'attack' || str(value.from)?.toLowerCase() !== 'player') {
+      flush();
+      continue;
+    }
+    const pos = num(value.pos);
+    const hits = semanticDamageHits(value.damage);
+    if (!hits.length) {
+      flush();
+      continue;
+    }
+    if (pending && pendingPos === pos) pending.push(...hits);
+    else {
+      flush();
+      pending = hits;
+      pendingPos = pos;
+    }
+  }
+  flush();
+  return groups;
+}
+
+function semanticDamageHits(value: unknown): ParsedDamageHit[] {
+  const out: ParsedDamageHit[] = [];
+  collectSemanticDamage(value, out);
+  return out;
+}
+
+function collectSemanticDamage(value: unknown, out: ParsedDamageHit[]): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectSemanticDamage(item, out);
+    return;
+  }
+  if (!obj(value)) return;
+  const amount = num(value.value);
+  if (amount !== undefined) {
+    out.push({
+      amount,
+      kind: 'normal',
+      critical: bool(value.critical),
+      attackCount: num(value.attack_count),
+      concurrentAttackCount: num(value.concurrent_attack_count),
+      isRandomAttack: bool(value.is_random_attack),
+    });
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'damage' || key === 'list' || /^\d+$/.test(key)) collectSemanticDamage(child, out);
+  }
+}
+
+function sameDamageSequence(raw: readonly ParsedDamageHit[], parsed: readonly ParsedDamageHit[]): boolean {
+  return raw.length === parsed.length && raw.every((hit, index) => hit.amount === parsed[index]?.amount);
+}
+
+function hasVerifiedHitStructure(hit: ParsedDamageHit): boolean {
+  return hit.critical !== undefined
+    || hit.attackCount !== undefined
+    || hit.concurrentAttackCount !== undefined
+    || hit.isRandomAttack !== undefined;
+}
+
+function obj(value: unknown): value is Obj {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function str(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
+}
+
+function num(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function bool(...values: unknown[]): boolean | undefined {
+  for (const value of values) {
+    if (typeof value === 'boolean') return value;
+    if (value === 1 || value === '1' || value === 'true') return true;
+    if (value === 0 || value === '0' || value === 'false') return false;
+  }
+  return undefined;
+}
