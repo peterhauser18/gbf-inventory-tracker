@@ -1,4 +1,10 @@
 import type { AccountSnapshot, CharacterInstance, DataQuality, Element } from '../types/account.ts';
+import {
+  loadWikiCargoRows,
+  loadWikiCharacterSkillRows,
+  type WikiCargoFetchLike,
+  type WikiCargoRow,
+} from './wiki-cargo.ts';
 
 export const ROSTER_CAPABILITIES = [
   'dispel',
@@ -70,22 +76,12 @@ export interface RosterFilter {
   capability?: RosterCapabilityKey | 'all';
 }
 
-type FetchLike = (
-  input: string | URL,
-  init?: RequestInit,
-) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
-
-type JsonObject = Record<string, unknown>;
-
-const WIKI_API = 'https://gbf.wiki/api.php';
-const PAGE_SIZE = 500;
-
-export async function loadWikiRosterCatalog(fetcher: FetchLike = fetch): Promise<WikiRosterCatalog> {
+export async function loadWikiRosterCatalog(fetcher: WikiCargoFetchLike = fetch): Promise<WikiRosterCatalog> {
   const [charactersResult, skillsResult, passivesResult, ougiResult] = await Promise.allSettled([
-    loadCargoRows('characters', 'id,_pageName=page,element,type,race,weapon', fetcher),
-    loadCargoRows('character_skills', 'character_id,_pageName=page,description', fetcher),
-    loadCargoRows('character_passives', '_pageName=page,description', fetcher),
-    loadCargoRows('character_ougi', '_pageName=page,description', fetcher),
+    loadWikiCargoRows('characters', 'id,_pageName=page,element,type,race,weapon', fetcher),
+    loadWikiCharacterSkillRows(fetcher),
+    loadWikiCargoRows('character_passives', '_pageName=page,description', fetcher),
+    loadWikiCargoRows('character_ougi', '_pageName=page,description', fetcher),
   ]);
 
   const characters = charactersResult.status === 'fulfilled'
@@ -200,7 +196,7 @@ function rowMetadataQuality(meta: WikiRosterCharacterMeta | undefined, catalog: 
   return combineQuality([base, catalog.capabilityQuality]);
 }
 
-function characterMetadata(rows: readonly JsonObject[]): Map<string, WikiRosterCharacterMeta> {
+function characterMetadata(rows: readonly WikiCargoRow[]): Map<string, WikiRosterCharacterMeta> {
   const result = new Map<string, WikiRosterCharacterMeta>();
   for (const row of rows) {
     const masterId = text(row.id);
@@ -220,7 +216,7 @@ function characterMetadata(rows: readonly JsonObject[]): Map<string, WikiRosterC
 }
 
 function collectCapabilityRows(
-  rows: readonly JsonObject[],
+  rows: readonly WikiCargoRow[],
   byId: Map<string, Set<RosterCapabilityKey>>,
   byTitle: Map<string, Set<RosterCapabilityKey>>,
   useId: boolean,
@@ -247,35 +243,6 @@ function mergeCapabilities(
   const current = target.get(key) ?? new Set<RosterCapabilityKey>();
   for (const capability of capabilities) current.add(capability);
   target.set(key, current);
-}
-
-async function loadCargoRows(table: string, fields: string, fetcher: FetchLike): Promise<JsonObject[]> {
-  const rows: JsonObject[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const url = new URL(WIKI_API);
-    url.searchParams.set('action', 'cargoquery');
-    url.searchParams.set('format', 'json');
-    url.searchParams.set('origin', '*');
-    url.searchParams.set('tables', table);
-    url.searchParams.set('fields', fields);
-    url.searchParams.set('limit', String(PAGE_SIZE));
-    url.searchParams.set('offset', String(offset));
-    const response = await fetcher(url, { credentials: 'omit', referrerPolicy: 'no-referrer' });
-    if (!response.ok) throw new Error(`GBF Wiki roster request failed (${table}: ${response.status})`);
-    const pageRows = cargoRows(await response.json());
-    if (!pageRows) throw new Error(`GBF Wiki roster response was not a Cargo row set (${table})`);
-    rows.push(...pageRows);
-    if (pageRows.length < PAGE_SIZE) break;
-  }
-  return rows;
-}
-
-function cargoRows(body: unknown): JsonObject[] | undefined {
-  if (!isObject(body) || !Array.isArray(body.cargoquery)) return undefined;
-  return body.cargoquery.flatMap((value) => {
-    if (!isObject(value)) return [];
-    return [isObject(value.title) ? value.title : value];
-  });
 }
 
 function resultQuality(result: PromiseSettledResult<unknown>): DataQuality {
@@ -316,8 +283,4 @@ function text(value: unknown): string | undefined {
   if (typeof value === 'string' && value.trim()) return value.trim();
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return undefined;
-}
-
-function isObject(value: unknown): value is JsonObject {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
