@@ -36,8 +36,10 @@ test('Farming resolves proven deficits before reading combat IndexedDB state', (
   assert.doesNotMatch(refresh, /Promise\.all\s*\(/);
 });
 
-test('pin changes refresh Farming local data without broad polling', () => {
+test('Farming syncs only from explicit local events instead of observing every Dashboard mutation', () => {
+  assert.doesNotMatch(farming, /new MutationObserver\s*\(/);
   assert.match(farming, /closest<HTMLButtonElement>\('\[data-goal-pin\]'\)/);
-  assert.match(farming, /queueMicrotask\(\(\) => void refreshLocalData\(\)\)/);
+  assert.match(farming, /\.nav-item\[data-section=\\"overview\\"\], \.nav-item\[data-section=\\"goals\\"\]/);
+  assert.match(farming, /\.finally\(\(\) => \{[\s\S]*scheduleSync\(\)/);
   assert.doesNotMatch(farming, /setInterval\s*\(/);
 });
