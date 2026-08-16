@@ -7,7 +7,10 @@ const TREASURE_ICON_HOST = /^prd-game-[a-z0-9]+-granbluefantasy\.akamaized\.net$
 const TREASURE_ICON_PATH = /^\/assets_en\/img\/sp\/assets\/item\/article\/s\/(\d+)\.jpg$/;
 
 type CacheLike = Pick<Cache, 'match' | 'put'>;
-type CacheStorageLike = Pick<CacheStorage, 'open' | 'delete'>;
+interface CacheStorageLike {
+  open(name: string): Promise<CacheLike>;
+  delete(name: string): Promise<boolean>;
+}
 
 export interface ObservedTreasureIconResponse {
   itemId: string;
@@ -44,8 +47,9 @@ export async function storeObservedTreasureIconBody(
   try {
     const bytes = decodeBase64(body.body);
     if (bytes.byteLength === 0) return false;
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     const cache = await cacheStorage.open(OBSERVED_TREASURE_ICON_CACHE_NAME);
-    await cache.put(treasureIconCacheKey(itemId), new Response(bytes, {
+    await cache.put(treasureIconCacheKey(itemId), new Response(buffer, {
       headers: { 'Content-Type': 'image/jpeg' },
     }));
     return true;
