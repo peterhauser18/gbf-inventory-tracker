@@ -53,7 +53,8 @@ test('verified start snapshot persists quest id as raid type and keeps a mid-rai
   assert.equal(observation.startObserved, false);
   assert.equal(observation.role, 'host');
   assert.equal(observation.context?.instanceId, 'instance-a');
-  assert.deepEqual(observation.context?.actorSlots, context().actorSlots);
+  assert.equal(observation.context?.actorSlots[0]?.id, 'mc-tech');
+  assert.equal(observation.context?.actorSlots[1]?.id, 'char-tech');
 
   const parse = mergeVerifiedMultiraidObservation(null, observation);
   assert.equal(parse.observedStartedAt, undefined);
@@ -61,6 +62,24 @@ test('verified start snapshot persists quest id as raid type and keeps a mid-rai
   assert.equal(parse.boss?.id, 'boss-77');
   assert.equal(parse.boss?.hpPercent, 50);
   assert.equal('instanceId' in parse, false);
+});
+
+test('verified start snapshot keeps six party slots with direct HP evidence', () => {
+  const observation = parseVerifiedMultiraidObservation(record({
+    raid_id: 'instance-a', quest_id: 777001, turn: 1,
+    player: { param: [
+      { pid: 'a', name: 'A', hp: 100, hpmax: 200, alive: 1 },
+      { pid: 'b', name: 'B', hp: 150, hpmax: 150, alive: true },
+      { pid: 'c', name: 'C', hp: 90, hpmax: 100, alive: 1 },
+      { pid: 'd', name: 'D', hp: 80, hpmax: 100, alive: 1 },
+      { pid: 'e', name: 'E', hp: 120, hpmax: 120, alive: 1 },
+      { pid: 'f', name: 'F', hp: 110, hpmax: 130, alive: 1 },
+    ] },
+  }, 11, START));
+  assert.ok(observation?.context);
+  assert.equal(observation.context.actorSlots.length, 6);
+  assert.deepEqual(observation.context.actorSlots[0], { id: 'a', name: 'A', hp: 100, maxHp: 200, alive: true });
+  assert.equal(observation.context.actors?.find((actor) => actor.id === 'f')?.maxHp, 130);
 });
 
 test('verified attack scenario groups player hits, attributes skill damage, excludes boss attacks and accumulates contribution as partial', () => {
@@ -96,6 +115,60 @@ test('verified attack scenario groups player hits, attributes skill damage, excl
   assert.equal(parse.participants?.quality, 'partial');
   assert.equal(parse.boss?.hp, 400);
   assert.equal(parse.boss?.hpPercent, 40);
+});
+
+test('verified player damage and heal update live HP without inventing a swap from zero HP', () => {
+  const ctx: CombatParseContext = {
+    raidTechnicalId: '777001', instanceId: 'instance-a',
+    actorSlots: [
+      { id: 'front-a', name: 'Front A', hp: 100, maxHp: 100, alive: true },
+      { id: 'front-b', name: 'Front B', hp: 100, maxHp: 100, alive: true },
+      {}, {}, { id: 'back-a', name: 'Back A', hp: 100, maxHp: 100, alive: true },
+    ],
+    actors: [],
+  };
+  const observation = parseVerifiedMultiraidObservation(record({ scenario: [
+    { cmd: 'damage', to: 'player', list: [{ pos: 0, value: 25, hp: 75 }, { pos: 1, value: 100, hp: 0 }] },
+    { cmd: 'heal', to: 'player', list: [{ pos: 0, value: 10, hp: 85 }] },
+    { cmd: 'special', target: 'boss', pos: 1, name: 'Still Front B', list: [{ damage: [{ value: 400 }] }] },
+  ] }, 21, ATTACK), ctx);
+  assert.ok(observation?.context);
+  assert.equal(observation.context.actorSlots[0]?.hp, 85);
+  assert.equal(observation.context.actorSlots[1]?.id, 'front-b');
+  assert.equal(observation.context.actorSlots[1]?.hp, 0);
+  assert.equal(observation.actions.find((action) => action.kind === 'ougi')?.actorId, 'front-b');
+});
+
+test('explicit player death promotes known backline and later Ougis stay attributed per actor', () => {
+  const ctx: CombatParseContext = {
+    raidTechnicalId: '777001', instanceId: 'instance-a',
+    actorSlots: [
+      { id: 'front-a', name: 'Front A', hp: 100, maxHp: 100, alive: true },
+      { id: 'front-b', name: 'Front B', hp: 100, maxHp: 100, alive: true },
+      { id: 'front-c', name: 'Front C', hp: 100, maxHp: 100, alive: true },
+      { id: 'front-d', name: 'Front D', hp: 100, maxHp: 100, alive: true },
+      { id: 'back-a', name: 'Back A', hp: 120, maxHp: 120, alive: true },
+      { id: 'back-b', name: 'Back B', hp: 130, maxHp: 130, alive: true },
+    ],
+    actors: [],
+  };
+  const observation = parseVerifiedMultiraidObservation(record({ scenario: [
+    { cmd: 'special', target: 'boss', pos: 0, name: 'CA A', list: [{ damage: [{ value: 1000 }] }] },
+    { cmd: 'special', target: 'boss', pos: 1, name: 'CA B', list: [{ damage: [{ value: 2000 }] }] },
+    { cmd: 'die', to: 'player', pos: 1 },
+    { cmd: 'special', target: 'boss', pos: 1, name: 'CA Back', list: [{ damage: [{ value: 3000 }] }] },
+  ] }, 22, ATTACK), ctx);
+  assert.ok(observation?.context);
+  assert.equal(observation.context.actorSlots[1]?.id, 'back-a');
+  assert.equal(observation.context.actorSlots[4]?.id, 'back-b');
+  assert.equal(observation.context.actors?.find((actor) => actor.id === 'front-b')?.alive, false);
+  assert.equal(observation.context.actors?.find((actor) => actor.id === 'front-b')?.hp, 0);
+
+  const parse = mergeVerifiedMultiraidObservation(null, observation);
+  assert.equal(parse.stats.ougisUsed, 3);
+  assert.equal(parse.characterDamage.find((row) => row.actorId === 'front-a')?.breakdown.ougi, 1000);
+  assert.equal(parse.characterDamage.find((row) => row.actorId === 'front-b')?.breakdown.ougi, 2000);
+  assert.equal(parse.characterDamage.find((row) => row.actorId === 'back-a')?.breakdown.ougi, 3000);
 });
 
 test('verified special and ability scenarios parse ougi/skill damage without inventing echo and prove terminal victory', () => {
@@ -194,18 +267,26 @@ test('verified result rewards keep technical item ids and raw buckets, including
   }, 72, 'https://game.granbluefantasy.jp/resultmulti/content/index/other-instance'), ctx), null);
 });
 
-test('verified member snapshot retains only count and a new same-type raid instance resets prior combat state', () => {
+test('verified member snapshot keeps only safe session display fields and a new same-type raid instance resets prior combat state', () => {
   const ctx = context();
   const members = parseVerifiedMultiraidObservation(record({
     multi_member_info: [
-      { user_id: '<redacted>', viewer_id: '<redacted>', name: 'Not persisted' },
-      { user_id: '<redacted>', viewer_id: '<redacted>', name: 'Not persisted either' },
+      { user_id: 'private-a', viewer_id: 'private-view-a', nickname: 'Player One', level: 350, is_host: true, hp_ratio: 88, is_dead: false, retired_flag: false },
+      { user_id: 'private-b', viewer_id: 'private-view-b', nickname: 'Player Two', level: 325, is_host: false, hp_ratio: 0, is_dead: true, retired_flag: false },
     ],
-    mvp_info: [{ rank: 1, point: 999, name: 'Also not persisted' }],
+    mvp_info: [
+      { user_id: 'private-a', viewer_id: 'private-view-a', nickname: 'Player One', rank: 1, level: 350, point: 999 },
+      { user_id: 'private-b', viewer_id: 'private-view-b', nickname: 'Player Two', rank: 2, level: 325, point: 555 },
+    ],
   }, 80, MEMBERS), ctx);
   assert.ok(members);
   assert.deepEqual(members.participants, { count: 2, quality: 'known' });
-  assert.equal(JSON.stringify(members).includes('Not persisted'), false);
+  assert.deepEqual(members.context?.participants, [
+    { name: 'Player One', placement: 1, level: 350, honors: 999, host: true, hpPercent: 88, status: 'active' },
+    { name: 'Player Two', placement: 2, level: 325, honors: 555, host: false, hpPercent: 0, status: 'dead' },
+  ]);
+  assert.equal(JSON.stringify(members.context?.participants).includes('private-a'), false);
+  assert.equal(JSON.stringify(members.context?.participants).includes('viewer_id'), false);
 
   const oldAction = parseVerifiedMultiraidObservation(record({ scenario: [
     { cmd: 'attack', from: 'player', pos: 0, damage: [[{ value: 10 }]] },
@@ -222,6 +303,7 @@ test('verified member snapshot retains only count and a new same-type raid insta
   assert.ok(next);
   assert.equal(next.forceNewRaid, true);
   assert.equal(next.context?.instanceId, 'instance-b');
+  assert.equal(next.context?.participants, undefined);
   const reset = mergeVerifiedMultiraidObservation(old, next);
   assert.equal(reset.partyDamage, undefined);
   assert.deepEqual(reset.log, []);
