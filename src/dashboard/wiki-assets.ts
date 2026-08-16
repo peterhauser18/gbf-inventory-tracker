@@ -159,7 +159,7 @@ async function fetchThumbnailBatch(
   const response = await fetchImpl(buildWikiThumbnailApiUrl(titles), publicWikiRequestInit());
   if (!response.ok) throw new Error(`GBF Wiki thumbnail request failed: ${response.status}`);
   const payload = await response.json() as unknown;
-  const thumbnails = parseThumbnailResponse(payload, titles);
+  const thumbnails = parseThumbnailResponse(payload, requests);
   const fallbackRequests = requests.filter((request) => !thumbnails.get(request.key));
   if (fallbackRequests.length === 0) return thumbnails;
 
@@ -204,7 +204,7 @@ function publicWikiRequestInit(): RequestInit {
 
 function parseThumbnailResponse(
   payload: unknown,
-  requestedTitles: readonly string[],
+  requests: readonly ThumbnailRequest[],
 ): Map<string, string | undefined> {
   const result = new Map<string, string | undefined>();
   const query = queryObject(payload);
@@ -217,15 +217,15 @@ function parseThumbnailResponse(
     pages.set(normalizeWikiTitle(page.title), page);
   }
 
-  for (const rawTitle of requestedTitles) {
-    const requestedKey = normalizeWikiTitle(rawTitle);
-    const canonicalKey = resolveCanonicalKey(requestedKey, aliases);
+  for (const request of requests) {
+    const canonicalKey = resolveCanonicalKey(request.key, aliases);
     const page = pages.get(canonicalKey);
     if (!page) continue;
-    const thumbnail = isObject(page.thumbnail) && typeof page.thumbnail.source === 'string'
+    const redirectedSharedPage = Boolean(request.itemId) && canonicalKey !== request.key;
+    const thumbnail = !redirectedSharedPage && isObject(page.thumbnail) && typeof page.thumbnail.source === 'string'
       ? resolveSafeExternalImageUrl(page.thumbnail.source) ?? undefined
       : undefined;
-    result.set(requestedKey, thumbnail);
+    result.set(request.key, thumbnail);
   }
   return result;
 }
