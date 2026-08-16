@@ -21,12 +21,14 @@ test('popup keeps Dashboard as the normal action and developer controls collapse
   assert.match(popup, /openDashboardTab/);
 });
 
-test('Dashboard always opens while observation targets the exact active browser tab id', () => {
+test('Dashboard open does not wait for observation completion and observation targets the exact selected tab id', () => {
   assert.match(popup, /findActiveTabId/);
   assert.match(popup, /chrome\.tabs\.query\(\{ active: true, lastFocusedWindow: true \}\)/);
-  assert.match(popup, /if \(tabId !== undefined\)/);
+  assert.match(popup, /const observationPromise = tabId !== undefined/);
   assert.match(popup, /sendMessage\(\{ type: 'gbfit:start-observation', tabId \}\)/);
   assert.match(popup, /await openDashboardTab\(\)/);
+  assert.match(popup, /await observationPromise/);
+  assert.ok(popup.indexOf('await openDashboardTab()') < popup.indexOf('await observationPromise'));
   assert.match(popup, /Dashboard opened without observation/);
   assert.doesNotMatch(popup, /isGbfPageUrl/);
 });
