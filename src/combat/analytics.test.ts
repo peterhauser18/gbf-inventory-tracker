@@ -57,6 +57,18 @@ test('builds shared per-character SA/DA/TA, crit, skill and ougi analytics', () 
   assert.equal(analysis.breakdown.supplemental, 30);
 });
 
+test('keeps critical rate unknown when normal attacks contain no crit evidence', () => {
+  const withoutCritEvidence = raid();
+  withoutCritEvidence.log = withoutCritEvidence.log.map((entry) => {
+    const { criticalHits: _criticalHits, ...rest } = entry;
+    return rest;
+  });
+  const analysis = buildCharacterAnalysis(withoutCritEvidence, '3040001000');
+  assert.equal(analysis.criticalHits, undefined);
+  assert.equal(analysis.criticalDenominator, undefined);
+  assert.equal(analysis.criticalRate, undefined);
+});
+
 test('turn summary uses only directly present turn evidence', () => {
   assert.deepEqual(summarizeTurns(raid()), {
     currentTurn: 5,
