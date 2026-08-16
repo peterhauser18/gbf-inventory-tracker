@@ -140,7 +140,7 @@ function handleToggle(event: Event): void {
 }
 
 async function prefetchGoalMaterialThumbnails(): Promise<void> {
-  if (!app?.querySelector('[data-goals-view]')) return;
+  if (!app?.querySelector('[data-goals-view]') || localState !== 'ready') return;
   if (goalThumbnailPrefetch) return goalThumbnailPrefetch;
 
   const titles = [...new Set(Array.from(app.querySelectorAll<HTMLImageElement>('[data-goal-material-icon]'))
@@ -149,7 +149,8 @@ async function prefetchGoalMaterialThumbnails(): Promise<void> {
     .filter((title) => !goalThumbnailUrls.has(normalizeWikiTitle(title)));
   if (titles.length === 0) return;
 
-  goalThumbnailPrefetch = loadWikiMaterialThumbnails(titles)
+  const itemIdsByTitle = resolvedGoalItemIdsByTitle();
+  goalThumbnailPrefetch = loadWikiMaterialThumbnails(titles, { itemIdsByTitle })
     .then((thumbnails) => {
       for (const title of titles) {
         const key = normalizeWikiTitle(title);
@@ -163,7 +164,7 @@ async function prefetchGoalMaterialThumbnails(): Promise<void> {
 }
 
 async function hydrateGoalRequirements(details: HTMLDetailsElement): Promise<void> {
-  if (!details.isConnected || !details.open) return;
+  if (!details.isConnected || !details.open || localState !== 'ready') return;
   await hydrateGoalRequirementIcons(details);
   if (!details.isConnected || !details.open || hydratedGoalSources.has(details)) return;
 
@@ -176,7 +177,7 @@ async function hydrateGoalRequirements(details: HTMLDetailsElement): Promise<voi
 }
 
 async function hydrateGoalRequirementIcons(details: HTMLDetailsElement): Promise<void> {
-  if (!details.isConnected || !details.open) return;
+  if (!details.isConnected || !details.open || localState !== 'ready') return;
   applyPrefetchedGoalIcons(details);
 
   const existing = iconHydrationInFlight.get(details);
@@ -186,8 +187,9 @@ async function hydrateGoalRequirementIcons(details: HTMLDetailsElement): Promise
     .filter((image) => !image.getAttribute('src') && image.dataset.wikiTitle?.trim());
   if (images.length === 0) return;
   const titles = [...new Set(images.map((image) => image.dataset.wikiTitle!.trim()))];
+  const itemIdsByTitle = resolvedGoalItemIdsByTitle();
 
-  const hydration = loadWikiMaterialThumbnails(titles).then((thumbnails) => {
+  const hydration = loadWikiMaterialThumbnails(titles, { itemIdsByTitle }).then((thumbnails) => {
     for (const title of titles) {
       const key = normalizeWikiTitle(title);
       if (thumbnails.has(key)) goalThumbnailUrls.set(key, thumbnails.get(key));
@@ -210,6 +212,28 @@ function applyPrefetchedGoalIcons(details: HTMLDetailsElement): void {
     const url = goalThumbnailUrls.get(key);
     if (url) image.src = url;
   });
+}
+
+function resolvedGoalItemIdsByTitle(): Map<string, string> {
+  const result = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  const goals = resolvePinnedGoals(plannerCards, readPins()).goals;
+  for (const goal of goals) {
+    for (const material of goal.materials) {
+      const title = material.wikiTitle?.trim();
+      const itemId = material.itemId?.trim();
+      if (!title || !itemId) continue;
+      const key = normalizeWikiTitle(title);
+      const current = result.get(key);
+      if (current && current !== itemId) {
+        result.delete(key);
+        ambiguous.add(key);
+      } else if (!ambiguous.has(key)) {
+        result.set(key, itemId);
+      }
+    }
+  }
+  return result;
 }
 
 function goalForDetails(details: HTMLDetailsElement): PinnedGoalSummary | undefined {
