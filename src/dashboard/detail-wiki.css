@@ -1,0 +1,86 @@
+.wiki-gameplay-section {
+  display: grid;
+  gap: 16px;
+}
+
+.wiki-gameplay-group {
+  display: grid;
+  gap: 8px;
+}
+
+.wiki-gameplay-group h4 {
+  margin: 0;
+}
+
+.wiki-ability-list {
+  display: grid;
+  gap: 8px;
+}
+
+.wiki-ability {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.wiki-ability strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.wiki-ability p,
+.wiki-gameplay-unavailable,
+.wiki-gameplay-loading,
+.wiki-source-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.wiki-source-note {
+  font-size: 9px;
+}
+
+.observed-facts-disclosure {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.observed-facts-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--text);
+  list-style: none;
+}
+
+.observed-facts-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.observed-facts-disclosure > summary::after {
+  content: '+';
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.observed-facts-disclosure[open] > summary::after {
+  content: '−';
+}
+
+.observed-facts-disclosure > summary span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.observed-facts-disclosure > .facts {
+  margin-top: 10px;
+}
