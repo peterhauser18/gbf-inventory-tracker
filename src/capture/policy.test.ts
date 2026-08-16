@@ -58,6 +58,29 @@ test('stores only whitelisted response metadata and redacts credential-like JSON
   assert.equal((record.body as Record<string, unknown>).session_token, '[redacted]');
 });
 
+test('verified Treasure responses keep only fields needed for account normalization', () => {
+  const largeExtra = 'x'.repeat(10_000);
+  const record = buildCapturedResponse(
+    { ...observed, url: 'https://game.granbluefantasy.jp/item/article_list_by_filter_mode?mode=1' },
+    JSON.stringify([
+      { item_id: '101', name: 'Test Treasure', number: 7, image: largeExtra, session_token: 'secret' },
+      { item_id: 102, number: '0', nested: { ignored: largeExtra } },
+    ]),
+    'scan-1',
+    123,
+  );
+
+  assert.ok(record);
+  assert.deepEqual(record.categories, ['treasures']);
+  assert.deepEqual(record.body, [
+    { item_id: '101', name: 'Test Treasure', number: 7 },
+    { item_id: 102, name: undefined, number: '0' },
+  ]);
+  const serialized = JSON.stringify(record);
+  assert.equal(serialized.includes(largeExtra), false);
+  assert.equal(serialized.includes('secret'), false);
+});
+
 test('rejects non-JSON bodies instead of persisting arbitrary page content', () => {
   assert.equal(buildCapturedResponse(observed, '<html>not json</html>', 'scan-1', 123), null);
 });
