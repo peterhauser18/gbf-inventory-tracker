@@ -29,11 +29,14 @@ test('retargeting detaches the previous target before attaching the revalidated 
   assert.match(switchSource, /expectedDetachTabIds\.add\(previousTabId\)/);
 });
 
-test('combat lock is driven by the normalized latest parse and releases on terminal result', () => {
+test('combat lock is keyed by the existing raid instance id and only the same instance can release it', () => {
   assert.match(background, /const parse = await ingestCapturedCombatRecord\(record\)/);
-  assert.match(background, /updateCombatTarget\(tabId, parse\.result\)/);
-  assert.match(background, /combatTargetAfterResult\(current\.combatTabId, tabId, result\)/);
-  assert.match(background, /nextCombatTabId === undefined && isTerminalResult\(result\)/);
+  assert.match(background, /const context = parse \? await getCombatLiveContext\(\) : undefined/);
+  assert.match(background, /context\?\.instanceId/);
+  assert.match(background, /updateCombatLock\(tabId, context\.instanceId, parse\.result\)/);
+  assert.match(background, /combatInstanceId: instanceId/);
+  assert.match(background, /current\.combatInstanceId !== instanceId/);
+  assert.match(background, /isTerminalResult\(result\)/);
 });
 
 test('cross-window lifecycle adds no broader browser or GBF host permission', () => {
