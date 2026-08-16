@@ -32,6 +32,9 @@ function syncToggle(): void {
     button.setAttribute('aria-label', label);
     button.setAttribute('aria-pressed', String(theme === 'dark'));
   });
+  app.querySelectorAll<HTMLElement>('[data-theme-preference]').forEach((element) => {
+    if (element.textContent !== theme) element.textContent = theme;
+  });
 }
 
 function toggleTheme(): void {
