@@ -116,15 +116,21 @@ function renderComparePrompt(record: RaidHistoryRecord | undefined): string {
 function renderComparison(comparison: RaidHistoryComparison | null): string {
   if (!comparison) return '<div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>Comparison unavailable</h3></div></div><p class="muted">Direct comparison requires the same technical raid ID.</p>';
   return `
-    <div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(comparison.raidName ?? comparison.raidTechnicalId)}</h3><p class="muted">A vs B · Δ is B − A</p></div><span class="quality ${comparison.contributors.quality}">${comparison.contributors.quality}</span></div>
+    <div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(comparison.raidName ?? comparison.raidTechnicalId)}</h3><p class="muted">A vs B · Δ is B − A</p></div>${qualityChip(comparison.contributors.quality)}</div>
     <div class="raid-compare-metrics"><div class="raid-compare-row head"><span>Metric</span><span>A</span><span>B</span><span>Δ</span></div>${comparison.metrics.map(renderMetric).join('')}</div>
     <div class="raid-contributor-compare">
       <div><span>Observed in both</span><strong>${renderContributorList(comparison.contributors.common)}</strong></div>
       <div><span>Observed only in A</span><strong>${renderContributorList(comparison.contributors.leftOnly)}</strong></div>
       <div><span>Observed only in B</span><strong>${renderContributorList(comparison.contributors.rightOnly)}</strong></div>
     </div>
-    <p class="raid-compare-warning">Observed contributors are not guaranteed to be the complete party. Missing attribution remains partial/unknown rather than becoming an absent team member.</p>
+    <p class="raid-compare-warning">Observed contributors are not guaranteed to be the complete party. Missing attribution remains incomplete or unavailable rather than becoming an absent team member.</p>
   `;
+}
+
+function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
+  if (quality === 'known') return '';
+  const label = quality === 'partial' ? 'Incomplete' : 'Unavailable';
+  return `<span class="quality ${quality}">${label}</span>`;
 }
 
 function renderMetric(metric: RaidComparisonMetric): string {

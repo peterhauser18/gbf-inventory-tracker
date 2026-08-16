@@ -1,14 +1,14 @@
+import { readObservedTreasureIconBlob } from '../treasure-icon-cache.ts';
 import { resolveSafeExternalImageUrl } from './resolver.ts';
-import { loadWikiTreasureImageIndex, normalizeWikiTreasureTitle } from './wiki-treasure-images.ts';
 
-export const MAX_WIKI_IMAGE_CONCURRENCY = 3;
+export const MAX_WIKI_IMAGE_CONCURRENCY = 5;
 export const WIKI_IMAGE_CACHE_NAME = 'gbfit:wiki-images:v1';
 export const WIKI_IMAGE_CACHE_MAX_ENTRIES = 1200;
 
 const CACHE_PRUNE_INTERVAL = 32;
 const FAILURE_COOLDOWN_MS = 60_000;
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60_000;
-const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const DEFERRED_MARKER = '#gbfit-wiki=';
 
 type CacheLike = Pick<Cache, 'match' | 'put' | 'keys' | 'delete'>;
@@ -67,26 +67,17 @@ export class WikiImageLoader {
   request(candidate: string, priority: WikiImagePriority): Promise<string | undefined> {
     const key = normalizeWikiImageUrl(candidate);
     if (!key) return Promise.resolve(undefined);
-
     const loaded = this.loaded.get(key);
     if (loaded) return Promise.resolve(loaded);
     if ((this.failedUntil.get(key) ?? 0) > this.now()) return Promise.resolve(undefined);
-
     const existing = this.pending.get(key);
     if (existing) {
       if (compareWikiImagePriority(priority, existing.priority) < 0) existing.priority = priority;
       return existing.promise;
     }
-
     let resolve!: (value: string | undefined) => void;
     const promise = new Promise<string | undefined>((done) => { resolve = done; });
-    const entry: QueueEntry = {
-      key,
-      priority,
-      sequence: this.sequence++,
-      resolve,
-      promise,
-    };
+    const entry: QueueEntry = { key, priority, sequence: this.sequence++, resolve, promise };
     this.pending.set(key, entry);
     this.queue.push(entry);
     this.pump();
@@ -113,11 +104,8 @@ export class WikiImageLoader {
 
   private async resolveEntry(entry: QueueEntry): Promise<void> {
     let result: string | undefined;
-    try {
-      result = await this.load(entry.key);
-    } catch {
-      this.failedUntil.set(entry.key, this.now() + FAILURE_COOLDOWN_MS);
-    }
+    try { result = await this.load(entry.key); }
+    catch { this.failedUntil.set(entry.key, this.now() + FAILURE_COOLDOWN_MS); }
     entry.resolve(result);
   }
 
@@ -129,10 +117,9 @@ export class WikiImageLoader {
       if (objectUrl) return objectUrl;
       await safeCacheDelete(cache, key);
     }
-
     let response: Response;
     try {
-      response = await this.fetchImpl(key, {
+      response = await this.fetchImpl.call(globalThis, key, {
         credentials: 'omit',
         referrerPolicy: 'no-referrer',
       });
@@ -140,24 +127,20 @@ export class WikiImageLoader {
       this.failedUntil.set(key, this.now() + FAILURE_COOLDOWN_MS);
       return undefined;
     }
-
     if (!response.ok) {
       this.failedUntil.set(key, this.now() + responseCooldown(response, this.now()));
       return undefined;
     }
-
     const finalUrl = response.url ? normalizeWikiImageUrl(response.url) : key;
     if (!finalUrl) {
       this.failedUntil.set(key, this.now() + FAILURE_COOLDOWN_MS);
       return undefined;
     }
-
     const contentType = response.headers.get('content-type');
     if (contentType && !contentType.toLowerCase().startsWith('image/')) {
       this.failedUntil.set(key, this.now() + FAILURE_COOLDOWN_MS);
       return undefined;
     }
-
     if (cache) {
       try {
         await cache.put(key, response.clone());
@@ -167,7 +150,6 @@ export class WikiImageLoader {
         // Persistent caching is an optimization; a successful image can still render from memory.
       }
     }
-
     return this.responseObjectUrl(response, key);
   }
 
@@ -213,9 +195,11 @@ export function deferWikiImageUrl(candidate: string | undefined): string | undef
 }
 
 export function deferredWikiImageTarget(candidate: string | null | undefined): string | undefined {
-  if (!candidate?.startsWith(`${TRANSPARENT_PIXEL}${DEFERRED_MARKER}`)) return undefined;
+  if (!candidate?.startsWith('data:image/')) return undefined;
+  const markerIndex = candidate.indexOf(DEFERRED_MARKER);
+  if (markerIndex < 0) return undefined;
   try {
-    return normalizeWikiImageUrl(decodeURIComponent(candidate.slice(`${TRANSPARENT_PIXEL}${DEFERRED_MARKER}`.length)));
+    return normalizeWikiImageUrl(decodeURIComponent(candidate.slice(markerIndex + DEFERRED_MARKER.length)));
   } catch {
     return undefined;
   }
@@ -247,6 +231,7 @@ let scopeKey = '';
 let scopeGeneration = 0;
 let treasureHydration: Promise<void> | null = null;
 let imageAssignmentGuardInstalled = false;
+const treasureObjectUrls = new Set<string>();
 
 export function installWikiImageDomLoader(): void {
   if (domInstalled || typeof document === 'undefined' || typeof window === 'undefined') return;
@@ -261,7 +246,11 @@ export function installWikiImageDomLoader(): void {
   document.addEventListener('toggle', scheduleDomScan, true);
   window.addEventListener('scroll', scheduleDomScan, { passive: true });
   window.addEventListener('resize', scheduleDomScan, { passive: true });
-  window.addEventListener('pagehide', () => domLoader?.dispose(), { once: true });
+  window.addEventListener('pagehide', () => {
+    domLoader?.dispose();
+    for (const url of treasureObjectUrls) URL.revokeObjectURL(url);
+    treasureObjectUrls.clear();
+  }, { once: true });
   scheduleDomScan();
 }
 
@@ -310,11 +299,13 @@ function scanDom(): void {
 
   for (const candidate of candidates) {
     const sentinel = candidate.image.getAttribute('src');
+    candidate.image.style.opacity = '0';
     void domLoader.request(candidate.target, {
       generation: scopeGeneration,
       nearViewport: candidate.nearViewport,
     }).then((objectUrl) => {
       if (!objectUrl || !candidate.image.isConnected || candidate.image.getAttribute('src') !== sentinel) return;
+      candidate.image.style.removeProperty('opacity');
       candidate.image.src = objectUrl;
     });
   }
@@ -323,42 +314,54 @@ function scanDom(): void {
 async function hydrateTreasureVisuals(): Promise<void> {
   if (treasureHydration || typeof document === 'undefined') return;
   const visuals = Array.from(document.querySelectorAll<HTMLElement>('.entity-visual.treasure'))
-    .filter((visual) => !visual.querySelector('img') && visual.dataset.wikiTreasureImage !== 'attempted');
+    .filter((visual) => !visual.querySelector('img')
+      && visual.dataset.observedTreasureImage !== 'attempted'
+      && !isHiddenByCollapsedSurface(visual)
+      && isNearViewport(visual));
   if (visuals.length === 0) return;
 
-  treasureHydration = loadWikiTreasureImageIndex()
-    .then((index) => {
-      for (const visual of visuals) {
-        if (!visual.isConnected || visual.querySelector('img')) continue;
-        visual.dataset.wikiTreasureImage = 'attempted';
-        const title = treasureVisualTitle(visual);
-        if (!title) continue;
-        const remoteUrl = index.get(normalizeWikiTreasureTitle(title));
-        const deferred = deferWikiImageUrl(remoteUrl);
-        if (!deferred) continue;
-        const image = document.createElement('img');
-        image.dataset.entityImage = 'true';
-        image.src = deferred;
-        image.alt = '';
-        image.loading = 'lazy';
-        image.decoding = 'async';
-        image.referrerPolicy = 'no-referrer';
-        visual.append(image);
-      }
-    })
+  treasureHydration = Promise.all(visuals.map(async (visual) => {
+    if (!visual.isConnected || visual.querySelector('img')) return;
+    visual.dataset.observedTreasureImage = 'attempted';
+    const itemId = treasureVisualItemId(visual);
+    if (!itemId) return;
+    const blob = await readObservedTreasureIconBlob(itemId);
+    if (!blob) return;
+    const objectUrl = URL.createObjectURL(blob);
+    if (!visual.isConnected || visual.querySelector('img')) {
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+    treasureObjectUrls.add(objectUrl);
+    const image = document.createElement('img');
+    image.dataset.entityImage = 'true';
+    image.src = objectUrl;
+    image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    visual.append(image);
+  })).then(() => undefined)
     .catch(() => {})
     .finally(() => {
       treasureHydration = null;
-      scheduleDomScan();
     });
   await treasureHydration;
 }
 
-function treasureVisualTitle(visual: HTMLElement): string | undefined {
-  const card = visual.closest<HTMLElement>('.entity-card');
-  const cardTitle = card?.querySelector<HTMLElement>('.card-copy > strong')?.textContent?.trim();
-  if (cardTitle) return cardTitle;
-  return visual.closest<HTMLElement>('.detail-panel')?.querySelector<HTMLElement>('.detail-title h3')?.textContent?.trim() || undefined;
+function treasureVisualItemId(visual: HTMLElement): string | undefined {
+  const detailKey = visual.closest<HTMLElement>('[data-detail]')?.dataset.detail;
+  if (detailKey?.startsWith('treasure:')) {
+    const itemId = detailKey.slice('treasure:'.length);
+    return /^\d+$/.test(itemId) ? itemId : undefined;
+  }
+  const panel = visual.closest<HTMLElement>('.detail-panel');
+  if (!panel) return undefined;
+  for (const row of panel.querySelectorAll<HTMLElement>('.facts > div')) {
+    if (row.querySelector('dt')?.textContent?.trim() !== 'Item ID') continue;
+    const itemId = row.querySelector('dd')?.textContent?.trim().match(/^\d+/)?.[0];
+    if (itemId) return itemId;
+  }
+  return undefined;
 }
 
 function activeDashboardScope(): string {

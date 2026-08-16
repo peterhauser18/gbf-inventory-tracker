@@ -88,8 +88,8 @@ function renderReadyPanel(prepared: PreparedExport): string {
     ? `${result.includedMasterIds.length} observed characters encoded.`
     : `${result.includedMasterIds.length} encoded; ${result.omitted.length} omitted because they could not be represented without guessing.`;
   const coverage = incompleteRoster
-    ? `Roster coverage is ${rosterQuality}; this link contains only observed characters and must not be treated as a complete collection.`
-    : 'Roster coverage is known in the cumulative local account database.';
+    ? `Roster coverage is ${qualityLabel(rosterQuality)}; this link contains only observed characters and must not be treated as a complete collection.`
+    : 'Roster coverage is complete in the cumulative local account database.';
 
   return `
     <div>
@@ -102,11 +102,15 @@ function renderReadyPanel(prepared: PreparedExport): string {
       <button class="external-button collection-copy-button" type="button" data-copy-collection-link>Copy tracker link</button>
     </div>
     <div class="collection-export-state ${incompleteRoster || result.omitted.length ? 'warning' : 'ready'}" data-collection-export-state>
-      <strong>${escapeHtml(incompleteRoster || result.omitted.length ? 'Partial export' : 'Ready')}</strong>
+      <strong>${escapeHtml(incompleteRoster || result.omitted.length ? 'Incomplete export' : 'Ready')}</strong>
       <span>${escapeHtml(summary)}</span>
     </div>
     ${renderOmissions(result.omitted)}
   `;
+}
+
+function qualityLabel(quality: DataQuality): string {
+  return quality === 'partial' ? 'incomplete' : 'unavailable';
 }
 
 function renderOmissions(omitted: readonly CollectionTrackerOmission[]): string {
@@ -136,7 +140,7 @@ function bindCopy(panel: HTMLElement, url: string): void {
 function omissionLabel(reason: CollectionTrackerOmission['reason']): string {
   switch (reason) {
     case 'unsupported-master-id': return 'technical ID is outside the current tracker encoding';
-    case 'unknown-uncap': return 'uncap state is unknown';
+    case 'unknown-uncap': return 'uncap state is unavailable';
     case 'unsupported-uncap': return 'uncap state is outside the current 3-bit tracker range';
     case 'not-in-wiki-dataset': return 'not present in the current public wiki character dataset';
   }
