@@ -9,12 +9,14 @@ import {
 test('keeps overview, detail and system navigation explicit with goals beside overview', () => {
   assert.deepEqual(DASHBOARD_NAV_GROUPS.map((group) => group.label), ['Overview', 'Detail', 'System']);
   assert.deepEqual(DASHBOARD_NAV_GROUPS[0]?.destinations, ['overview', 'goals']);
+  assert.ok(DASHBOARD_NAV_GROUPS[1]?.destinations.includes('roster'));
   assert.deepEqual(DASHBOARD_NAV_GROUPS.at(-1)?.destinations, ['settings', 'developer']);
 });
 
 test('searches only declared local dashboard destinations', () => {
   assert.equal(searchDashboardDestinations('combat')[0]?.key, 'combat');
   assert.equal(searchDashboardDestinations('pins')[0]?.key, 'goals');
+  assert.equal(searchDashboardDestinations('utility')[0]?.key, 'roster');
   assert.equal(searchDashboardDestinations('storage')[0]?.key, 'developer');
   assert.equal(searchDashboardDestinations('theme')[0]?.key, 'settings');
   assert.deepEqual(searchDashboardDestinations('not-a-real-destination'), []);
@@ -29,8 +31,9 @@ test('inventory keyword finds relevant local detail destinations without inventi
   assert.ok(keys.every((key) => dashboardDestination(key).owner === 'dashboard'));
 });
 
-test('goals is a local controller destination and not a network action', () => {
-  const goals = dashboardDestination('goals');
-  assert.equal(goals.owner, 'goals');
-  assert.equal(goals.group, 'overview');
+test('goals and roster are local controller destinations and not GBF network actions', () => {
+  assert.equal(dashboardDestination('goals').owner, 'goals');
+  assert.equal(dashboardDestination('goals').group, 'overview');
+  assert.equal(dashboardDestination('roster').owner, 'roster');
+  assert.equal(dashboardDestination('roster').group, 'detail');
 });
