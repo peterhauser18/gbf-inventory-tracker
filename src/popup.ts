@@ -16,16 +16,19 @@ app.innerHTML = `
     <header>
       <p class="eyebrow">LOCAL-FIRST GBF COMPANION</p>
       <h1>GBF Inventory Tracker</h1>
-      <p class="muted">Account data is collected passively as you play and browse GBF normally.</p>
+      <p class="muted">GBF data is read only while you explicitly enable debugger observation.</p>
     </header>
 
     <button id="dashboard" class="secondary dashboard-button" type="button">Open Dashboard</button>
 
     <div class="card">
       <div class="status-row">
-        <strong>Automatic account tracking</strong>
+        <span class="dot" id="status-dot"></span>
+        <strong id="status">Checking observation status…</strong>
       </div>
-      <p class="muted" id="tracking-note">Verified account responses are normalized locally. No extra GBF requests are sent.</p>
+      <p class="muted" id="detail">No GBF page hooks run in the background. Start observation only when you want to update account or combat data.</p>
+      <button id="toggle" type="button" disabled>Loading…</button>
+      <p class="muted" id="tracking-note">While active, Chrome shows its debugging notice. The extension only reads allowlisted responses GBF already received; it does not send, replay, intercept, or modify GBF requests.</p>
       <button id="reset-account" class="secondary" type="button">Reset account data</button>
     </div>
 
@@ -34,22 +37,13 @@ app.innerHTML = `
       <div class="developer-content">
         <div class="card">
           <div class="status-row">
-            <span class="dot" id="status-dot"></span>
-            <strong id="status">Checking diagnostic scan status…</strong>
-          </div>
-          <p class="muted" id="detail">The manual scan is optional developer/diagnostic tooling.</p>
-          <button id="toggle" type="button" disabled>Loading…</button>
-        </div>
-
-        <div class="card">
-          <div class="status-row">
-            <strong>Current / last diagnostic scan</strong>
+            <strong>Current / last observation</strong>
             <span class="count" id="response-count">0 JSON responses</span>
           </div>
           <div class="grid" id="categories"></div>
-          <p class="muted scan-note">“Seen” means a response candidate matched that category; it does not mean the category is complete.</p>
+          <p class="muted scan-note">“Seen” means an allowlisted response matched that category; it does not mean the category is complete.</p>
           <button id="export" class="secondary" type="button" disabled>Export sanitized scan</button>
-          <p class="muted scan-note" id="export-note">Stop the diagnostic scan before exporting. The JSON file stays local until you explicitly share it.</p>
+          <p class="muted scan-note" id="export-note">Stop observation before exporting. The JSON file stays local until you explicitly share it.</p>
         </div>
 
         <div class="card">
@@ -63,7 +57,7 @@ app.innerHTML = `
       </div>
     </details>
 
-    <footer>Normal use requires no scan workflow or menu checklist. Start a diagnostic scan only when you intentionally need a sanitized capture export.</footer>
+    <footer>Observation is off by default. Start it on an active GBF tab, browse or play normally, then stop it when you are done collecting data.</footer>
   </section>
 `;
 
@@ -99,7 +93,7 @@ resetAccountButton.addEventListener('click', async () => {
   trackingNote.textContent = 'Clearing local account data…';
   try {
     await sendMessage({ type: 'gbfit:reset-account-data' });
-    trackingNote.textContent = 'Local account data cleared. Automatic tracking will rebuild it from future normal GBF activity.';
+    trackingNote.textContent = 'Local account data cleared. Start observation again when you want to rebuild it from normal GBF activity.';
   } catch (error) {
     trackingNote.textContent = error instanceof Error ? error.message : String(error);
   } finally {
@@ -191,10 +185,12 @@ async function sendMessage(message: CaptureControlMessage): Promise<CaptureStatu
 function render(response: CaptureStatusResponse): void {
   latestStatus = response;
   status.textContent = response.message;
-  detail.textContent = response.error ?? 'The manual scan is optional developer/diagnostic tooling.';
+  detail.textContent = response.error ?? (response.active
+    ? 'Chrome debugger observation is active for this GBF tab.'
+    : 'Observation is inactive; GBF requests are not instrumented or observed by the extension.');
   dot.classList.toggle('active', response.active);
   toggle.disabled = false;
-  toggle.textContent = response.active ? 'Stop diagnostic scan' : 'Start diagnostic scan';
+  toggle.textContent = response.active ? 'Stop observation' : 'Start observation';
   clearDiagnosticButton.disabled = response.active;
   clearExceptAccountButton.disabled = response.active;
   responseCount.textContent = `${response.scan?.responseCount ?? 0} JSON responses`;
@@ -203,7 +199,7 @@ function render(response: CaptureStatusResponse): void {
   exportButton.disabled = !completed;
   exportNote.textContent = completed
     ? 'This export is sanitized again before download and stays local until you explicitly share it.'
-    : 'Stop the diagnostic scan before exporting. The JSON file stays local until you explicitly share it.';
+    : 'Stop observation before exporting. The JSON file stays local until you explicitly share it.';
 
   categories.innerHTML = CAPTURE_CATEGORIES.map((category) => {
     const seen = response.scan?.categories[category] ?? false;
