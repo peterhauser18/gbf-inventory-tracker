@@ -19,6 +19,7 @@ import type {
   CaptureStatusResponse,
   CapturedResponseRecord,
   DebuggerResponseBody,
+  ObservedResponse,
 } from './capture/types.ts';
 import { cleanupLocalData, type LocalCleanupMode } from './storage/cleanup.ts';
 
@@ -26,6 +27,11 @@ const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const STATE_KEY = 'gbfit:capture-state';
 const NETWORK_MAX_TOTAL_BUFFER_SIZE = 32 * 1024 * 1024;
 const NETWORK_MAX_RESOURCE_BUFFER_SIZE = 8 * 1024 * 1024;
+const CAPTURE_NETWORK_METHODS = new Set([
+  'Network.responseReceived',
+  'Network.loadingFinished',
+  'Network.loadingFailed',
+]);
 const pendingResponses = new CaptureEventBuffer();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
@@ -66,7 +72,7 @@ chrome.runtime.onMessage.addListener((message: CaptureMessage, _sender, sendResp
 });
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
-  if (source.tabId === undefined) return;
+  if (source.tabId === undefined || !CAPTURE_NETWORK_METHODS.has(method)) return;
   eventQueue = eventQueue
     .then(() => handleDebuggerEvent(source.tabId as number, method, params))
     .catch(() => {});
@@ -208,15 +214,15 @@ async function handleDebuggerEvent(
     return;
   }
 
-  const state = await getRuntimeState();
-  if (!state.active || state.tabId !== tabId || !state.scanId) return;
-
   if (method === 'Network.responseReceived') {
     const event = params as NetworkResponseReceived | undefined;
     const resourceType = normalizeResourceType(event?.type);
     const url = event?.response?.url;
     const requestId = event?.requestId;
     if (!url || !requestId || !shouldReadObservedResponse(url, resourceType)) return;
+
+    const state = await getRuntimeState();
+    if (!state.active || state.tabId !== tabId || !state.scanId) return;
 
     pendingResponses.remember({
       requestId,
@@ -234,10 +240,16 @@ async function handleDebuggerEvent(
   const meta = pendingResponses.take(requestId);
   if (!meta || !shouldReadObservedResponse(meta.url, meta.resourceType)) return;
 
+  const state = await getRuntimeState();
+  if (!state.active || state.tabId !== tabId || !state.scanId) return;
+  void captureObservedResponse(tabId, state.scanId, meta);
+}
+
+async function captureObservedResponse(tabId: number, scanId: string, meta: ObservedResponse): Promise<void> {
   try {
     await processObservedResponse(
       meta,
-      state.scanId,
+      scanId,
       {
         getResponseBody: async (id): Promise<DebuggerResponseBody> =>
           (await chrome.debugger.sendCommand(
@@ -248,9 +260,9 @@ async function handleDebuggerEvent(
       },
       saveObservedResponse,
     );
-    await clearObservationReadWarning(tabId, state.scanId);
+    await clearObservationReadWarning(tabId, scanId);
   } catch (error) {
-    await recordObservationReadWarning(tabId, state.scanId, meta.url, error);
+    await recordObservationReadWarning(tabId, scanId, meta.url, error);
   }
 }
 
