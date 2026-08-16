@@ -1,0 +1,91 @@
+body { min-width: 0 !important; overflow-x: hidden; }
+
+.quality-legend {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+  margin: -7px 0 16px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-soft);
+}
+.quality-legend > strong { font-size: 10px; color: var(--muted); }
+.quality-legend-item { min-width: 0; display: flex; gap: 6px; align-items: center; }
+.quality-legend-item span:last-child { min-width: 0; color: var(--muted); font-size: 9px; line-height: 1.35; }
+
+.phase5-snapshot-card { display: grid; gap: 12px; }
+.phase5-snapshot-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.phase5-action {
+  width: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.phase5-action:hover { border-color: var(--accent); }
+.phase5-action input { display: none; }
+.phase5-compare-meta { display: flex; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 10px; }
+.phase5-compare-table { display: grid; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.phase5-compare-row { display: grid; grid-template-columns: minmax(120px, 1.3fr) repeat(3, minmax(70px, .7fr)); gap: 8px; padding: 7px 9px; border-top: 1px solid var(--border); align-items: center; font-size: 10px; }
+.phase5-compare-row:first-child { border-top: 0; }
+.phase5-compare-row.head { background: var(--panel-soft); color: var(--muted); font-size: 8px; font-weight: 850; text-transform: uppercase; letter-spacing: .05em; }
+.phase5-compare-row > span:not(:first-child) { text-align: right; }
+.phase5-compare-row .unknown { color: var(--muted-2); }
+.phase5-snapshot-error { padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: 10px; }
+
+@media (max-width: 900px) {
+  .dashboard-shell { grid-template-columns: 180px minmax(0, 1fr) !important; }
+  .content { padding: 18px 18px 60px !important; }
+  .overview-panel { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 720px) {
+  .dashboard-shell { display: block !important; min-width: 0 !important; }
+  .sidebar {
+    position: static !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 12px !important;
+    gap: 10px !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid #26313b;
+  }
+  .brand { padding-bottom: 0 !important; }
+  .nav { display: flex !important; gap: 7px !important; overflow-x: auto !important; padding-bottom: 3px; }
+  .nav-group { display: flex !important; gap: 4px !important; flex: 0 0 auto; }
+  .nav-group-label { display: none !important; }
+  .nav-item { width: auto !important; white-space: nowrap; padding: 7px 9px !important; }
+  .sidebar-note { display: none !important; }
+  .content { padding: 14px 14px 48px !important; }
+  .command-bar { margin-bottom: 15px !important; }
+  .command-trigger { width: 100% !important; }
+  .content-header { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
+  .search { width: 100% !important; }
+  .overview-panel, .system-grid { grid-template-columns: 1fr !important; }
+  .system-card-wide { grid-column: auto !important; }
+  .detail-panel { width: 100vw !important; max-width: 100vw !important; }
+  .quality-legend { grid-template-columns: 1fr !important; }
+  .quality-legend > strong { margin-bottom: 1px; }
+  .roster-toolbar { grid-template-columns: 1fr !important; }
+  .roster-source-quality { grid-column: auto !important; }
+  .roster-matrix-wrap, .raid-comparison { max-width: calc(100vw - 28px); overflow-x: auto; }
+}
+
+@media (max-width: 520px) {
+  .content { padding-inline: 10px !important; }
+  .command-bar { gap: 6px !important; }
+  .command-trigger kbd { display: none; }
+  .read-only-pill { padding-inline: 6px !important; }
+  .entity-grid { grid-template-columns: 1fr !important; }
+  .metric-card > strong { font-size: 22px !important; }
+  .command-palette { width: calc(100vw - 20px) !important; top: 7vh !important; }
+  .detail-panel { padding: 16px 14px 44px !important; }
+  .phase5-compare-row { grid-template-columns: minmax(90px, 1.2fr) repeat(3, minmax(54px, .7fr)); gap: 4px; padding-inline: 6px; }
+}
