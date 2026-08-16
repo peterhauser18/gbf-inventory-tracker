@@ -1,0 +1,19 @@
+body {
+  min-width: 320px !important;
+  max-width: 420px;
+  overflow-x: hidden;
+}
+
+.shell { min-width: 0; }
+.status-row { flex-wrap: wrap; align-items: flex-start; }
+.status-row > * { min-width: 0; }
+.count { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.grid { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)) !important; }
+button { min-height: 34px; }
+
+@media (max-width: 340px) {
+  .shell { padding: 10px !important; gap: 8px !important; }
+  h1 { font-size: 17px !important; }
+  .card, .stat { padding: 8px !important; }
+  .muted { font-size: 9px !important; }
+}
