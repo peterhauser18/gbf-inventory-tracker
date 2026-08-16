@@ -1,21 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {
-  buildWikiTreasureImageIndexUrl,
-  loadWikiTreasureImageIndex,
-} from './wiki-treasure-images.ts';
+import { buildWikiTreasureImageIndexUrl, loadWikiTreasureImageIndex } from './wiki-treasure-images.ts';
 
 function memoryStorage() {
   const values = new Map<string, string>();
-  return {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => void values.set(key, value),
-  };
+  return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => void values.set(key, value) };
 }
-
-function revision(content: string) {
-  return [{ slots: { main: { content } } }];
-}
+function revision(content: string) { return [{ slots: { main: { content } } }]; }
 
 test('treasure image metadata uses one fixed account-independent Category:Items generator query', () => {
   const url = new URL(buildWikiTreasureImageIndexUrl());
@@ -45,25 +36,13 @@ test('treasure image index resolves direct and grouped item-template image metad
         query: { pages: [
           { title: 'Satin Feather', revisions: revision('{{Item\n|name=Satin Feather\n|image=Satin_Feather.jpg\n}}') },
           { title: 'Blistering Ore', revisions: revision('{{Item|name=Blistering Ore|id=15}}') },
-          {
-            title: 'Low Orb',
-            revisions: revision([
-              '{{Item|name=Red Orb|id=101}}',
-              '{{Item|name=Blue Orb|image=Blue_Orb.png}}',
-            ].join('\n')),
-          },
+          { title: 'Low Orb', revisions: revision('{{Item|name=Red Orb|id=101}}\n{{Item|name=Blue Orb|image=Blue_Orb.png}}') },
           { title: 'Unsafe Item', thumbnail: { source: 'https://game.granbluefantasy.jp/assets/item.png' } },
         ] },
       }) : ({
         continue: { gcmcontinue: 'page|next', continue: '-||' },
         query: { pages: [
-          {
-            title: 'Harp Stone',
-            images: [
-              { title: 'File:Harp_Stone.jpg' },
-              { title: 'File:Item_article_s_20.jpg' },
-            ],
-          },
+          { title: 'Harp Stone', images: [{ title: 'File:Harp_Stone.jpg' }, { title: 'File:Item_article_s_20.jpg' }] },
           { title: 'Gold Brick', thumbnail: { source: 'https://gbf.wiki/images/Item_article_s_10.jpg' } },
         ] },
       }),
@@ -79,7 +58,6 @@ test('treasure image index resolves direct and grouped item-template image metad
     assert.equal(call.init?.credentials, 'omit');
     assert.equal(call.init?.referrerPolicy, 'no-referrer');
   }
-
   assert.equal(result.get('harp stone'), 'https://gbf.wiki/Special:Redirect/file/Item_article_s_20.jpg');
   assert.equal(result.get('treasure 20'), result.get('harp stone'));
   assert.equal(result.get('gold brick'), 'https://gbf.wiki/images/Item_article_s_10.jpg');
@@ -95,17 +73,10 @@ test('fresh v4 treasure metadata cache avoids a second public Wiki query', async
   let calls = 0;
   const fetchImpl = async () => {
     calls += 1;
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        query: { pages: [
-          { title: 'Satin Feather', revisions: revision('{{Item|name=Satin Feather|image=Satin_Feather.jpg}}') },
-        ] },
-      }),
-    };
+    return { ok: true, status: 200, json: async () => ({ query: { pages: [
+      { title: 'Satin Feather', revisions: revision('{{Item|name=Satin Feather|image=Satin_Feather.jpg}}') },
+    ] } }) };
   };
-
   const first = await loadWikiTreasureImageIndex({ fetchImpl, storage, now: 10 });
   const second = await loadWikiTreasureImageIndex({ fetchImpl, storage, now: 20 });
   assert.equal(calls, 1);
