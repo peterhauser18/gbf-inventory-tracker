@@ -5,6 +5,7 @@ import {
   selectSummonGameplay,
   type WikiAbilityText,
   type WikiGameplayMetadataIndex,
+  type WikiSummonEffectText,
 } from './wiki-gameplay-metadata.ts';
 import {
   loadWikiEntityMetadata,
@@ -48,11 +49,11 @@ export function renderWikiDetailGameplay(
   return `
     <div class="wiki-gameplay-group">
       <h4>Call</h4>
-      ${summon.call ? renderAbility(summon.call) : unavailableText('Call')}
+      ${summon.call ? renderSummonEffect(summon.call) : unavailableText('Call')}
     </div>
     <div class="wiki-gameplay-group">
       <h4>Aura</h4>
-      ${summon.aura ? renderAbility(summon.aura) : unavailableText('Aura')}
+      ${summon.aura ? renderSummonEffect(summon.aura) : unavailableText('Aura')}
     </div>
   `;
 }
@@ -178,6 +179,15 @@ function renderAbility(ability: WikiAbilityText): string {
     <article class="wiki-ability">
       <strong>${escapeHtml(ability.name)}</strong>
       <p>${escapeHtml(ability.description)}</p>
+    </article>
+  `;
+}
+
+function renderSummonEffect(effect: WikiSummonEffectText): string {
+  return `
+    <article class="wiki-ability">
+      ${effect.name ? `<strong>${escapeHtml(effect.name)}</strong>` : ''}
+      <p>${escapeHtml(effect.description)}</p>
     </article>
   `;
 }
