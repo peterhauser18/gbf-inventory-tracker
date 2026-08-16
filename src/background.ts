@@ -282,11 +282,21 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
     return;
   }
 
+  let candidateAttached = false;
   try {
     await chrome.debugger.attach({ tabId: candidateTabId }, DEBUGGER_PROTOCOL_VERSION);
+    candidateAttached = true;
     await enableNetworkObservation(candidateTabId);
     await setRuntimeState({ active: true, tabId: candidateTabId, scanId: state.scanId });
   } catch (error) {
+    if (candidateAttached) {
+      expectedDetachTabIds.add(candidateTabId);
+      try {
+        await chrome.debugger.detach({ tabId: candidateTabId });
+      } catch {
+        expectedDetachTabIds.delete(candidateTabId);
+      }
+    }
     await setRuntimeState({
       active: true,
       scanId: state.scanId,
@@ -307,7 +317,7 @@ async function isVerifiedGbfTab(tabId: number): Promise<boolean> {
     const tab = await chrome.tabs.get(tabId);
     if (isGbfPageUrl(tab.url)) return true;
   } catch {
-    return false;
+    // A closed tab will also be absent from debugger targets below.
   }
 
   try {
