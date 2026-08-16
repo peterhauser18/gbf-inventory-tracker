@@ -138,18 +138,24 @@ function parseVerifiedStart(
     previous?.raidTechnicalId === raidTechnicalId &&
     (!instanceId || !previous.instanceId || instanceId === previous.instanceId);
   const actorSlots = parsedActors.length > 0
-    ? parsedActors
+    ? sameRaid && previous?.actorSlots.length
+      ? refreshActiveActorSlots(previous.actorSlots, parsedActors)
+      : parsedActors
     : sameRaid
       ? previous?.actorSlots ?? []
       : [];
   const turn = num(body.turn);
-  const mainCharacterId = actorSlots[0]?.id ?? (sameRaid ? previous?.mainCharacterId : undefined);
-  const accountDisplayName = actorSlots[0]?.name ?? (sameRaid ? previous?.accountDisplayName : undefined);
+  const mainCharacterId = sameRaid
+    ? previous?.mainCharacterId ?? parsedActors[0]?.id
+    : actorSlots[0]?.id;
+  const accountDisplayName = sameRaid
+    ? previous?.accountDisplayName ?? parsedActors[0]?.name
+    : actorSlots[0]?.name;
   const context: CombatParseContext = {
     raidTechnicalId,
     instanceId,
     actorSlots,
-    actors: mergeActorHistory(sameRaid ? previous?.actors : undefined, actorSlots),
+    actors: mergeActorHistory(sameRaid ? previous?.actors : undefined, parsedActors.length > 0 ? parsedActors : actorSlots),
     mainCharacterId,
     accountDisplayName,
     turn: turn ?? (sameRaid ? previous?.turn : undefined),
@@ -174,6 +180,18 @@ function parseVerifiedStart(
     context,
     forceNewRaid: Boolean(previous && !sameRaid),
   };
+}
+
+function refreshActiveActorSlots(
+  activeSlots: readonly CombatActorContext[],
+  snapshot: readonly CombatActorContext[],
+): CombatActorContext[] {
+  const byId = new Map(snapshot.flatMap((actor) => actor.id ? [[actor.id, actor] as const] : []));
+  return activeSlots.map((actor) => {
+    if (!actor.id) return { ...actor };
+    const observed = byId.get(actor.id);
+    return observed ? { ...actor, ...observed } : { ...actor };
+  });
 }
 
 function parseVerifiedScenario(
@@ -777,20 +795,19 @@ function str(...values: unknown[]): string | undefined {
 
 function num(...values: unknown[]): number | undefined {
   for (const value of values) {
-    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
-    if (typeof value === 'string' && value.trim()) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed) && parsed >= 0) return parsed;
-    }
+    const parsed = typeof value === 'number'
+      ? value
+      : typeof value === 'string' && value.trim()
+        ? Number(value)
+        : Number.NaN;
+    if (Number.isFinite(parsed)) return parsed;
   }
   return undefined;
 }
 
-function bool(...values: unknown[]): boolean | undefined {
-  for (const value of values) {
-    if (typeof value === 'boolean') return value;
-    if (value === 1 || value === '1' || value === 'true') return true;
-    if (value === 0 || value === '0' || value === 'false') return false;
-  }
+function bool(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === '1') return true;
+  if (value === 0 || value === '0') return false;
   return undefined;
 }
