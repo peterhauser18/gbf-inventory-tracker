@@ -26,7 +26,7 @@ export function participantSummary(
   raid: NormalizedRaidParse,
   context: CombatParseContext | null | undefined,
 ): string {
-  if (raid.participants?.count !== undefined) return `${formatNumber(raid.participants.count)} / 30`;
+  if (raid.participants?.count !== undefined) return `${formatNumber(raid.participants.count)} observed`;
   const rows = context?.participants?.length ?? 0;
   return rows > 0 ? `${formatNumber(rows)}+ observed` : 'not observed';
 }
