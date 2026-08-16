@@ -457,7 +457,7 @@ async function handleDebuggerEvent(
   if (pendingTreasureIcon) {
     const state = await getRuntimeState();
     if (!state.active || state.tabId !== tabId || !state.scanId) return;
-    await captureObservedTreasureIcon(tabId, requestId, pendingTreasureIcon.itemId);
+    void captureObservedTreasureIcon(tabId, requestId, pendingTreasureIcon.itemId);
     return;
   }
 
