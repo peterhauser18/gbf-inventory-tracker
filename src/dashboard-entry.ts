@@ -75,6 +75,10 @@ async function bootDashboard(): Promise<void> {
   await initialRender;
 
   keepObservationCopyAccurate();
+  void ensureEnhancement('global-entity-search', async () => {
+    const { installGlobalEntitySearch } = await import('./dashboard/global-entity-search-ui.ts');
+    installGlobalEntitySearch();
+  }).catch(() => {});
 
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
   if (!restoreSection) return;
