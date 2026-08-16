@@ -4,13 +4,15 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('../dashboard-entry.ts', import.meta.url), 'utf8');
 
-test('dashboard entry refreshes Characters from passive account storage changes', () => {
+test('dashboard entry refreshes relevant sections from cumulative account storage changes', () => {
   assert.match(source, /ACCOUNT_DATABASE_STORAGE_KEY/);
   assert.match(source, /chrome\.storage\.onChanged\.addListener/);
-  assert.match(source, /characterObservationChanged/);
-  assert.match(source, /value\.observedAt\.characters/);
-  assert.match(source, /section !== 'overview' && section !== 'characters'/);
-  assert.match(source, /targetSection !== 'characters'/);
+  assert.match(source, /changedAccountEvidence/);
+  assert.match(source, /sectionUsesAccountEvidence/);
+  assert.match(source, /dirtyEvidence/);
+  assert.match(source, /scheduleReload\(section, 500\)/);
+  assert.match(source, /scheduleReload\(targetSection, 0\)/);
+  assert.doesNotMatch(source, /characterObservationChanged/);
 });
 
 test('dashboard refresh preserves the selected section after asynchronous dashboard load', () => {

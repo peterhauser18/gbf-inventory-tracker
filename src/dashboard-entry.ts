@@ -1,25 +1,32 @@
 import { ACCOUNT_DATABASE_STORAGE_KEY } from './account/storage.ts';
+import {
+  changedAccountEvidence,
+  sectionUsesAccountEvidence,
+  type AccountEvidenceKey,
+} from './dashboard/live-refresh.ts';
 
 const RESTORE_SECTION_KEY = 'gbfit:dashboard-restore-section';
-let accountDirty = false;
+const dirtyEvidence = new Set<AccountEvidenceKey>();
 let reloadTimer: number | undefined;
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
   const change = changes[ACCOUNT_DATABASE_STORAGE_KEY];
-  if (!characterObservationChanged(change)) return;
-  accountDirty = true;
+  if (!change) return;
+
+  const changed = changedAccountEvidence(change.oldValue, change.newValue);
+  if (changed.length === 0) return;
+  for (const key of changed) dirtyEvidence.add(key);
 
   const section = activeSection();
-  if (section && section !== 'overview' && section !== 'characters') return;
-  scheduleReload(section, 500);
+  if (!section || sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
 });
 
 document.addEventListener('click', (event) => {
-  if (!accountDirty) return;
+  if (dirtyEvidence.size === 0) return;
   const button = (event.target as Element | null)?.closest<HTMLButtonElement>('.nav-item[data-section]');
   const targetSection = button?.dataset.section;
-  if (targetSection !== 'characters') return;
+  if (!targetSection || !sectionUsesAccountEvidence(targetSection, [...dirtyEvidence])) return;
 
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -47,7 +54,7 @@ function keepObservationCopyAccurate(): void {
         element.textContent = 'GBF data updates only while explicit debugger observation is active.';
       }
       if (element.textContent === 'Keep playing and browsing GBF normally. Verified account responses will fill this dashboard automatically over time.') {
-        element.textContent = 'Start observation from the extension popup, then browse GBF normally to update this dashboard.';
+        element.textContent = 'Open the extension Dashboard from an active GBF tab to start observation, then browse or play normally.';
       }
     }
   };
@@ -55,19 +62,6 @@ function keepObservationCopyAccurate(): void {
   update();
   const observer = new MutationObserver(update);
   observer.observe(app, { childList: true, subtree: true });
-}
-
-function characterObservationChanged(change: chrome.storage.StorageChange | undefined): boolean {
-  if (!change) return false;
-  const previous = characterObservedAt(change.oldValue);
-  const next = characterObservedAt(change.newValue);
-  return next !== undefined && next !== previous;
-}
-
-function characterObservedAt(value: unknown): number | undefined {
-  if (!isObject(value) || !isObject(value.observedAt)) return undefined;
-  const observed = value.observedAt.characters;
-  return typeof observed === 'number' && Number.isFinite(observed) ? observed : undefined;
 }
 
 function restoreSectionWhenReady(section: string): void {
@@ -98,10 +92,6 @@ function scheduleReload(section: string | undefined, delay: number): void {
   if (section) sessionStorage.setItem(RESTORE_SECTION_KEY, section);
   if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => window.location.reload(), delay);
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function cssEscape(value: string): string {
