@@ -108,6 +108,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void releaseUnavailableTarget(tabId, 'observed GBF tab closed');
 });
 
+chrome.tabs.onAttached.addListener((tabId) => {
+  void recoverMovedCombatTarget(tabId);
+});
+
 async function handleMessage(message: CaptureMessage): Promise<CaptureStatusResponse> {
   switch (message.type) {
     case 'gbfit:start-observation':
@@ -333,6 +337,18 @@ async function retargetToFocusedGbfTab(): Promise<void> {
   }
 }
 
+async function recoverMovedCombatTarget(tabId: number): Promise<void> {
+  const state = await getRuntimeState();
+  if (
+    !state.active ||
+    !state.scanId ||
+    state.tabId === tabId ||
+    state.combatTabId !== tabId ||
+    !state.combatInstanceId
+  ) return;
+  await queueObservationRetarget(tabId);
+}
+
 async function releaseUnavailableTarget(tabId: number, reason: string): Promise<void> {
   const state = await getRuntimeState();
   if (
@@ -510,8 +526,8 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   if (!state.active || state.tabId !== tabId || !state.scanId) return;
 
   pendingResponses.clear();
-  await clearCombatParseContext();
   if (reason === 'canceled_by_user') {
+    await clearCombatParseContext();
     await finishCaptureScan(state.scanId);
     await setRuntimeState({
       active: false,
@@ -521,11 +537,17 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
     return;
   }
 
-  await setRuntimeState({
-    active: true,
-    scanId: state.scanId,
+  const next: RuntimeState = {
+    ...state,
     error: `Observation target detached: ${reason}.`,
-  });
+  };
+  delete next.tabId;
+  await setRuntimeState(next);
+
+  if (state.combatTabId === tabId && state.combatInstanceId) {
+    void queueObservationRetarget(tabId);
+    return;
+  }
   void retargetToFocusedGbfTab();
 }
 
