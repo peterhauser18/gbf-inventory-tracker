@@ -36,7 +36,7 @@ function fakeCacheStorage() {
   return {
     values,
     storage: {
-      async open() { return cache as Cache; },
+      async open() { return cache as unknown as Cache; },
       async delete() { values.clear(); return true; },
     } as Pick<CacheStorage, 'open' | 'delete'>,
   };
