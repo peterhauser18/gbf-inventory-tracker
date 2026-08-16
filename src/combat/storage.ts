@@ -28,10 +28,15 @@ export async function ingestCapturedCombatRecord(record: CapturedResponseRecord)
     const context = await getCombatParseContext();
     const parsed = parseVerifiedMultiraidObservation(record, context);
     if (!parsed) return null;
-    const observation: VerifiedCombatObservation = !context && parsed.context
-      ? { ...parsed, forceNewRaid: true }
-      : parsed;
+    const turn = directlyObservedTurn(record.body);
+    const parsedWithTurn: VerifiedCombatObservation = turn === undefined ? parsed : { ...parsed, observedTurn: turn };
+    const observation: VerifiedCombatObservation = !context && parsedWithTurn.context
+      ? { ...parsedWithTurn, forceNewRaid: true }
+      : parsedWithTurn;
     const next = mergeVerifiedMultiraidObservation(current, observation);
+    if (observation.observedTurn !== undefined) {
+      next.lastObservedTurn = Math.max(next.lastObservedTurn ?? 0, observation.observedTurn);
+    }
     await saveLatest(next);
     if (observation.context) await saveCombatParseContext(sanitizeCombatParseContext(observation.context));
     if (isTerminal(next.result)) await upsertCapturedHistory(next);
@@ -40,6 +45,8 @@ export async function ingestCapturedCombatRecord(record: CapturedResponseRecord)
   const observation = parseCombatObservation(record);
   if (!observation) return null;
   const next = mergeCombatObservation(current, observation);
+  const logTurn = latestLogTurn(next);
+  if (logTurn !== undefined) next.lastObservedTurn = Math.max(next.lastObservedTurn ?? 0, logTurn);
   await saveLatest(next);
   if (isTerminal(next.result)) await upsertCapturedHistory(next);
   return next;
@@ -106,6 +113,18 @@ function sanitizeParticipantDisplay(participant: CombatParticipantDisplay): Comb
 
 function safeNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function directlyObservedTurn(body: unknown): number | undefined {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+  const value = (body as Record<string, unknown>).turn;
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function latestLogTurn(parse: NormalizedRaidParse): number | undefined {
+  const turns = parse.log.flatMap((entry) => entry.turn === undefined ? [] : [entry.turn]);
+  return turns.length ? Math.max(...turns) : undefined;
 }
 
 export async function getRaidHistory(): Promise<RaidHistoryRecord[]> {
