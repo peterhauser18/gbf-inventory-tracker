@@ -1,7 +1,7 @@
 import { normalizeWikiTitle } from './farming.ts';
 import { resolveSafeExternalImageUrl } from './resolver.ts';
 
-const WIKI_THUMBNAIL_CACHE_KEY = 'gbfit:wiki-material-thumbnails:v3';
+const WIKI_THUMBNAIL_CACHE_KEY = 'gbfit:wiki-material-thumbnails:v4';
 const WIKI_API = 'https://gbf.wiki/api.php';
 const MAX_TITLES_PER_REQUEST = 50;
 export const WIKI_THUMBNAIL_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -14,7 +14,7 @@ type ThumbnailEntry = {
 };
 
 type ThumbnailCachePayload = {
-  version: 3;
+  version: 4;
   entries: Record<string, ThumbnailEntry>;
 };
 
@@ -28,6 +28,12 @@ type ThumbnailResolution = {
   url?: string;
 };
 
+type ThumbnailRequest = {
+  key: string;
+  title: string;
+  itemId?: string;
+};
+
 type QueryAliases = {
   normalized: Map<string, string>;
   redirects: Map<string, string>;
@@ -37,6 +43,7 @@ export interface WikiThumbnailLoadOptions {
   fetchImpl?: typeof fetch;
   storage?: StorageLike;
   now?: number;
+  itemIdsByTitle?: ReadonlyMap<string, string>;
 }
 
 const inFlightByTitle = new Map<string, Promise<ThumbnailResolution>>();
@@ -45,11 +52,16 @@ export async function loadWikiMaterialThumbnails(
   wikiTitles: readonly string[],
   options: WikiThumbnailLoadOptions = {},
 ): Promise<ReadonlyMap<string, string | undefined>> {
-  const requested = new Map<string, string>();
+  const requested = new Map<string, ThumbnailRequest>();
   for (const raw of wikiTitles) {
     const title = raw.trim();
     if (!title) continue;
-    requested.set(normalizeWikiTitle(title), title);
+    const key = normalizeWikiTitle(title);
+    requested.set(key, {
+      key,
+      title,
+      itemId: options.itemIdsByTitle?.get(key),
+    });
   }
   if (requested.size === 0) return new Map();
 
@@ -59,9 +71,9 @@ export async function loadWikiMaterialThumbnails(
   const cache = readThumbnailCache(storage);
   const result = new Map<string, string | undefined>();
   const pending = new Map<string, Promise<ThumbnailResolution>>();
-  const toFetch: Array<{ key: string; title: string }> = [];
+  const toFetch: ThumbnailRequest[] = [];
 
-  for (const [key, title] of requested) {
+  for (const [key, request] of requested) {
     const cached = cache.entries[key];
     if (cached && now - cached.cachedAt < WIKI_THUMBNAIL_CACHE_TTL_MS) {
       result.set(key, cached.url ?? undefined);
@@ -69,12 +81,12 @@ export async function loadWikiMaterialThumbnails(
     }
     const inFlight = inFlightByTitle.get(key);
     if (inFlight) pending.set(key, inFlight);
-    else toFetch.push({ key, title });
+    else toFetch.push(request);
   }
 
   for (let offset = 0; offset < toFetch.length; offset += MAX_TITLES_PER_REQUEST) {
     const batch = toFetch.slice(offset, offset + MAX_TITLES_PER_REQUEST);
-    const batchPromise: Promise<ThumbnailBatchResult> = fetchThumbnailBatch(batch.map((entry) => entry.title), fetchImpl)
+    const batchPromise: Promise<ThumbnailBatchResult> = fetchThumbnailBatch(batch, fetchImpl)
       .then((thumbnails) => ({ ok: true, thumbnails }))
       .catch(() => ({ ok: false, thumbnails: new Map<string, string | undefined>() }));
 
@@ -140,29 +152,33 @@ export function buildWikiImageInfoApiUrl(fileTitles: readonly string[]): string 
 }
 
 async function fetchThumbnailBatch(
-  titles: readonly string[],
+  requests: readonly ThumbnailRequest[],
   fetchImpl: typeof fetch,
 ): Promise<Map<string, string | undefined>> {
+  const titles = requests.map((request) => request.title);
   const response = await fetchImpl(buildWikiThumbnailApiUrl(titles), publicWikiRequestInit());
   if (!response.ok) throw new Error(`GBF Wiki thumbnail request failed: ${response.status}`);
   const payload = await response.json() as unknown;
   const thumbnails = parseThumbnailResponse(payload, titles);
-  const fallbackTitles = titles.filter((title) => !thumbnails.get(normalizeWikiTitle(title)));
-  if (fallbackTitles.length === 0) return thumbnails;
+  const fallbackRequests = requests.filter((request) => !thumbnails.get(request.key));
+  if (fallbackRequests.length === 0) return thumbnails;
 
-  const fallback = await fetchSharedPageImageFallback(fallbackTitles, fetchImpl);
+  const fallback = await fetchSharedPageImageFallback(fallbackRequests, fetchImpl);
   for (const [key, url] of fallback) thumbnails.set(key, url);
   return thumbnails;
 }
 
 async function fetchSharedPageImageFallback(
-  titles: readonly string[],
+  requests: readonly ThumbnailRequest[],
   fetchImpl: typeof fetch,
 ): Promise<Map<string, string>> {
-  const pageResponse = await fetchImpl(buildWikiPageImagesApiUrl(titles), publicWikiRequestInit());
+  const pageResponse = await fetchImpl(
+    buildWikiPageImagesApiUrl(requests.map((request) => request.title)),
+    publicWikiRequestInit(),
+  );
   if (!pageResponse.ok) return new Map();
   const pagePayload = await pageResponse.json() as unknown;
-  const filesByRequestedTitle = selectMaterialImageFiles(pagePayload, titles);
+  const filesByRequestedTitle = selectMaterialImageFiles(pagePayload, requests);
   if (filesByRequestedTitle.size === 0) return new Map();
 
   const fileTitles = [...new Set(filesByRequestedTitle.values())];
@@ -216,7 +232,7 @@ function parseThumbnailResponse(
 
 function selectMaterialImageFiles(
   payload: unknown,
-  requestedTitles: readonly string[],
+  requests: readonly ThumbnailRequest[],
 ): Map<string, string> {
   const result = new Map<string, string>();
   const query = queryObject(payload);
@@ -229,27 +245,35 @@ function selectMaterialImageFiles(
     pages.set(normalizeWikiTitle(page.title), page);
   }
 
-  for (const rawTitle of requestedTitles) {
-    const requestedKey = normalizeWikiTitle(rawTitle);
-    const canonicalKey = resolveCanonicalKey(requestedKey, aliases);
+  for (const request of requests) {
+    const canonicalKey = resolveCanonicalKey(request.key, aliases);
     const page = pages.get(canonicalKey);
     if (!page || !Array.isArray(page.images)) continue;
     const imageTitles = page.images
       .filter(isObject)
       .map((image) => typeof image.title === 'string' ? image.title : '')
       .filter(Boolean);
-    const selected = selectBestMaterialImageFile(rawTitle, imageTitles);
-    if (selected) result.set(requestedKey, selected);
+    const selected = selectBestMaterialImageFile(request.title, request.itemId, imageTitles);
+    if (selected) result.set(request.key, selected);
   }
   return result;
 }
 
-function selectBestMaterialImageFile(materialTitle: string, imageTitles: readonly string[]): string | undefined {
+function selectBestMaterialImageFile(
+  materialTitle: string,
+  itemId: string | undefined,
+  imageTitles: readonly string[],
+): string | undefined {
   const materialTokens = assetTokens(materialTitle);
-  if (materialTokens.length === 0) return undefined;
   const materialCompact = materialTokens.join('');
   const ranked = imageTitles
-    .map((fileTitle) => ({ fileTitle, score: materialImageScore(materialTokens, materialCompact, fileTitle) }))
+    .map((fileTitle) => ({
+      fileTitle,
+      score: Math.max(
+        technicalItemImageScore(itemId, fileTitle),
+        materialImageScore(materialTokens, materialCompact, fileTitle),
+      ),
+    }))
     .filter((candidate) => candidate.score > 0)
     .sort((left, right) => right.score - left.score || left.fileTitle.localeCompare(right.fileTitle));
   if (ranked.length === 0) return undefined;
@@ -257,7 +281,21 @@ function selectBestMaterialImageFile(materialTitle: string, imageTitles: readonl
   return ranked[0]!.fileTitle;
 }
 
+function technicalItemImageScore(itemId: string | undefined, fileTitle: string): number {
+  const id = itemId?.trim();
+  if (!id) return 0;
+  const normalized = fileTitle
+    .replace(/^File:/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_');
+  const technicalPrefix = `item_article_s_${id.toLowerCase()}`;
+  if (!normalized.startsWith(technicalPrefix)) return 0;
+  const next = normalized.charAt(technicalPrefix.length);
+  return !next || next === '_' ? 2000 : 0;
+}
+
 function materialImageScore(materialTokens: readonly string[], materialCompact: string, fileTitle: string): number {
+  if (materialTokens.length === 0) return 0;
   const fileTokens = assetTokens(fileTitle).filter((token) => token !== 'item' && token !== 'icon' && token !== 'thumb');
   if (fileTokens.length === 0) return 0;
   const fileCompact = fileTokens.join('');
@@ -331,12 +369,12 @@ function resolveCanonicalKey(key: string, aliases: QueryAliases): string {
 }
 
 function readThumbnailCache(storage: StorageLike | undefined): ThumbnailCachePayload {
-  if (!storage) return { version: 3, entries: {} };
+  if (!storage) return { version: 4, entries: {} };
   try {
     const raw = storage.getItem(WIKI_THUMBNAIL_CACHE_KEY);
-    if (!raw) return { version: 3, entries: {} };
+    if (!raw) return { version: 4, entries: {} };
     const value = JSON.parse(raw) as unknown;
-    if (!isObject(value) || value.version !== 3 || !isObject(value.entries)) return { version: 3, entries: {} };
+    if (!isObject(value) || value.version !== 4 || !isObject(value.entries)) return { version: 4, entries: {} };
     const entries: Record<string, ThumbnailEntry> = {};
     for (const [key, candidate] of Object.entries(value.entries)) {
       if (!isObject(candidate) || typeof candidate.cachedAt !== 'number' || !Number.isFinite(candidate.cachedAt)) continue;
@@ -347,9 +385,9 @@ function readThumbnailCache(storage: StorageLike | undefined): ThumbnailCachePay
           : null;
       entries[key] = { cachedAt: candidate.cachedAt, url };
     }
-    return { version: 3, entries };
+    return { version: 4, entries };
   } catch {
-    return { version: 3, entries: {} };
+    return { version: 4, entries: {} };
   }
 }
 
