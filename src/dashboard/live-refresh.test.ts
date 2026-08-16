@@ -24,6 +24,7 @@ test('live refresh targets only sections that use changed account families', () 
 
   assert.deepEqual(changed, ['characters']);
   assert.equal(sectionUsesAccountEvidence('characters', changed), true);
+  assert.equal(sectionUsesAccountEvidence('roster', changed), true);
   assert.equal(sectionUsesAccountEvidence('overview', changed), true);
   assert.equal(sectionUsesAccountEvidence('weapons', changed), false);
   assert.equal(sectionUsesAccountEvidence('combat', changed), false);

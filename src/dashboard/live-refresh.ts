@@ -17,6 +17,7 @@ const ACCOUNT_FAMILIES = [
 const SECTION_EVIDENCE: Readonly<Record<string, readonly AccountEvidenceKey[] | 'all'>> = {
   overview: 'all',
   goals: ['characters', 'treasures', 'progression'],
+  roster: ['characters'],
   eternals: ['characters', 'treasures', 'progression'],
   evokers: ['characters', 'treasures', 'progression'],
   characters: ['characters'],

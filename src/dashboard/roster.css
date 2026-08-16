@@ -1,0 +1,19 @@
+.roster-header { align-items: flex-start; }
+.roster-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) 150px 190px auto; gap: 10px; align-items: end; margin-bottom: 12px; padding: 12px; border: 1px solid #2b333b; border-radius: 11px; background: #15191d; }
+.roster-toolbar label { display: grid; gap: 5px; color: #82909a; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
+.roster-toolbar input, .roster-toolbar select { min-width: 0; border: 1px solid #34404a; border-radius: 8px; background: #101419; color: #dbe6ef; padding: 8px 9px; font: inherit; font-size: 11px; }
+.roster-source-quality { display: grid; grid-template-columns: auto auto; gap: 3px 8px; align-self: stretch; align-content: center; padding: 7px 9px; border: 1px solid #29323a; border-radius: 8px; background: #101419; font-size: 9px; }
+.roster-source-quality span { color: #778690; }.roster-source-quality strong { color: #c7d2da; text-align: right; }
+.roster-summary { display: flex; gap: 6px; align-items: baseline; margin: 0 0 9px; color: #8c9aa5; font-size: 10px; }.roster-summary > strong { color: #e5edf3; font-size: 16px; }.roster-summary small { margin-left: auto; color: #71808b; }
+.roster-matrix-wrap { overflow: auto; border: 1px solid #2b333b; border-radius: 11px; background: #15191d; }
+.roster-matrix { min-width: 1320px; }
+.roster-row { display: grid; grid-template-columns: minmax(190px, 1.6fr) 70px 90px 130px 130px repeat(10, 62px); align-items: center; min-height: 42px; border-top: 1px solid #252d34; font-size: 10px; }
+.roster-row:first-child { border-top: 0; }.roster-row > span { min-width: 0; padding: 7px 8px; overflow-wrap: anywhere; }
+.roster-row-head { position: sticky; top: 0; z-index: 2; min-height: 34px; background: #11161a; color: #778690; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.roster-name { display: grid; gap: 2px; }.roster-name strong { color: #dce5eb; font-size: 11px; }.roster-name small { color: #71808b; font-size: 8px; }
+.roster-cap { justify-self: center; text-align: center; font-weight: 900; }.roster-cap.yes { color: #8bd6a1; }.roster-cap.no { color: #59656e; }.roster-cap.unknown { color: #b7a7df; }
+.roster-empty { display: grid; gap: 5px; padding: 22px; border: 1px dashed #303943; border-radius: 11px; color: #8f9ca7; font-size: 11px; }.roster-empty strong { color: #dfe7ed; font-size: 13px; }
+:root[data-theme='light'] .roster-toolbar, :root[data-theme='light'] .roster-matrix-wrap { background: #fff; border-color: #d8dde1; }
+:root[data-theme='light'] .roster-toolbar input, :root[data-theme='light'] .roster-toolbar select, :root[data-theme='light'] .roster-source-quality { background: #f8fafb; border-color: #dce1e5; color: #29343c; }
+:root[data-theme='light'] .roster-row { border-color: #e7eaed; }:root[data-theme='light'] .roster-row-head { background: #f4f6f7; color: #68747c; }:root[data-theme='light'] .roster-name strong { color: #29343c; }
+@media (max-width: 1050px) { .roster-toolbar { grid-template-columns: 1fr 1fr; }.roster-source-quality { grid-column: 1 / -1; } }

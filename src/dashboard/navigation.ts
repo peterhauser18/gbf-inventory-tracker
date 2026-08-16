@@ -3,6 +3,7 @@ export type DashboardDestinationKey =
   | 'goals'
   | 'combat'
   | 'raids'
+  | 'roster'
   | 'eternals'
   | 'evokers'
   | 'characters'
@@ -15,7 +16,7 @@ export type DashboardDestinationKey =
   | 'developer';
 
 export type DashboardNavigationGroup = 'overview' | 'detail' | 'system';
-export type DashboardDestinationOwner = 'dashboard' | 'combat' | 'goals';
+export type DashboardDestinationOwner = 'dashboard' | 'combat' | 'goals' | 'roster';
 
 export interface DashboardDestination {
   key: DashboardDestinationKey;
@@ -60,10 +61,18 @@ export const DASHBOARD_DESTINATIONS: readonly DashboardDestination[] = [
   {
     key: 'raids',
     label: 'Raids',
-    description: 'Local raid history, tracked drops, notes and observed rates.',
+    description: 'Local raid history, tracked drops, notes, observed rates and record comparison.',
     group: 'detail',
     owner: 'combat',
-    keywords: ['drops', 'history', 'tracker', 'rate'],
+    keywords: ['drops', 'history', 'tracker', 'rate', 'compare'],
+  },
+  {
+    key: 'roster',
+    label: 'Roster',
+    description: 'Observed characters by element and objective Wiki-described utility capabilities.',
+    group: 'detail',
+    owner: 'roster',
+    keywords: ['capabilities', 'utility', 'dispel', 'delay', 'veil', 'heal', 'matrix', 'characters'],
   },
   {
     key: 'eternals',
@@ -87,7 +96,7 @@ export const DASHBOARD_DESTINATIONS: readonly DashboardDestination[] = [
     description: 'Observed character collection and public metadata.',
     group: 'detail',
     owner: 'dashboard',
-    keywords: ['roster', 'collection', 'units', 'inventory'],
+    keywords: ['collection', 'units', 'inventory'],
   },
   {
     key: 'weapons',
@@ -152,7 +161,7 @@ export const DASHBOARD_NAV_GROUPS: readonly DashboardNavigationGroupDefinition[]
   {
     key: 'detail',
     label: 'Detail',
-    destinations: ['combat', 'raids', 'eternals', 'evokers', 'characters', 'weapons', 'summons', 'treasures', 'consumables', 'stashes'],
+    destinations: ['combat', 'raids', 'roster', 'eternals', 'evokers', 'characters', 'weapons', 'summons', 'treasures', 'consumables', 'stashes'],
   },
   { key: 'system', label: 'System', destinations: ['settings', 'developer'] },
 ] as const;
