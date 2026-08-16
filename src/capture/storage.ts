@@ -5,11 +5,29 @@ const DB_NAME = 'gbf-inventory-tracker-captures';
 const DB_VERSION = 1;
 const RESPONSE_STORE = 'responses';
 const SCAN_STORE = 'scans';
+const COMPACT_DIAGNOSTIC_PATHS = new Set(['/item/article_list_by_filter_mode']);
 export const MAX_DIAGNOSTIC_SCANS = 3;
 
 export interface CapturePrunePlan {
   scanIds: string[];
   responseIds: string[];
+}
+
+export function diagnosticRecordForStorage(record: CapturedResponseRecord): CapturedResponseRecord {
+  let path: string;
+  try {
+    path = new URL(record.meta.url).pathname;
+  } catch {
+    return record;
+  }
+  if (!COMPACT_DIAGNOSTIC_PATHS.has(path)) return record;
+  return {
+    ...record,
+    body: {
+      diagnosticBodyOmitted: true,
+      itemCount: Array.isArray(record.body) ? record.body.length : undefined,
+    },
+  };
 }
 
 async function openCaptureDatabase(): Promise<IDBDatabase> {
@@ -105,31 +123,35 @@ export async function clearCaptureStorage(): Promise<void> {
 }
 
 export async function saveCapturedResponse(record: CapturedResponseRecord): Promise<void> {
+  const storedRecord = diagnosticRecordForStorage(record);
   const db = await openCaptureDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([RESPONSE_STORE, SCAN_STORE], 'readwrite');
-    const responses = tx.objectStore(RESPONSE_STORE);
-    const scans = tx.objectStore(SCAN_STORE);
-    const existingRequest = responses.get(record.id);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([RESPONSE_STORE, SCAN_STORE], 'readwrite');
+      const responses = tx.objectStore(RESPONSE_STORE);
+      const scans = tx.objectStore(SCAN_STORE);
+      const existingRequest = responses.get(storedRecord.id);
 
-    existingRequest.onsuccess = () => {
-      const scanRequest = scans.get(record.scanId);
-      scanRequest.onsuccess = () => {
-        const existing = scanRequest.result as CaptureScanSummary | undefined;
-        if (!existing) {
-          tx.abort();
-          return;
-        }
-        responses.put(record);
-        scans.put(addRecordToSummary(existing, record, !existingRequest.result));
+      existingRequest.onsuccess = () => {
+        const scanRequest = scans.get(storedRecord.scanId);
+        scanRequest.onsuccess = () => {
+          const existing = scanRequest.result as CaptureScanSummary | undefined;
+          if (!existing) {
+            tx.abort();
+            return;
+          }
+          responses.put(storedRecord);
+          scans.put(addRecordToSummary(existing, storedRecord, !existingRequest.result));
+        };
       };
-    };
 
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Capture storage transaction failed'));
-    tx.onabort = () => reject(tx.error ?? new Error('Capture scan is missing'));
-  });
-  db.close();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('Capture storage transaction failed'));
+      tx.onabort = () => reject(tx.error ?? new Error('Capture scan is missing'));
+    });
+  } finally {
+    db.close();
+  }
 }
 
 export async function finishCaptureScan(id: string, stoppedAt = Date.now()): Promise<void> {

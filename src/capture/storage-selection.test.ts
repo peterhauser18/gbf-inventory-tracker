@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildCapturePrunePlan, selectLatestCompletedScan } from './storage.ts';
+import {
+  buildCapturePrunePlan,
+  diagnosticRecordForStorage,
+  selectLatestCompletedScan,
+} from './storage.ts';
 import type { CaptureScanSummary, CapturedResponseRecord } from './types.ts';
 
 function scan(id: string, startedAt: number, stoppedAt?: number): CaptureScanSummary {
@@ -75,4 +79,30 @@ test('retention stays bounded when only stale incomplete scans are available', (
     'active',
   );
   assert.deepEqual(plan, { scanIds: ['stale-old'], responseIds: ['r-old'] });
+});
+
+test('large treasure responses are compacted only for diagnostic persistence', () => {
+  const body = Array.from({ length: 10_000 }, (_, index) => ({
+    item_id: String(index),
+    number: index,
+    name: `Treasure ${index}`,
+    extra: 'x'.repeat(200),
+  }));
+  const source: CapturedResponseRecord = {
+    ...record('treasures', 'scan-1'),
+    meta: {
+      ...record('treasures', 'scan-1').meta,
+      url: 'https://game.granbluefantasy.jp/item/article_list_by_filter_mode',
+    },
+    body,
+    categories: ['treasures'],
+  };
+
+  const stored = diagnosticRecordForStorage(source);
+
+  assert.equal(source.body, body);
+  assert.equal(stored === source, false);
+  assert.deepEqual(stored.body, { diagnosticBodyOmitted: true, itemCount: 10_000 });
+  assert.deepEqual(stored.categories, ['treasures']);
+  assert.ok(JSON.stringify(stored.body).length < 100);
 });
