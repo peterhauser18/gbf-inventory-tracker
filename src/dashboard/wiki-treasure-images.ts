@@ -89,8 +89,6 @@ export class WikiTreasureImageResolver {
   private async load(entry: QueueEntry): Promise<void> {
     let imageUrl: string | undefined;
     try {
-      // The concrete public Wiki page title is intentionally sent here. No GBF auth,
-      // account identifiers, owned amount, session data or Cygames request is involved.
       const response = await this.fetchImpl.call(globalThis, buildWikiTreasurePageImageUrl(entry.title), {
         credentials: 'omit',
         referrerPolicy: 'no-referrer',
@@ -118,8 +116,6 @@ export class WikiTreasureImageResolver {
 let defaultResolver: WikiTreasureImageResolver | null = null;
 
 export function loadWikiTreasureImage(title: string): Promise<string | undefined> {
-  // Successful page->image mappings are cached by the resolver, so scrolling back over
-  // already-seen Treasures does not repeat the public Wiki metadata request.
   if (!defaultResolver) defaultResolver = new WikiTreasureImageResolver();
   return defaultResolver.resolve(title);
 }
