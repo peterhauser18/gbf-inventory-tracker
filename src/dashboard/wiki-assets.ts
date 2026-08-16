@@ -1,7 +1,7 @@
 import { normalizeWikiTitle } from './farming.ts';
 import { resolveSafeExternalImageUrl } from './resolver.ts';
 
-const WIKI_THUMBNAIL_CACHE_KEY = 'gbfit:wiki-material-thumbnails:v4';
+const WIKI_THUMBNAIL_CACHE_KEY = 'gbfit:wiki-material-thumbnails:v5';
 const WIKI_API = 'https://gbf.wiki/api.php';
 const MAX_TITLES_PER_REQUEST = 50;
 export const WIKI_THUMBNAIL_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -14,7 +14,7 @@ type ThumbnailEntry = {
 };
 
 type ThumbnailCachePayload = {
-  version: 4;
+  version: 5;
   entries: Record<string, ThumbnailEntry>;
 };
 
@@ -37,6 +37,11 @@ type ThumbnailRequest = {
 type QueryAliases = {
   normalized: Map<string, string>;
   redirects: Map<string, string>;
+};
+
+type WeaponAsset = {
+  variant: string;
+  id: string;
 };
 
 export interface WikiThumbnailLoadOptions {
@@ -160,12 +165,44 @@ async function fetchThumbnailBatch(
   if (!response.ok) throw new Error(`GBF Wiki thumbnail request failed: ${response.status}`);
   const payload = await response.json() as unknown;
   const thumbnails = parseThumbnailResponse(payload, requests);
-  const fallbackRequests = requests.filter((request) => !thumbnails.get(request.key));
+  let fallbackRequests = requests.filter((request) => !thumbnails.get(request.key));
   if (fallbackRequests.length === 0) return thumbnails;
 
-  const fallback = await fetchSharedPageImageFallback(fallbackRequests, fetchImpl);
-  for (const [key, url] of fallback) thumbnails.set(key, url);
+  const exactItemFallback = await fetchExactItemImageFallback(fallbackRequests, fetchImpl);
+  for (const [key, url] of exactItemFallback) thumbnails.set(key, url);
+  fallbackRequests = fallbackRequests.filter((request) => !thumbnails.get(request.key));
+  if (fallbackRequests.length === 0) return thumbnails;
+
+  const sharedPageFallback = await fetchSharedPageImageFallback(fallbackRequests, fetchImpl);
+  for (const [key, url] of sharedPageFallback) thumbnails.set(key, url);
   return thumbnails;
+}
+
+async function fetchExactItemImageFallback(
+  requests: readonly ThumbnailRequest[],
+  fetchImpl: typeof fetch,
+): Promise<Map<string, string>> {
+  const fileByRequest = new Map<string, string>();
+  for (const request of requests) {
+    const id = request.itemId?.trim();
+    if (!id) continue;
+    fileByRequest.set(request.key, `File:Item_article_s_${id}.jpg`);
+  }
+  if (fileByRequest.size === 0) return new Map();
+
+  const imageResponse = await fetchImpl(
+    buildWikiImageInfoApiUrl([...new Set(fileByRequest.values())]),
+    publicWikiRequestInit(),
+  );
+  if (!imageResponse.ok) return new Map();
+  const imagePayload = await imageResponse.json() as unknown;
+  const urlsByFile = parseImageInfoResponse(imagePayload);
+  const result = new Map<string, string>();
+  for (const [requestedKey, fileTitle] of fileByRequest) {
+    const url = urlsByFile.get(normalizeWikiTitle(fileTitle));
+    if (url) result.set(requestedKey, url);
+  }
+  return result;
 }
 
 async function fetchSharedPageImageFallback(
@@ -271,6 +308,7 @@ function selectBestMaterialImageFile(
       fileTitle,
       score: Math.max(
         technicalItemImageScore(itemId, fileTitle),
+        repeatedWeaponPageImageScore(fileTitle, imageTitles),
         materialImageScore(materialTokens, materialCompact, fileTitle),
       ),
     }))
@@ -292,6 +330,35 @@ function technicalItemImageScore(itemId: string | undefined, fileTitle: string):
   if (!normalized.startsWith(technicalPrefix)) return 0;
   const next = normalized.charAt(technicalPrefix.length);
   return !next || next === '_' ? 2000 : 0;
+}
+
+function repeatedWeaponPageImageScore(fileTitle: string, imageTitles: readonly string[]): number {
+  const current = parseWeaponAsset(fileTitle);
+  if (!current) return 0;
+  const variants = new Set<string>();
+  for (const candidate of imageTitles) {
+    const parsed = parseWeaponAsset(candidate);
+    if (parsed?.id === current.id) variants.add(parsed.variant);
+  }
+  if (variants.size < 3) return 0;
+  const variantPreference = current.variant === 's'
+    ? 100
+    : current.variant === 'b'
+      ? 80
+      : current.variant === 'm'
+        ? 60
+        : current.variant === 'ls'
+          ? 40
+          : 20;
+  return 1500 + Math.min(20, variants.size) + variantPreference;
+}
+
+function parseWeaponAsset(fileTitle: string): WeaponAsset | undefined {
+  const match = fileTitle
+    .replace(/^File:/i, '')
+    .match(/^Weapon\s+(b|ls|sp|s|m)\s+(\d+)\.(?:jpe?g|png)$/i);
+  if (!match) return undefined;
+  return { variant: match[1]!.toLowerCase(), id: match[2]! };
 }
 
 function materialImageScore(materialTokens: readonly string[], materialCompact: string, fileTitle: string): number {
@@ -369,12 +436,12 @@ function resolveCanonicalKey(key: string, aliases: QueryAliases): string {
 }
 
 function readThumbnailCache(storage: StorageLike | undefined): ThumbnailCachePayload {
-  if (!storage) return { version: 4, entries: {} };
+  if (!storage) return { version: 5, entries: {} };
   try {
     const raw = storage.getItem(WIKI_THUMBNAIL_CACHE_KEY);
-    if (!raw) return { version: 4, entries: {} };
+    if (!raw) return { version: 5, entries: {} };
     const value = JSON.parse(raw) as unknown;
-    if (!isObject(value) || value.version !== 4 || !isObject(value.entries)) return { version: 4, entries: {} };
+    if (!isObject(value) || value.version !== 5 || !isObject(value.entries)) return { version: 5, entries: {} };
     const entries: Record<string, ThumbnailEntry> = {};
     for (const [key, candidate] of Object.entries(value.entries)) {
       if (!isObject(candidate) || typeof candidate.cachedAt !== 'number' || !Number.isFinite(candidate.cachedAt)) continue;
@@ -385,9 +452,9 @@ function readThumbnailCache(storage: StorageLike | undefined): ThumbnailCachePay
           : null;
       entries[key] = { cachedAt: candidate.cachedAt, url };
     }
-    return { version: 4, entries };
+    return { version: 5, entries };
   } catch {
-    return { version: 4, entries: {} };
+    return { version: 5, entries: {} };
   }
 }
 
