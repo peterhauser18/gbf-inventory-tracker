@@ -16,6 +16,8 @@ import {
   wikiEntityImageUrl,
 } from './wiki-metadata.ts';
 
+export const DASHBOARD_TREASURE_PREVIEW_LIMIT = 200;
+
 export type DashboardSection =
   | 'overview'
   | 'eternals'
@@ -136,7 +138,7 @@ export function buildDashboardViewModel(
         ],
       } satisfies DashboardCard;
     }),
-    treasures: snapshot.treasures.map((treasure) => {
+    treasures: snapshot.treasures.slice(0, DASHBOARD_TREASURE_PREVIEW_LIMIT).map((treasure) => {
       const resolvedName = treasure.name ?? findRequirementName(treasure.itemId);
       return {
         key: `treasure:${treasure.itemId}`,
