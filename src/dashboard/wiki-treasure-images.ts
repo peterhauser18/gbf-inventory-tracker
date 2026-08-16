@@ -176,13 +176,6 @@ function wikiTreasureSourceEntries(pageTitle: string, source: string | undefined
     if (directImages.length === 1) {
       const imageUrl = safeWikiFileRedirect(directImages[0]!);
       if (imageUrl) result.set(normalizeWikiTreasureTitle(pageTitle), imageUrl);
-    } else {
-      const ids = sourceFieldValues(source, /^(?:id|itemid|item_id|item id)$/i)
-        .filter((value) => /^\d+$/.test(value.trim()));
-      if (ids.length === 1) {
-        const imageUrl = technicalTreasureImageUrl(ids[0]!.trim());
-        if (imageUrl) result.set(normalizeWikiTreasureTitle(pageTitle), imageUrl);
-      }
     }
   }
 
@@ -240,13 +233,14 @@ function cleanWikiText(value: string): string | undefined {
 
 function wikiPageSource(page: JsonObject): string | undefined {
   if (!Array.isArray(page.revisions)) return undefined;
-  const revision = page.revisions.find(isObject);
-  if (!revision) return undefined;
-  const slots = isObject(revision.slots) ? revision.slots : undefined;
-  const main = slots && isObject(slots.main) ? slots.main : undefined;
-  if (main && typeof main.content === 'string') return main.content;
-  if (typeof revision.content === 'string') return revision.content;
-  if (typeof revision['*'] === 'string') return revision['*'];
+  for (const candidate of page.revisions) {
+    if (!isObject(candidate)) continue;
+    const slots = isObject(candidate.slots) ? candidate.slots : undefined;
+    const main = slots && isObject(slots.main) ? slots.main : undefined;
+    if (main && typeof main.content === 'string') return main.content;
+    if (typeof candidate.content === 'string') return candidate.content;
+    if (typeof candidate['*'] === 'string') return candidate['*'];
+  }
   return undefined;
 }
 
