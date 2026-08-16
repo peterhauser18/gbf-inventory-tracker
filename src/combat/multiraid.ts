@@ -14,12 +14,27 @@ import type {
 export interface CombatActorContext {
   id?: string;
   name?: string;
+  hp?: number;
+  maxHp?: number;
+  alive?: boolean;
+}
+
+export interface CombatParticipantDisplay {
+  name: string;
+  placement?: number;
+  level?: number;
+  honors?: number;
+  host?: boolean;
+  hpPercent?: number;
+  status?: 'active' | 'dead' | 'retired';
 }
 
 export interface CombatParseContext {
   raidTechnicalId: string;
   instanceId?: string;
   actorSlots: CombatActorContext[];
+  actors?: CombatActorContext[];
+  participants?: CombatParticipantDisplay[];
 }
 
 export interface VerifiedCombatObservation extends CombatObservation {
@@ -110,14 +125,17 @@ function parseVerifiedStart(
   const sameRaid =
     previous?.raidTechnicalId === raidTechnicalId &&
     (!instanceId || !previous.instanceId || instanceId === previous.instanceId);
+  const actorSlots = parsedActors.length > 0
+    ? parsedActors
+    : sameRaid
+      ? previous?.actorSlots ?? []
+      : [];
   const context: CombatParseContext = {
     raidTechnicalId,
     instanceId,
-    actorSlots: parsedActors.length > 0
-      ? parsedActors
-      : sameRaid
-        ? previous?.actorSlots ?? []
-        : [],
+    actorSlots,
+    actors: mergeActorHistory(sameRaid ? previous?.actors : undefined, actorSlots),
+    participants: sameRaid ? previous?.participants : undefined,
   };
   const bossState = verifiedStartBoss(body);
   const turn = num(body.turn);
@@ -147,7 +165,7 @@ function parseVerifiedScenario(
 ): VerifiedCombatObservation | null {
   const scenario = Array.isArray(body.scenario) ? body.scenario : [];
   const parsed = family === 'temporary-item'
-    ? { actions: [] as ParsedCombatAction[], gaps: 0 }
+    ? { actions: [] as ParsedCombatAction[], gaps: 0, context: verifiedScenarioContext(scenario, context) }
     : verifiedScenarioActions(scenario, observedAt, context);
   const bossState = verifiedScenarioBoss(scenario);
   const contributionDelta = verifiedScenarioContribution(scenario);
@@ -170,7 +188,7 @@ function parseVerifiedScenario(
     unparsedActionCount: parsed.gaps,
     drops: [],
     dropsQuality: 'unknown',
-    context,
+    context: parsed.context,
   };
 }
 
@@ -180,18 +198,21 @@ function parseVerifiedMembers(
   context: CombatParseContext,
 ): VerifiedCombatObservation | null {
   const members = Array.isArray(body.multi_member_info) ? body.multi_member_info : undefined;
-  if (!members) return null;
+  const display = verifiedParticipantDisplay(body);
+  if (!members && display.length === 0) return null;
+  const nextContext = cloneContext(context);
+  if (display.length > 0) nextContext.participants = display;
   return {
     raidTechnicalId: context.raidTechnicalId,
     observedAt,
     startObserved: false,
-    participants: { count: members.length, quality: 'known' },
+    participants: { count: members?.length ?? display.length, quality: 'known' },
     actions: [],
     actionsFieldPresent: false,
     unparsedActionCount: 0,
     drops: [],
     dropsQuality: 'unknown',
-    context,
+    context: nextContext,
   };
 }
 
@@ -226,8 +247,9 @@ function verifiedScenarioActions(
   scenario: unknown[],
   observedAt: number,
   context: CombatParseContext,
-): { actions: ParsedCombatAction[]; gaps: number } {
+): { actions: ParsedCombatAction[]; gaps: number; context: CombatParseContext } {
   const actions: ParsedCombatAction[] = [];
+  const nextContext = cloneContext(context);
   let gaps = 0;
   let pendingNormal: ParsedCombatAction | undefined;
   let pendingNormalPos: number | undefined;
@@ -245,6 +267,7 @@ function verifiedScenarioActions(
 
   for (const raw of scenario) {
     if (!obj(raw)) continue;
+    applyScenarioPartyState(nextContext, raw);
     const cmd = str(raw.cmd)?.toLowerCase();
     if (!cmd) continue;
 
@@ -255,7 +278,7 @@ function verifiedScenarioActions(
         continue;
       }
       const pos = num(raw.pos);
-      const actor = actorAt(context, pos);
+      const actor = actorAt(nextContext, pos);
       const actionHits = verifiedDamageHits(raw.damage, 'normal');
       if (!actionHits.length) {
         if (raw.damage !== undefined) gaps += 1;
@@ -287,7 +310,7 @@ function verifiedScenarioActions(
 
     if (cmd === 'ability') {
       flushAbility();
-      const actor = actorAt(context, num(raw.pos));
+      const actor = actorAt(nextContext, num(raw.pos));
       if (!actor) continue;
       pendingAbility = {
         observedAt,
@@ -323,7 +346,7 @@ function verifiedScenarioActions(
         if (raw.list !== undefined) gaps += 1;
         continue;
       }
-      const actor = actorAt(context, num(raw.pos));
+      const actor = actorAt(nextContext, num(raw.pos));
       actions.push({
         observedAt,
         actorId: actor?.id,
@@ -346,7 +369,125 @@ function verifiedScenarioActions(
 
   flushNormal();
   flushAbility();
-  return { actions, gaps };
+  return { actions, gaps, context: nextContext };
+}
+
+function verifiedScenarioContext(scenario: unknown[], context: CombatParseContext): CombatParseContext {
+  const next = cloneContext(context);
+  for (const value of scenario) if (obj(value)) applyScenarioPartyState(next, value);
+  return next;
+}
+
+function applyScenarioPartyState(context: CombatParseContext, raw: Obj): void {
+  const cmd = str(raw.cmd)?.toLowerCase();
+  const target = str(raw.to, raw.target)?.toLowerCase();
+  if (target === 'player' && (cmd === 'damage' || cmd === 'heal' || cmd === 'super')) {
+    collectPlayerHp(raw.list ?? raw.damage, context);
+  }
+  if (cmd === 'die' && target === 'player') {
+    const pos = num(raw.pos);
+    if (pos !== undefined) applyExplicitPlayerDeath(context, pos);
+  }
+}
+
+function collectPlayerHp(value: unknown, context: CombatParseContext): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectPlayerHp(item, context);
+    return;
+  }
+  if (!obj(value)) return;
+  const pos = num(value.pos);
+  const hp = num(value.hp);
+  if (pos !== undefined && hp !== undefined) updateActorHp(context, pos, hp);
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'list' || key === 'damage' || /^\d+$/.test(key)) collectPlayerHp(child, context);
+  }
+}
+
+function updateActorHp(context: CombatParseContext, pos: number, hp: number): void {
+  if (!Number.isInteger(pos) || pos < 0 || pos >= context.actorSlots.length) return;
+  const actor = context.actorSlots[pos];
+  if (!actor?.id) return;
+  const updated = { ...actor, hp };
+  context.actorSlots[pos] = updated;
+  rememberActor(context, updated);
+}
+
+function applyExplicitPlayerDeath(context: CombatParseContext, pos: number): void {
+  if (!Number.isInteger(pos) || pos < 0 || pos >= 4 || pos >= context.actorSlots.length) return;
+  const dead = context.actorSlots[pos];
+  if (!dead?.id) return;
+  const deadState = { ...dead, hp: 0, alive: false };
+  context.actorSlots[pos] = deadState;
+  rememberActor(context, deadState);
+
+  const incoming = context.actorSlots[4];
+  if (!incoming?.id) return;
+  context.actorSlots[pos] = { ...incoming };
+  rememberActor(context, incoming);
+  context.actorSlots[4] = context.actorSlots[5] ? { ...context.actorSlots[5] } : {};
+  context.actorSlots[5] = {};
+}
+
+function cloneContext(context: CombatParseContext): CombatParseContext {
+  return {
+    raidTechnicalId: context.raidTechnicalId,
+    instanceId: context.instanceId,
+    actorSlots: context.actorSlots.map((actor) => ({ ...actor })),
+    actors: (context.actors ?? context.actorSlots).map((actor) => ({ ...actor })),
+    participants: context.participants?.map((participant) => ({ ...participant })),
+  };
+}
+
+function mergeActorHistory(previous: CombatActorContext[] | undefined, slots: CombatActorContext[]): CombatActorContext[] {
+  const result = (previous ?? []).map((actor) => ({ ...actor }));
+  for (const actor of slots) mergeActorInto(result, actor);
+  return result;
+}
+
+function rememberActor(context: CombatParseContext, actor: CombatActorContext): void {
+  context.actors ??= [];
+  mergeActorInto(context.actors, actor);
+}
+
+function mergeActorInto(actors: CombatActorContext[], actor: CombatActorContext): void {
+  if (!actor.id) return;
+  const index = actors.findIndex((entry) => entry.id === actor.id);
+  if (index < 0) actors.push({ ...actor });
+  else actors[index] = { ...actors[index], ...actor };
+}
+
+function verifiedParticipantDisplay(body: Obj): CombatParticipantDisplay[] {
+  const members = Array.isArray(body.multi_member_info) ? body.multi_member_info.filter(obj) : [];
+  const ranking = Array.isArray(body.mvp_info) ? body.mvp_info.filter(obj) : [];
+  const memberByName = new Map<string, Obj | null>();
+  for (const member of members) {
+    const name = str(member.nickname, member.name);
+    if (!name) continue;
+    memberByName.set(name, memberByName.has(name) ? null : member);
+  }
+
+  const source = ranking.length > 0 ? ranking : members;
+  return source.slice(0, 30).flatMap((value, index) => {
+    const name = str(value.nickname, value.name);
+    if (!name) return [];
+    const member = memberByName.get(name) ?? (ranking.length === 0 ? value : undefined);
+    const retired = member ? bool(member.retired_flag, member.retired) : undefined;
+    const dead = member ? bool(member.is_dead, member.dead) : undefined;
+    const status = retired === true ? 'retired' as const
+      : dead === true ? 'dead' as const
+        : retired === false || dead === false ? 'active' as const
+          : undefined;
+    return [{
+      name,
+      placement: num(value.rank) ?? (ranking.length === 0 ? undefined : index + 1),
+      level: num(value.level, member?.level),
+      honors: num(value.point, value.honors, value.honour),
+      host: member ? bool(member.is_host) : undefined,
+      hpPercent: member ? num(member.hp_ratio) : undefined,
+      status,
+    }];
+  });
 }
 
 function verifiedDamageHits(value: unknown, kind: DamageKind): ParsedDamageHit[] {
@@ -450,7 +591,13 @@ function verifiedActorSlots(body: Obj): CombatActorContext[] {
   const params = at(body, 'player', 'param');
   if (!Array.isArray(params)) return [];
   return params.map((value) => obj(value)
-    ? { id: str(value.pid), name: str(value.name) }
+    ? {
+        id: str(value.pid),
+        name: str(value.name),
+        hp: num(value.hp),
+        maxHp: num(value.hpmax, value.max_hp),
+        alive: bool(value.alive),
+      }
     : {});
 }
 
