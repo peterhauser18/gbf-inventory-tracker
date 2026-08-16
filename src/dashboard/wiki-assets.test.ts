@@ -62,6 +62,42 @@ test('fresh thumbnail cache avoids another Wiki request', async () => {
   assert.equal(second.get('harp stone'), first.get('harp stone'));
 });
 
+test('an unresolved title is not poisoned into the persistent thumbnail cache', async () => {
+  const storage = memoryStorage();
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ query: { pages: [] } }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  const first = await loadWikiMaterialThumbnails(['Ventus Luster'], { fetchImpl, storage, now: 10 });
+  const second = await loadWikiMaterialThumbnails(['Ventus Luster'], { fetchImpl, storage, now: 20 });
+  assert.equal(first.has('ventus luster'), false);
+  assert.equal(second.has('ventus luster'), false);
+  assert.equal(calls, 2);
+});
+
+test('a Wiki page that explicitly has no page thumbnail is negatively cached', async () => {
+  const storage = memoryStorage();
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      query: { pages: [{ pageid: 1, title: 'Ventus Luster' }] },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const first = await loadWikiMaterialThumbnails(['Ventus Luster'], { fetchImpl, storage, now: 10 });
+  const second = await loadWikiMaterialThumbnails(['Ventus Luster'], { fetchImpl, storage, now: 20 });
+  assert.equal(first.has('ventus luster'), true);
+  assert.equal(first.get('ventus luster'), undefined);
+  assert.equal(second.has('ventus luster'), true);
+  assert.equal(calls, 1);
+});
+
 test('thumbnail API URL is a public GBF Wiki query only', () => {
   const url = new URL(buildWikiThumbnailApiUrl(['Harp Stone', 'Gold Brick']));
   assert.equal(url.origin, 'https://gbf.wiki');
