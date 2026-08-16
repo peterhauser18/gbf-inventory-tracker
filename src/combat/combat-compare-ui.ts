@@ -80,7 +80,8 @@ function syncUi(): void {
     const selected = selectedIds.includes(localId);
     button.classList.toggle('selected', selected);
     button.setAttribute('aria-pressed', String(selected));
-    button.textContent = selected ? '✓ Compare' : 'Compare';
+    const label = selected ? '✓ Compare' : 'Compare';
+    if (button.textContent !== label) button.textContent = label;
   });
 
   syncComparisonPanel(section);

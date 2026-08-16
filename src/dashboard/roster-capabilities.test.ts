@@ -33,6 +33,10 @@ test('detects objective utility phrases without treating Dispel Cancel as Dispel
   assert.equal(detectRosterCapabilities('Gain Substitute and Shield effect. 70% Water Damage Cut.').has('substitute'), true);
   assert.equal(detectRosterCapabilities('Gain Substitute and Shield effect. 70% Water Damage Cut.').has('shield'), true);
   assert.equal(detectRosterCapabilities('Gain Substitute and Shield effect. 70% Water Damage Cut.').has('damage-cut'), true);
+  assert.equal(detectRosterCapabilities('Veil effects are extended by 1 turn.').has('veil'), false);
+  assert.equal(detectRosterCapabilities('Boost to DEF while Shield effect is active.').has('shield'), false);
+  assert.equal(detectRosterCapabilities('Boost to ATK while Substitute is active.').has('substitute'), false);
+  assert.equal(detectRosterCapabilities('Damage Cut effects are reduced.').has('damage-cut'), false);
 });
 
 test('loads only bulk public Cargo tables without owned-character filters or credentials', async () => {

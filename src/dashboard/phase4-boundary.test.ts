@@ -33,6 +33,9 @@ test('combat comparison UI explicitly labels actor lists as observed contributor
   assert.doesNotMatch(compareUi, />Team</);
 });
 
+test('combat comparison mutation sync keeps button text idempotent', () => {
+  assert.ok(compareUi.includes('if (button.textContent !== label) button.textContent = label;'));
+});
 
 test('roster controller is installed before dashboard restore navigation can replay a roster click', () => {
   assert.ok(dashboardHtml.indexOf('/src/dashboard/roster-ui.ts') < dashboardHtml.indexOf('/src/dashboard-entry.ts'));
