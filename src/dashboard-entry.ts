@@ -19,7 +19,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   for (const key of changed) dirtyEvidence.add(key);
 
   const section = activeSection();
-  if (!section || sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
+  if (section && sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
 });
 
 document.addEventListener('click', (event) => {
@@ -36,12 +36,47 @@ document.addEventListener('click', (event) => {
 void bootDashboard();
 
 async function bootDashboard(): Promise<void> {
+  const app = document.querySelector<HTMLElement>('#dashboard-app');
+  if (!app) return;
+
+  const initialRender = waitForInitialDashboardRender(app);
   await import('./dashboard.ts');
+  await initialRender;
+
   keepObservationCopyAccurate();
+  void loadDashboardEnhancements();
 
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
   if (!restoreSection) return;
   restoreSectionWhenReady(restoreSection);
+}
+
+function waitForInitialDashboardRender(app: HTMLElement): Promise<void> {
+  const isReady = (): boolean =>
+    app.children.length > 0 && !app.textContent?.includes('Loading local account database…');
+
+  if (isReady()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const observer = new MutationObserver(() => {
+      if (!isReady()) return;
+      observer.disconnect();
+      resolve();
+    });
+    observer.observe(app, { childList: true, subtree: true });
+  });
+}
+
+async function loadDashboardEnhancements(): Promise<void> {
+  await Promise.allSettled([
+    import('./dashboard/roster-ui.ts'),
+    import('./dashboard/collection-tracker-ui.ts'),
+    import('./dashboard/theme-toggle.ts'),
+    import('./dashboard/goals-ui.ts'),
+    import('./dashboard/farming-ui.ts'),
+    import('./combat/ui.ts'),
+    import('./combat/combat-compare-ui.ts'),
+    import('./dashboard/phase5-ui.ts'),
+  ]);
 }
 
 function keepObservationCopyAccurate(): void {
