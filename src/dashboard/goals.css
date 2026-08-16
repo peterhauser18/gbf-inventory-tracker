@@ -32,7 +32,7 @@
 .goal-deficit-row .quality { margin-left: 5px; }
 .goal-table-note { margin: 8px 0 0; color: #7e8b95; font-size: 10px; }
 .goal-storage-status { padding: 6px 8px; border: 1px solid #2d3942; border-radius: 999px; color: #8fa0ad; font-size: 10px; white-space: nowrap; }
-.goal-page-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(380px, .85fr); gap: 14px; align-items: start; }
+.goal-page-grid { display: block; }
 .goal-stack { display: grid; gap: 10px; }
 .goal-section-head { margin-bottom: 2px; }
 .goal-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; padding: 14px; }
@@ -50,14 +50,32 @@
 .goal-action-kind.reached { background: #213027; color: #9fbaa7; }
 .goal-meta-row { display: flex; flex-wrap: wrap; gap: 8px 15px; color: #788791; font-size: 9px; }
 .goal-meta-row strong { color: #b9c4cc; }
-.goal-requirements { display: grid; gap: 5px; padding-top: 2px; }
-.goal-requirements-label { color: #71808b; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
-.goal-requirement-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 8px; border: 1px solid #252e36; border-radius: 7px; background: #11161a; }
-.goal-requirement-row > span { min-width: 0; overflow-wrap: anywhere; color: #c6d0d8; font-size: 10px; font-weight: 700; }
-.goal-requirement-row small { flex: 0 0 auto; color: #82909a; font-size: 9px; }
-.goal-requirements-more, .goal-requirement-ready { color: #788791; font-size: 9px; }
+.goal-requirements { border: 1px solid #252e36; border-radius: 9px; background: #11161a; overflow: hidden; }
+.goal-requirements-summary { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 9px 10px; cursor: pointer; list-style: none; color: #c6d0d8; font-size: 10px; font-weight: 800; }
+.goal-requirements-summary::-webkit-details-marker { display: none; }
+.goal-requirements-summary::after { content: '+'; flex: 0 0 auto; color: #8fa0ad; font-size: 14px; font-weight: 500; }
+.goal-requirements[open] > .goal-requirements-summary::after { content: '−'; }
+.goal-requirements-summary small { margin-left: auto; color: #788791; font-size: 9px; font-weight: 500; }
+.goal-requirement-list { display: grid; gap: 6px; padding: 0 8px 8px; border-top: 1px solid #252e36; }
+.goal-requirement-row { display: grid; grid-template-columns: 34px minmax(140px, 1fr) auto; gap: 9px; align-items: center; padding: 7px 8px; border: 1px solid #252e36; border-radius: 8px; background: #0f1418; }
+.goal-requirement-row:first-child { margin-top: 8px; }
+.goal-requirement-row.missing { border-color: #334550; }
+.goal-requirement-row.enough { opacity: .72; }
+.goal-requirement-row.unknown { border-style: dashed; }
+.goal-material-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 6px; border: 1px solid #2b353d; background: #151b20; overflow: hidden; }
+.goal-material-icon.empty::after { content: '·'; color: #596773; }
+.goal-material-icon img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.goal-requirement-name { min-width: 0; overflow-wrap: anywhere; color: #d3dce3; font-size: 10px; font-weight: 750; }
+.goal-requirement-row > small { color: #82909a; font-size: 9px; white-space: nowrap; }
+.goal-material-farming { grid-column: 1 / -1; min-width: 0; }
+.goal-inline-farming { display: grid; gap: 6px; margin-top: 3px; padding-top: 7px; border-top: 1px solid #252e36; }
+.goal-inline-farming-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; color: #9baab5; font-size: 9px; }
+.goal-inline-farming-head strong { color: #b9c9d5; }
+.goal-inline-farming-head a, .goal-farming-state a { color: #82bce0; text-decoration: none; }
+.goal-farming-state { display: grid; gap: 3px; margin-top: 3px; padding: 7px 8px; border-top: 1px solid #252e36; color: #83919b; font-size: 9px; line-height: 1.4; }
+.goal-farming-state strong { color: #bdc8d0; }
+.goal-requirement-ready { color: #788791; font-size: 9px; }
 .goal-card-actions { display: flex; flex-direction: column; gap: 7px; align-self: center; }
-.goal-deficit-panel { position: sticky; top: 18px; }
 
 :root[data-theme='light'] .goal-panel,
 :root[data-theme='light'] .goal-card,
@@ -66,9 +84,14 @@
 :root[data-theme='light'] .goal-action-row:hover { background: #f2f6f8; border-color: #9bb9cd; }
 :root[data-theme='light'] .goal-action-row small,
 :root[data-theme='light'] .goal-card p { color: #68747c; }
-:root[data-theme='light'] .goal-requirement-row { background: #f8fafb; border-color: #e0e5e8; }
-:root[data-theme='light'] .goal-requirement-row > span { color: #35414a; }
-:root[data-theme='light'] .goal-requirement-row small { color: #68747c; }
+:root[data-theme='light'] .goal-requirements { background: #f8fafb; border-color: #e0e5e8; }
+:root[data-theme='light'] .goal-requirement-list { border-color: #e0e5e8; }
+:root[data-theme='light'] .goal-requirement-row { background: #fff; border-color: #e0e5e8; }
+:root[data-theme='light'] .goal-requirement-name { color: #35414a; }
+:root[data-theme='light'] .goal-requirement-row > small { color: #68747c; }
+:root[data-theme='light'] .goal-material-icon { background: #f3f6f8; border-color: #d7dfe4; }
+:root[data-theme='light'] .goal-inline-farming,
+:root[data-theme='light'] .goal-farming-state { border-color: #e0e5e8; }
 :root[data-theme='light'] .goal-deficit-table { border-color: #dce1e5; }
 :root[data-theme='light'] .goal-deficit-row { border-color: #e7eaed; }
 :root[data-theme='light'] .goal-deficit-row.header { background: #f4f6f7; color: #68747c; }
@@ -81,6 +104,12 @@
 :root[data-theme='light'] .goal-pin-inline.active { background: #e8f4fb; border-color: #6caed6; color: #165c86; }
 
 @media (max-width: 1080px) {
-  .goal-overview-grid, .goal-page-grid { grid-template-columns: 1fr; }
-  .goal-deficit-panel { position: static; }
+  .goal-overview-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .goal-card { grid-template-columns: 1fr; }
+  .goal-card-actions { flex-direction: row; align-self: auto; }
+  .goal-requirement-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .goal-requirement-row > small { grid-column: 2; white-space: normal; }
 }
