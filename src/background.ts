@@ -2,7 +2,8 @@ import { ingestAccountRecord } from './account/ingest.ts';
 import { loadAccountDatabase, resetAccountDatabase, saveAccountDatabase } from './account/storage.ts';
 import { CaptureEventBuffer } from './capture/event-buffer.ts';
 import { processObservedResponse } from './capture/observer.ts';
-import { buildCapturedResponse, isGbfPageUrl } from './capture/policy.ts';
+import { isGbfPageUrl } from './capture/policy.ts';
+import { classifyObservedResponseUrl, shouldReadObservedResponse } from './capture/route.ts';
 import {
   clearCaptureStorage,
   finishCaptureScan,
@@ -11,27 +12,21 @@ import {
   saveCapturedResponse,
   startCaptureScan,
 } from './capture/storage.ts';
-import { isVerifiedCombatResponseUrl } from './combat/multiraid.ts';
 import { clearCombatParseContext, clearCombatStorage, ingestCapturedCombatRecord } from './combat/storage.ts';
-import { classifyPassiveResponseUrl } from './passive/route.ts';
 import type {
   CaptureMessage,
   CaptureResourceType,
   CaptureStatusResponse,
   CapturedResponseRecord,
   DebuggerResponseBody,
-  ObservedResponse,
-  PassiveAccountResponseMessage,
 } from './capture/types.ts';
 import { cleanupLocalData, type LocalCleanupMode } from './storage/cleanup.ts';
 
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const STATE_KEY = 'gbfit:capture-state';
-const PASSIVE_SCAN_ID = 'passive-account';
 const pendingResponses = new CaptureEventBuffer();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
-let combatQueue: Promise<void> = Promise.resolve();
 
 type RuntimeState = {
   active: boolean;
@@ -50,13 +45,10 @@ type NetworkResponseReceived = {
   };
 };
 
-type PassiveMessageResponse = { ok: boolean };
-type BackgroundResponse = CaptureStatusResponse | PassiveMessageResponse;
-
-chrome.runtime.onMessage.addListener((message: CaptureMessage, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: CaptureMessage, _sender, sendResponse) => {
   if (!message?.type?.startsWith('gbfit:')) return false;
 
-  void handleMessage(message, sender)
+  void handleMessage(message)
     .then(sendResponse)
     .catch((error: unknown) =>
       sendResponse({
@@ -83,7 +75,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   void handleUnexpectedDetach(source.tabId, reason);
 });
 
-async function handleMessage(message: CaptureMessage, sender: chrome.runtime.MessageSender): Promise<BackgroundResponse> {
+async function handleMessage(message: CaptureMessage): Promise<CaptureStatusResponse> {
   switch (message.type) {
     case 'gbfit:start-observation':
       return await startObservation();
@@ -100,58 +92,7 @@ async function handleMessage(message: CaptureMessage, sender: chrome.runtime.Mes
     case 'gbfit:clear-all-except-account':
       await queueLocalCleanup('all-except-account');
       return await getStatus();
-    case 'gbfit:passive-account-response':
-      return { ok: await handlePassiveResponse(message, sender) };
   }
-}
-
-async function handlePassiveResponse(
-  message: PassiveAccountResponseMessage,
-  sender: chrome.runtime.MessageSender,
-): Promise<boolean> {
-  const senderUrl = sender.url ?? sender.tab?.url;
-  if (!isGbfPageUrl(senderUrl)) return false;
-
-  const response = message.response;
-  const route = classifyPassiveResponseUrl(response.url);
-  if (!route) return false;
-
-  const meta: ObservedResponse = {
-    requestId: crypto.randomUUID(),
-    url: response.url,
-    status: response.status,
-    mimeType: response.mimeType,
-    resourceType: response.resourceType,
-  };
-  const record = buildCapturedResponse(meta, response.body, PASSIVE_SCAN_ID, Date.now());
-  if (!record) return false;
-
-  if (route === 'combat') {
-    const state = await getRuntimeState();
-    if (state.active) return false;
-
-    let accepted = false;
-    combatQueue = combatQueue
-      .catch(() => {})
-      .then(async () => {
-        accepted = Boolean(await ingestCapturedCombatRecord(record));
-      });
-    await combatQueue;
-    return accepted;
-  }
-
-  let accepted = false;
-  accountQueue = accountQueue
-    .catch(() => {})
-    .then(async () => {
-      const current = await loadAccountDatabase();
-      const next = ingestAccountRecord(current, record);
-      if (!next || next === current) return;
-      await saveAccountDatabase(next);
-      accepted = true;
-    });
-  await accountQueue;
-  return accepted;
 }
 
 async function queueAccountReset(): Promise<void> {
@@ -161,9 +102,21 @@ async function queueAccountReset(): Promise<void> {
   await accountQueue;
 }
 
+async function queueAccountIngest(record: CapturedResponseRecord): Promise<void> {
+  accountQueue = accountQueue
+    .catch(() => {})
+    .then(async () => {
+      const current = await loadAccountDatabase();
+      const next = ingestAccountRecord(current, record);
+      if (!next || next === current) return;
+      await saveAccountDatabase(next);
+    });
+  await accountQueue;
+}
+
 async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
   const state = await getRuntimeState();
-  if (state.active) throw new Error('Stop the diagnostic scan before clearing local diagnostic data.');
+  if (state.active) throw new Error('Stop observation before clearing local diagnostic data.');
   await cleanupLocalData(mode, {
     clearDiagnostic: clearCaptureStorage,
     clearCombat: clearCombatStorage,
@@ -177,7 +130,7 @@ async function startObservation(): Promise<CaptureStatusResponse> {
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab?.id === undefined || !isGbfPageUrl(tab.url)) {
-    throw new Error('Open game.granbluefantasy.jp in the active tab before starting the diagnostic scan.');
+    throw new Error('Open game.granbluefantasy.jp in the active tab before starting observation.');
   }
 
   const target = { tabId: tab.id };
@@ -240,7 +193,7 @@ async function handleDebuggerEvent(
     const resourceType = normalizeResourceType(event?.type);
     const url = event?.response?.url;
     const requestId = event?.requestId;
-    if (!url || !requestId) return;
+    if (!url || !requestId || !shouldReadObservedResponse(url, resourceType)) return;
 
     pendingResponses.remember({
       requestId,
@@ -256,7 +209,7 @@ async function handleDebuggerEvent(
   const requestId = (params as { requestId?: string } | undefined)?.requestId;
   if (!requestId) return;
   const meta = pendingResponses.take(requestId);
-  if (!meta) return;
+  if (!meta || !shouldReadObservedResponse(meta.url, meta.resourceType)) return;
 
   try {
     await processObservedResponse(
@@ -278,8 +231,15 @@ async function handleDebuggerEvent(
 }
 
 async function saveObservedResponse(record: CapturedResponseRecord): Promise<void> {
-  const combat = await ingestCapturedCombatRecord(record);
-  if (!combat && !isVerifiedCombatResponseUrl(record.meta.url)) await saveCapturedResponse(record);
+  const route = classifyObservedResponseUrl(record.meta.url);
+  if (route === 'combat') {
+    await ingestCapturedCombatRecord(record);
+    return;
+  }
+  if (route !== 'account') return;
+
+  await queueAccountIngest(record);
+  await saveCapturedResponse(record);
 }
 
 async function handleUnexpectedDetach(tabId: number, reason: string): Promise<void> {
@@ -292,7 +252,7 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   await setRuntimeState({
     active: false,
     scanId: state.scanId,
-    error: `Diagnostic observation stopped: ${reason}`,
+    error: `Observation stopped: ${reason}`,
   });
 }
 
@@ -313,10 +273,10 @@ async function getStatus(): Promise<CaptureStatusResponse> {
     captureReady: true,
     active: state.active,
     message: state.active
-      ? 'Diagnostic scan is observing GBF responses.'
+      ? 'Debugger observation is active. Only allowlisted GBF responses are read.'
       : scan
-        ? 'Automatic account tracking is enabled. Last diagnostic scan remains local.'
-        : 'Automatic account tracking is enabled. No diagnostic scan captured yet.',
+        ? 'Observation is stopped. Start it again to update account or combat data.'
+        : 'Account tracking is inactive. Start observation to collect allowlisted responses.',
     scan,
     error: state.error,
   };

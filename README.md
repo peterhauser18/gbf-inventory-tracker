@@ -1,67 +1,54 @@
 # GBF Inventory Tracker
 
-A privacy-first, read-only Granblue Fantasy account companion for tracking collection state and planning Eternal / Evoker upgrades.
+A privacy-first, read-only Granblue Fantasy account companion for tracking collection state, combat observations, and Eternal / Evoker upgrade planning.
 
 ## Goals
 
-- Passively observe data already loaded by `game.granbluefantasy.jp` while you browse normally.
-- Track characters, weapons, summons, treasures, and relevant progression state locally.
+- Read only verified GBF responses that the browser already received during an explicitly enabled observation session.
+- Track characters, weapons, summons, treasures, progression, combat, and relevant raid history locally.
 - Provide GBF Roster-style collection search and filtering.
 - Calculate missing materials for Eternal and Evoker recruitment, uncaps, and transcendence.
-- Support multi-goal planning so shared materials are not double-counted.
 - Keep account data on-device by default.
 
 ## Non-goals
 
-This project is intentionally not designed to automate gameplay. It should not farm, battle, purchase, replay requests, export session cookies, or store login credentials.
+This project is intentionally not designed to automate gameplay. It must not farm, battle, start quests, purchase, draw, upgrade, uncap, consume items, replay requests, export session cookies, or store login credentials.
 
-## Architecture
+## Capture model
+
+GBF Tool does **not** patch `window.fetch`, `XMLHttpRequest.send`, or other request primitives in the game page. Normal GBF browsing with the extension loaded performs no GBF response capture.
+
+When the user explicitly presses **Start observation** on an active `game.granbluefantasy.jp` tab, the extension attaches Chrome's `debugger` transport, enables the DevTools Protocol Network domain, and observes responses produced by normal user activity. Chrome shows its debugging notice while this is active.
+
+Before a response body can be read, GBF Tool requires all of the following:
+
+- exact HTTPS origin `game.granbluefantasy.jp`;
+- XHR or Fetch resource type;
+- URL match against the existing verified read-only account/combat allowlist.
+
+Unknown GBF endpoints are ignored before `Network.getResponseBody`. The runtime does not replay, retry, intercept, modify, synthesize, or send GBF HTTP requests.
 
 ```text
-Granblue browser tab
-        │
-        │ normal browsing only
-        ▼
-Passive capture layer
-        │
-        ▼
-Normalizer / parsers
-        │
-        ▼
-Local account database
-  ├─ characters
-  ├─ weapons
-  ├─ summons
-  ├─ treasures
-  └─ progression
-        │
-        ├──────────────► Collection UI
-        │
-        └──────────────► Upgrade planner
-                         ├─ Eternal goals
-                         ├─ Evoker goals
-                         └─ aggregate deficits
+GBF page ──normal request──► browser ──► Cygames
+                              │
+                              └─ while observation is explicitly active
+                                 └─ read allowlisted received response body
+                                    └─ normalize/store locally
 ```
 
-## Project status
+## Local data
 
-The normal extension flow now passively observes **already verified account-response families** while the user plays or browses GBF normally. Those responses are normalized immediately and merged into a durable local account database, so the dashboard becomes progressively more complete without starting/stopping a scan or following a menu checklist.
+Verified account responses are normalized into a cumulative local account database with explicit `known` / `partial` / `unknown` quality. Combat responses are normalized into local combat/raid records. Diagnostic response records remain local and can be exported only through an explicit sanitized export action.
 
-Automatic tracking does not synthesize, replay, retry, poll, prefetch, or otherwise add GBF requests. The page observer only mirrors the response from the request GBF itself was already making, strips URL query values before handing it to the extension, and the background accepts only the verified account endpoint allowlist. Normal-mode persistence contains normalized account facts and coverage timestamps rather than raw response dumps, headers, cookies, request bodies, or session material.
-
-The existing `activeTab` + `debugger` scan remains available from the popup as optional developer/diagnostic tooling. It is not required for the dashboard. After a diagnostic scan is stopped, the popup can export that scan as a local, versioned JSON bundle; export is explicit and applies a second sanitization pass before download. Nothing is uploaded automatically.
-
-The full-page **GBF Tool Dashboard** reads the cumulative local account database and exposes collection browsing plus an Eternal/Evoker planner with explicit `known` / `partial` / `unknown` states. Partial observations can refresh or add facts without deleting unseen cached entities; authoritative complete observations may replace stale members. Eternal details expose 1★–5★ plus the modeled Transcendence stages through Lv150 as expandable steps; Evoker details expose 1★–5★ plus only currently verified Transcendence stages instead of guessing unreleased recipes.
-
-Dashboard character, weapon and summon cards resolve public names and thumbnails from GBF Wiki metadata where available, including stash weapons. Wiki metadata/image requests are limited to `https://gbf.wiki/*`, omit credentials/referrers, and fall back to technical IDs plus local placeholders on failure. The runtime does not request Cygames/GBF asset-CDN images and does not hotlink GBFAL.
+Dashboard character, weapon, summon, and wiki-reference metadata may use public `https://gbf.wiki/*` requests. Those requests omit credentials/referrers and are separate from the GBF account-request boundary. Cygames/GBF asset-CDN images are not requested by the dashboard resolver.
 
 ## Safety / account risk
 
-Granblue Fantasy does not provide a documented public account API for this use case. Any third-party extension may carry Terms-of-Service or account risk. The design goal here is deliberately conservative: passive observation only, no gameplay automation, no credential handling, and local-first storage.
+Granblue Fantasy does not provide a documented public account API for this use case. Third-party extensions can still carry Terms-of-Service or account risk even when they are read-only. The project therefore minimizes the interaction surface: explicit observation only, existing verified response families only, no page request hooks, no credential handling, no request replay/modification, and no gameplay automation.
 
 ## Development
 
-Requires **Node.js 22.12 or newer**. Windows PowerShell is supported directly; WSL is not required.
+Requires **Node.js 22.12 or newer**.
 
 ```bash
 npm install
@@ -70,15 +57,16 @@ npm run typecheck
 npm run build
 ```
 
-Then load the generated `dist/` directory as an unpacked Chrome extension. Browse/play GBF normally to let the local database fill over time, and use **Open Dashboard** for the full inventory/planner tab. The manual scan controls in the popup are diagnostic/export tooling only.
+Then load the generated `dist/` directory as an unpacked Chrome extension.
 
-## Planned milestones
+To update local account/combat data:
 
-1. Extension scaffold and local storage schema.
-2. Passive response capture and endpoint discovery tooling.
-3. Character / weapon / summon normalization.
-4. Treasure/material inventory normalization.
-5. Eternal and Evoker progression detection.
-6. Collection browser and JSON import/export.
-7. Upgrade requirement data model.
-8. Single-goal and multi-goal planner.
+1. Open GBF in the active tab.
+2. Open the extension and press **Start observation**.
+3. Browse or play normally; only allowlisted responses are read.
+4. Press **Stop observation** when finished.
+5. Open the dashboard to inspect the accumulated local state.
+
+## Architecture
+
+See [`docs/architecture.md`](docs/architecture.md) for the capture, normalization, storage, and planner boundaries.

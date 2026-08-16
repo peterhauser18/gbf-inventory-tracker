@@ -30,10 +30,31 @@ void bootDashboard();
 
 async function bootDashboard(): Promise<void> {
   await import('./dashboard.ts');
+  keepObservationCopyAccurate();
 
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
   if (!restoreSection) return;
   restoreSectionWhenReady(restoreSection);
+}
+
+function keepObservationCopyAccurate(): void {
+  const app = document.querySelector<HTMLElement>('#dashboard-app');
+  if (!app) return;
+
+  const update = (): void => {
+    for (const element of app.querySelectorAll<HTMLElement>('.sidebar-note span, .empty span')) {
+      if (element.textContent === 'Passive tracking sends no gameplay or refresh requests.') {
+        element.textContent = 'GBF data updates only while explicit debugger observation is active.';
+      }
+      if (element.textContent === 'Keep playing and browsing GBF normally. Verified account responses will fill this dashboard automatically over time.') {
+        element.textContent = 'Start observation from the extension popup, then browse GBF normally to update this dashboard.';
+      }
+    }
+  };
+
+  update();
+  const observer = new MutationObserver(update);
+  observer.observe(app, { childList: true, subtree: true });
 }
 
 function characterObservationChanged(change: chrome.storage.StorageChange | undefined): boolean {

@@ -7,10 +7,11 @@ const parser = readFileSync(new URL('./parser.ts', import.meta.url), 'utf8');
 const storage = readFileSync(new URL('./storage.ts', import.meta.url), 'utf8');
 const dashboard = readFileSync(new URL('./dashboard.ts', import.meta.url), 'utf8');
 
-test('combat ingestion remains attached only to passive response-body capture', () => {
+test('combat ingestion remains attached only to debugger response-body capture', () => {
   assert.match(background, /Network\.getResponseBody/);
   assert.match(background, /ingestCapturedCombatRecord/);
-  assert.match(background, /isVerifiedCombatResponseUrl/);
+  assert.match(background, /classifyObservedResponseUrl/);
+  assert.match(background, /shouldReadObservedResponse/);
   for (const source of [background, parser, storage, dashboard]) {
     assert.doesNotMatch(source, /Network\.replayXHR|Network\.setRequestInterception|Network\.continueInterceptedRequest/);
     assert.doesNotMatch(source, /XMLHttpRequest|chrome\.scripting|executeScript\s*\(/);
@@ -19,8 +20,14 @@ test('combat ingestion remains attached only to passive response-body capture', 
 });
 
 test('recognized combat responses persist only normalized combat facts', () => {
-  assert.match(background, /const combat = await ingestCapturedCombatRecord\(record\);\s*if \(!combat && !isVerifiedCombatResponseUrl\(record\.meta\.url\)\) await saveCapturedResponse\(record\);/s);
-  assert.doesNotMatch(background, /await saveCapturedResponse\(record\);\s*await ingestCapturedCombatRecord\(record\);/s);
+  assert.match(
+    background,
+    /const route = classifyObservedResponseUrl\(record\.meta\.url\);\s*if \(route === 'combat'\) \{\s*await ingestCapturedCombatRecord\(record\);\s*return;\s*\}/s,
+  );
+  assert.match(
+    background,
+    /if \(route !== 'account'\) return;\s*await queueAccountIngest\(record\);\s*await saveCapturedResponse\(record\);/s,
+  );
 });
 
 test('raid instance correlation is session-only and strips non-public actor names', () => {

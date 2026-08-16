@@ -2,66 +2,77 @@
 
 ## Principles
 
-1. **Read-only by design** — observe responses produced by normal browsing; do not replay or synthesize gameplay requests.
-2. **Local-first** — account state and normalized inventory remain on-device unless the user explicitly exports a diagnostic capture.
-3. **No credentials** — never store passwords, session cookies, auth headers, request bodies, or login tokens.
-4. **Parser isolation** — endpoint-specific parsing lives behind small parser interfaces so GBF response changes do not infect the rest of the application.
-5. **Requirements are data** — Eternal/Evoker upgrade recipes are separate from the capture implementation and can be versioned independently.
+1. **Read-only by design** — observe responses produced by normal user activity; never replay, synthesize, intercept, or modify gameplay requests.
+2. **Explicit observation** — GBF response capture is off until the user starts a Chrome debugger observation session.
+3. **No page request hooks** — do not replace `window.fetch`, XHR methods, WebSocket/EventSource, or other GBF request primitives.
+4. **Local-first** — normalized account/combat state remains on-device unless the user explicitly exports sanitized data.
+5. **No credentials** — never store passwords, session cookies, auth headers, request bodies, or login tokens.
+6. **Parser isolation** — endpoint-specific parsing remains separate from capture and storage.
 
-## Layers
+## Capture
 
-### Passive account observation
+The extension manifest contains no GBF content script and no GBF host permission. Loading the extension while browsing GBF does not inject a MAIN-world observer and does not modify the game's JavaScript request path.
 
-Static content scripts run only on `https://game.granbluefantasy.jp/*`. A small main-world observer wraps the page's existing `fetch`/XHR call path so it can inspect the response **after the page itself initiated the request**. The wrapper forwards the original call exactly once and never creates a second request, retry, poll, prefetch, or gameplay action.
+When the user explicitly starts observation from the popup, the background attaches `chrome.debugger` to the active `https://game.granbluefantasy.jp/` tab and enables the Chrome DevTools Protocol Network domain. Chrome displays its debugging notice while attached.
 
-The page observer reads bodies only for the already-verified account endpoint allowlist used by the normalizer. URL query values are removed before the response is relayed to the isolated extension bridge. The background revalidates the GBF origin and verified endpoint family, applies the existing JSON secret redaction boundary, normalizes the record, and persists only the resulting account facts.
+`Network.responseReceived` metadata is filtered before it enters the pending-response buffer. A candidate must be XHR/Fetch, use the exact GBF game origin, and match an existing verified account or combat endpoint family. The same allowlist check is repeated immediately before `Network.getResponseBody`.
 
-Unknown/new endpoints are not read into the normal account database and are never actively probed.
+Unknown/new GBF endpoints therefore never have their body read. `Network.getResponseBody` reads a response the browser has already received; the runtime does not issue, replay, retry, intercept, modify, or synthesize GBF HTTP requests.
 
-### Diagnostic capture
+## Account ingestion
 
-The existing explicit popup scan remains separate developer/diagnostic tooling. When the user starts it, the background attaches Chrome's debugger transport to the active GBF tab and observes qualifying XHR/fetch responses for a sanitized local scan/export. It is not required for normal account tracking or dashboard use.
+Allowlisted account responses pass through the existing sanitization and normalizer path, then merge into the cumulative local account database. Partial observations do not erase unseen facts; authoritative complete observations may replace stale members according to existing database semantics.
 
-Request headers, cookies, post bodies, and auth material are never copied into diagnostic capture records. Query values are removed from captured URLs and credential-like JSON fields are redacted before local persistence. The diagnostic path does not replay, retry, synthesize, or send GBF requests.
+## Combat ingestion
 
-### Normalization
+Allowlisted combat responses pass through the same debugger-only capture boundary and are normalized into local combat/raid records. Combat tracking therefore works only while explicit observation is active. No battle action is initiated by GBF Tool.
 
-Transforms endpoint-specific payloads into stable internal records such as `CharacterInstance`, `WeaponInstance`, `SummonInstance`, and `TreasureCount`.
+## Storage
 
-### Storage
+Normal account state is stored locally with `known` / `partial` / `unknown` quality and observation timestamps. Combat/raid records and user preferences are local. Diagnostic response records are limited and sanitized; request headers, cookies, POST bodies, and auth/session data are not captured.
 
-Normal use stores one cumulative normalized account database in extension-local storage. Each observed family carries `known` / `partial` / `unknown` quality plus last-observed timestamps. Newer explicit facts replace older facts; partial observations merge without deleting unseen entities; an authoritative complete family observation may replace stale members.
+## Export
 
-Diagnostic scan records remain in their dedicated IndexedDB database. They are not the dashboard's source of truth.
+A completed observation can be exported only through an explicit popup action. Export applies a second sanitization pass and creates a local JSON download. Nothing is uploaded automatically.
 
-### Export
+## Public wiki metadata
 
-A completed diagnostic capture scan can be exported only from an explicit popup action. The exporter reads that scan's records from the local capture database, applies a second sanitization pass, and creates a local JSON download with no upload or external request. Sensitive/auth fields are removed, URL query values are stripped again, and clear account identifiers are pseudonymized while game/master/instance IDs remain available for parser work.
+Dashboard metadata and optional raid-drop references may make public requests only to `https://gbf.wiki/*`, with credentials omitted and no referrer. This is separate from the GBF account-request boundary. Cygames/GBF asset hosts are denied for external dashboard images.
 
-### Planner
+## Planner and UI
 
-Consumes the cumulative normalized treasure counts and progression state. It never depends directly on captured network payloads.
+The dashboard consumes normalized local data only for inventory/progression calculations. Missing coverage remains `partial` / `unknown`; it is not silently treated as zero. The popup exposes explicit Start/Stop observation controls and states that Chrome's debugging notice is expected while observation is active.
 
-### UI
-
-The dashboard reads the cumulative local account database and can therefore open without a completed manual scan. Missing coverage remains `partial` / `unknown` while normal play gradually contributes more verified facts.
-
-The popup presents automatic account tracking as the normal mode. Manual start/stop scan controls and scan export are explicitly labeled diagnostic tooling. A local reset removes the accumulated normalized account database without making a GBF request or changing the game account.
-
-## Normal account workflow
+## Workflow
 
 ```text
-User opens/plays GBF normally
+Extension loaded, observation OFF
        ↓
-GBF itself initiates an already-known account request
+No GBF page injection / no response capture
+
+User presses Start observation on GBF tab
        ↓
-Passive observer mirrors the received response only
+chrome.debugger attach + Network.enable
        ↓
-Background revalidates endpoint + sanitizes JSON
+GBF/user initiates normal request
        ↓
-Verified response normalized immediately
+responseReceived metadata
        ↓
-New facts merge into cumulative local account database
+XHR/Fetch + exact origin + verified allowlist?
+       ├─ no  → ignore before body read
+       └─ yes → loadingFinished
+                  ↓
+              allowlist check again
+                  ↓
+              Network.getResponseBody
+                  ↓
+              sanitize + normalize locally
+                  ↓
+              account/combat storage
+
+User presses Stop observation
        ↓
-Dashboard progressively becomes more complete
+debugger.detach
+       ↓
+No further GBF response capture
 ```

@@ -5,13 +5,13 @@ import type { ObservedResponse } from './types.ts';
 
 const meta: ObservedResponse = {
   requestId: 'request-1',
-  url: 'https://game.granbluefantasy.jp/weapon/list',
+  url: 'https://game.granbluefantasy.jp/weapon/list/1',
   resourceType: 'fetch',
   status: 200,
   mimeType: 'application/json',
 };
 
-test('passive observer only reads an already-received response body and stores it', async () => {
+test('debugger observer reads an already-received allowlisted response body and stores it', async () => {
   const calls: string[] = [];
   const saved: unknown[] = [];
 
@@ -39,7 +39,25 @@ test('passive observer only reads an already-received response body and stores i
 test('non-GBF responses are rejected before any response-body read', async () => {
   let bodyReads = 0;
   const result = await processObservedResponse(
-    { ...meta, url: 'https://example.com/weapon/list' },
+    { ...meta, url: 'https://example.com/weapon/list/1' },
+    'scan-1',
+    {
+      getResponseBody: async () => {
+        bodyReads += 1;
+        return { body: '{}' };
+      },
+    },
+    async () => {},
+  );
+
+  assert.equal(result, null);
+  assert.equal(bodyReads, 0);
+});
+
+test('unknown GBF endpoints are rejected before any response-body read', async () => {
+  let bodyReads = 0;
+  const result = await processObservedResponse(
+    { ...meta, url: 'https://game.granbluefantasy.jp/quest/start' },
     'scan-1',
     {
       getResponseBody: async () => {
@@ -58,7 +76,7 @@ test('base64-encoded JSON response bodies are decoded locally', async () => {
   const body = JSON.stringify({ summons: [{ id: 's1' }] });
   const encoded = Buffer.from(body, 'utf8').toString('base64');
   const result = await processObservedResponse(
-    { ...meta, requestId: 'request-2' },
+    { ...meta, requestId: 'request-2', url: 'https://game.granbluefantasy.jp/summon/list/1' },
     'scan-1',
     { getResponseBody: async () => ({ body: encoded, base64Encoded: true }) },
     async () => {},
