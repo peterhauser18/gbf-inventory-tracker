@@ -54,7 +54,8 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 test('deferred Wiki image URLs use a transparent sentinel and keep legacy cached targets readable', () => {
   const deferred = deferWikiImageUrl('https://gbf.wiki/images/a.png?x=1#fragment');
-  assert.ok(deferred?.startsWith('data:image/gif;base64,'));
+  assert.ok(deferred);
+  assert.ok(deferred.startsWith('data:image/gif;base64,'));
   const [dataUrl] = deferred.split('#gbfit-wiki=');
   assert.ok(dataUrl);
   const bytes = Buffer.from(dataUrl.slice('data:image/gif;base64,'.length), 'base64');
