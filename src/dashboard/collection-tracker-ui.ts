@@ -1,6 +1,5 @@
 import './collection-tracker.css';
-import { getCapturedResponsesForScan, getLatestCompletedCaptureScan } from '../capture/storage.ts';
-import { normalizeCaptureScan } from '../capture/normalize.ts';
+import { loadAccountDatabase } from '../account/storage.ts';
 import {
   buildCollectionTrackerExport,
   loadWikiCharacterMasterIds,
@@ -39,7 +38,7 @@ function syncPanel(): void {
     <div>
       <p class="eyebrow">COLLECTION EXPORT</p>
       <h3>GBF Wiki Collection Tracker</h3>
-      <p class="muted">Generate a tracker link locally from the latest completed local scan. Nothing is uploaded automatically.</p>
+      <p class="muted">Generate a tracker link locally from the cumulative account database. Nothing is uploaded automatically.</p>
     </div>
     <div class="collection-export-state" data-collection-export-state>
       <span class="collection-export-spinner" aria-hidden="true"></span>
@@ -71,16 +70,14 @@ async function renderPreparedExport(panel: HTMLElement): Promise<void> {
 }
 
 async function prepareExport(): Promise<PreparedExport> {
-  const scan = await getLatestCompletedCaptureScan();
-  if (!scan) throw new Error('No completed local scan is available.');
-  const [records, knownWikiMasterIds] = await Promise.all([
-    getCapturedResponsesForScan(scan.id),
+  const [account, knownWikiMasterIds] = await Promise.all([
+    loadAccountDatabase(),
     loadWikiCharacterMasterIds(),
   ]);
-  const snapshot = normalizeCaptureScan(records);
+  if (!account) throw new Error('No cumulative local account data is available yet.');
   return {
-    result: buildCollectionTrackerExport(snapshot.characters, knownWikiMasterIds),
-    rosterQuality: snapshot.quality.characters,
+    result: buildCollectionTrackerExport(account.snapshot.characters, knownWikiMasterIds),
+    rosterQuality: account.snapshot.quality.characters,
   };
 }
 
@@ -92,7 +89,7 @@ function renderReadyPanel(prepared: PreparedExport): string {
     : `${result.includedMasterIds.length} encoded; ${result.omitted.length} omitted because they could not be represented without guessing.`;
   const coverage = incompleteRoster
     ? `Roster coverage is ${rosterQuality}; this link contains only observed characters and must not be treated as a complete collection.`
-    : 'Roster coverage is known for the latest completed local scan.';
+    : 'Roster coverage is known in the cumulative local account database.';
 
   return `
     <div>

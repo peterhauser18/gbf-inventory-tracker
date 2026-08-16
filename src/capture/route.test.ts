@@ -4,7 +4,12 @@ import { classifyObservedResponseUrl, shouldReadObservedResponse } from './route
 
 test('debugger capture accepts only verified GBF account and combat response families', () => {
   assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/npc/list/2?ignored=1'), 'account');
+  assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/npc/list/999'), 'account');
+  assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/weapon/container_list/7/stash'), 'account');
   assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/rest/multiraid/normal_attack_result.json'), 'combat');
+  assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/resultmulti/content/index/run-123'), 'combat');
+  assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/rest/multiraid/unknown_result.json'), null);
+  assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/profile/content/index'), null);
   assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/quest/start'), null);
   assert.equal(classifyObservedResponseUrl('https://example.com/npc/list/2'), null);
 });
