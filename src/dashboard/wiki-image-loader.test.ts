@@ -52,15 +52,28 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   assert.fail('condition was not reached');
 }
 
-test('deferred Wiki image URLs carry only an approved gbf.wiki target', () => {
+test('deferred Wiki image URLs use a transparent sentinel and keep legacy cached targets readable', () => {
   const deferred = deferWikiImageUrl('https://gbf.wiki/images/a.png?x=1#fragment');
-  assert.ok(deferred?.startsWith('data:image/gif;base64,'));
+  assert.ok(deferred);
+  assert.ok(deferred.startsWith('data:image/gif;base64,'));
+  const [dataUrl] = deferred.split('#gbfit-wiki=');
+  assert.ok(dataUrl);
+  const bytes = Buffer.from(dataUrl.slice('data:image/gif;base64,'.length), 'base64');
+  const graphicsControlExtension = bytes.indexOf(Buffer.from([0x21, 0xf9, 0x04]));
+  assert.ok(graphicsControlExtension >= 0);
+  assert.equal((bytes[graphicsControlExtension + 3] ?? 0) & 0x01, 0x01);
   assert.equal(deferredWikiImageTarget(deferred), 'https://gbf.wiki/images/a.png?x=1');
+
+  const legacyTarget = 'https://gbf.wiki/images/legacy.png';
+  const legacyDeferred = `data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==#gbfit-wiki=${encodeURIComponent(legacyTarget)}`;
+  assert.equal(deferredWikiImageTarget(legacyDeferred), legacyTarget);
+
   assert.equal(deferWikiImageUrl('https://game.granbluefantasy.jp/assets/a.png'), undefined);
   assert.equal(deferredWikiImageTarget('https://gbf.wiki/images/a.png'), undefined);
 });
 
-test('progressive draining never exceeds the global max-three network concurrency', async () => {
+test('progressive draining never exceeds the global max-five network concurrency', async () => {
+  assert.equal(MAX_WIKI_IMAGE_CONCURRENCY, 5);
   let active = 0;
   let maxActive = 0;
   let calls = 0;

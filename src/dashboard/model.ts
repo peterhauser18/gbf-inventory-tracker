@@ -164,7 +164,7 @@ export function buildDashboardViewModel(
       wikiUrl: resolveWikiUrl({ displayName: item.name, publicId: item.itemId }),
       detailFields: [
         { label: 'Item ID', value: item.itemId },
-        { label: 'Item kind', value: item.itemKindId ?? 'unknown', state: item.itemKindId ? 'known' : 'unknown' },
+        { label: 'Item kind', value: item.itemKindId ?? 'unavailable', state: item.itemKindId ? 'known' : 'unknown' },
         { label: 'Group', value: item.group },
         { label: 'Owned', value: formatNumber(item.quantity), state: 'known' },
       ],
@@ -178,7 +178,7 @@ export function buildDashboardViewModel(
       wikiUrl: resolveWikiUrl({ displayName: item.name, publicId: item.itemId }),
       detailFields: [
         { label: 'Item ID', value: item.itemId },
-        { label: 'Item kind', value: item.itemKindId ?? 'unknown', state: item.itemKindId ? 'known' : 'unknown' },
+        { label: 'Item kind', value: item.itemKindId ?? 'unavailable', state: item.itemKindId ? 'known' : 'unknown' },
         { label: 'Group', value: item.group },
         { label: 'Owned', value: formatNumber(item.quantity), state: 'known' },
       ],
@@ -187,13 +187,13 @@ export function buildDashboardViewModel(
       key: `stash:${stash.stashId}`,
       kind: 'stash',
       title: 'Weapon Stash',
-      subtitle: `${formatNumber(stash.weapons.length)} observed weapons · ${stash.quality}`,
+      subtitle: `${formatNumber(stash.weapons.length)} observed weapons${stash.quality === 'known' ? '' : ` · ${qualityDisplay(stash.quality)}`}`,
       quality: stash.quality,
       wikiUrl: resolveWikiUrl({ displayName: 'Weapon Stash' }),
       detailFields: [
         { label: 'Stash ID', value: stash.stashId },
         { label: 'Observed weapons', value: formatNumber(stash.weapons.length) },
-        { label: 'Coverage', value: stash.quality, state: stash.quality },
+        { label: 'Coverage', value: qualityDisplay(stash.quality), state: stash.quality },
       ],
       children: stash.weapons.map((weapon) => stashWeaponCard(
         weapon,
@@ -227,7 +227,7 @@ function buildPlannerCard(master: SpecialCharacterMaster, snapshot: AccountSnaps
     title: master.name,
     subtitle: character
       ? summaryParts([numberLabel('Lv', character.level), numberLabel('Uncap', character.uncap), `Next ${selected.targetDisplay}`])
-      : `Ownership ${ownership.state === 'known' ? 'not observed in complete roster' : 'unknown'} · Next ${selected.targetDisplay}`,
+      : `Ownership ${ownership.state === 'known' ? 'not observed in complete roster' : 'unavailable'} · Next ${selected.targetDisplay}`,
     quality: character ? 'known' : ownership.state === 'known' ? 'known' : 'unknown',
     wikiUrl: resolveWikiUrl({ wikiTitle: master.wikiTitle }),
     imageUrl: wikiEntityImageUrl('character', master.masterId, master.wikiTitle),
@@ -236,7 +236,7 @@ function buildPlannerCard(master: SpecialCharacterMaster, snapshot: AccountSnaps
       valueField('Level', character?.level),
       valueField('Uncap', character?.uncap),
       valueField('Awakening', character?.awakeningLevel),
-      { label: 'Roster coverage', value: snapshot.quality.characters, state: snapshot.quality.characters },
+      { label: 'Roster coverage', value: qualityDisplay(snapshot.quality.characters), state: snapshot.quality.characters },
     ],
     masterId: master.masterId,
     selectedGoalId: selected.goalId,
@@ -349,7 +349,7 @@ function stashWeaponCard(
 function ownershipEvidence(character: CharacterInstance | undefined, familyQuality: DataQuality): EvidenceRow {
   if (character) return { label: 'Character recruited', state: 'known', satisfied: true, value: 'observed' };
   if (familyQuality === 'known') return { label: 'Character recruited', state: 'known', satisfied: false, value: 'not observed' };
-  return { label: 'Character recruited', state: 'unknown', value: `${familyQuality} roster coverage` };
+  return { label: 'Character recruited', state: 'unknown', value: `${qualityDisplay(familyQuality)} roster coverage` };
 }
 
 function characterThresholdEvidence(
@@ -441,7 +441,7 @@ function targetDisplay(targetUncap: number, targetLevel?: number): string {
 
 function valueField(label: string, value: number | undefined): DetailField {
   return value === undefined
-    ? { label, value: 'unknown', state: 'unknown' }
+    ? { label, value: 'unavailable', state: 'unknown' }
     : { label, value: String(value), state: 'known' };
 }
 
@@ -451,7 +451,13 @@ function numberLabel(label: string, value: number | undefined): string | undefin
 
 function summaryParts(values: Array<string | undefined>): string {
   const parts = values.filter((value): value is string => Boolean(value));
-  return parts.length > 0 ? parts.join(' · ') : 'Details partial / unknown';
+  return parts.length > 0 ? parts.join(' · ') : 'Details incomplete';
+}
+
+function qualityDisplay(quality: DataQuality): string {
+  if (quality === 'known') return 'complete';
+  if (quality === 'partial') return 'incomplete';
+  return 'unavailable';
 }
 
 function stashSummaryQuality(snapshot: AccountSnapshot): DataQuality {

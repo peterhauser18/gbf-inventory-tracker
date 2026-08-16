@@ -1,7 +1,11 @@
 import { ingestAccountRecord } from './account/ingest.ts';
 import { loadAccountDatabase, resetAccountDatabase, saveAccountDatabase } from './account/storage.ts';
 import { CaptureEventBuffer } from './capture/event-buffer.ts';
-import { processObservedResponse, ResponseBodyUnavailableError } from './capture/observer.ts';
+import {
+  processObservedResponse,
+  readResponseBodyWithRetry,
+  ResponseBodyUnavailableError,
+} from './capture/observer.ts';
 import { isGbfPageUrl } from './capture/policy.ts';
 import { classifyObservedResponseUrl, shouldReadObservedResponse } from './capture/route.ts';
 import {
@@ -29,6 +33,11 @@ import type {
   ObservedResponse,
 } from './capture/types.ts';
 import { cleanupLocalData, type LocalCleanupMode } from './storage/cleanup.ts';
+import {
+  clearObservedTreasureIconCache,
+  parseObservedTreasureIconResponse,
+  storeObservedTreasureIconBody,
+} from './treasure-icon-cache.ts';
 
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const STATE_KEY = 'gbfit:capture-state';
@@ -40,6 +49,7 @@ const CAPTURE_NETWORK_METHODS = new Set([
   'Network.loadingFailed',
 ]);
 const pendingResponses = new CaptureEventBuffer();
+const pendingTreasureIcons = new Map<string, { itemId: string }>();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
 let targetQueue: Promise<void> = Promise.resolve();
@@ -135,7 +145,10 @@ async function handleMessage(message: CaptureMessage): Promise<CaptureStatusResp
 async function queueAccountReset(): Promise<void> {
   accountQueue = accountQueue
     .catch(() => {})
-    .then(async () => resetAccountDatabase());
+    .then(async () => {
+      await resetAccountDatabase();
+      await clearObservedTreasureIconCache();
+    });
   await accountQueue;
 }
 
@@ -158,6 +171,7 @@ async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
     clearDiagnostic: clearCaptureStorage,
     clearCombat: clearCombatStorage,
   });
+  if (mode === 'all-except-account') await clearObservedTreasureIconCache();
   await setRuntimeState({ active: false });
 }
 
@@ -174,6 +188,7 @@ async function startObservation(explicitTabId?: number): Promise<CaptureStatusRe
   let scanStarted = false;
   try {
     pendingResponses.clear();
+    pendingTreasureIcons.clear();
     await clearCombatParseContext();
     await chrome.debugger.attach(target, DEBUGGER_PROTOCOL_VERSION);
     await startCaptureScan(scanId);
@@ -222,6 +237,7 @@ async function stopObservation(): Promise<CaptureStatusResponse> {
 
   await setRuntimeState({ active: false, scanId: state.scanId });
   pendingResponses.clear();
+  pendingTreasureIcons.clear();
   await finishCaptureScan(state.scanId);
   await clearCombatParseContext();
   if (state.tabId !== undefined) {
@@ -265,6 +281,7 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
     : { active: true, scanId: state.scanId };
 
   pendingResponses.clear();
+  pendingTreasureIcons.clear();
   if (!preserveCombatLock) await clearCombatParseContext();
   await setRuntimeState(preservedState);
 
@@ -364,6 +381,7 @@ async function releaseUnavailableTarget(tabId: number, reason: string): Promise<
   ) return;
 
   pendingResponses.clear();
+  pendingTreasureIcons.clear();
   await clearCombatParseContext();
   await setRuntimeState({
     active: true,
@@ -388,16 +406,34 @@ async function handleDebuggerEvent(
 ): Promise<void> {
   if (method === 'Network.loadingFailed') {
     const requestId = (params as { requestId?: string } | undefined)?.requestId;
-    if (requestId) pendingResponses.forget(requestId);
+    if (requestId) {
+      pendingResponses.forget(requestId);
+      pendingTreasureIcons.delete(requestId);
+    }
     return;
   }
 
   if (method === 'Network.responseReceived') {
     const event = params as NetworkResponseReceived | undefined;
-    const resourceType = normalizeResourceType(event?.type);
     const url = event?.response?.url;
     const requestId = event?.requestId;
-    if (!url || !requestId || !shouldReadObservedResponse(url, resourceType)) return;
+    if (!url || !requestId) return;
+
+    const treasureIcon = parseObservedTreasureIconResponse(
+      url,
+      event?.type,
+      event?.response?.mimeType,
+      event?.response?.status,
+    );
+    if (treasureIcon) {
+      const state = await getRuntimeState();
+      if (!state.active || state.tabId !== tabId || !state.scanId) return;
+      pendingTreasureIcons.set(requestId, { itemId: treasureIcon.itemId });
+      return;
+    }
+
+    const resourceType = normalizeResourceType(event?.type);
+    if (!shouldReadObservedResponse(url, resourceType)) return;
 
     const state = await getRuntimeState();
     if (!state.active || state.tabId !== tabId || !state.scanId) return;
@@ -415,12 +451,38 @@ async function handleDebuggerEvent(
   if (method !== 'Network.loadingFinished') return;
   const requestId = (params as { requestId?: string } | undefined)?.requestId;
   if (!requestId) return;
+
+  const pendingTreasureIcon = pendingTreasureIcons.get(requestId);
+  pendingTreasureIcons.delete(requestId);
+  if (pendingTreasureIcon) {
+    const state = await getRuntimeState();
+    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    void captureObservedTreasureIcon(tabId, requestId, pendingTreasureIcon.itemId);
+    return;
+  }
+
   const meta = pendingResponses.take(requestId);
   if (!meta || !shouldReadObservedResponse(meta.url, meta.resourceType)) return;
 
   const state = await getRuntimeState();
   if (!state.active || state.tabId !== tabId || !state.scanId) return;
   void captureObservedResponse(tabId, state.scanId, meta);
+}
+
+async function captureObservedTreasureIcon(tabId: number, requestId: string, itemId: string): Promise<void> {
+  try {
+    const body = await readResponseBodyWithRetry({
+      getResponseBody: async (id): Promise<DebuggerResponseBody> =>
+        (await chrome.debugger.sendCommand(
+          { tabId },
+          'Network.getResponseBody',
+          { requestId: id },
+        )) as DebuggerResponseBody,
+    }, requestId);
+    await storeObservedTreasureIconBody(itemId, body);
+  } catch {
+    // Observed Treasure icons are an optional local visual cache; account capture must continue unchanged.
+  }
 }
 
 async function captureObservedResponse(tabId: number, scanId: string, meta: ObservedResponse): Promise<void> {
@@ -532,6 +594,7 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   if (!state.active || state.tabId !== tabId || !state.scanId) return;
 
   pendingResponses.clear();
+  pendingTreasureIcons.clear();
   if (reason === 'canceled_by_user') {
     await clearCombatParseContext();
     await finishCaptureScan(state.scanId);

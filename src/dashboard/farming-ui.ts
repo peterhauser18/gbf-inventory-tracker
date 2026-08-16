@@ -393,7 +393,7 @@ function renderFocusSurface(body: string): void {
 
 function renderFarmingFocus(entries: readonly FarmingFocusEntry[], limit: number): string {
   if (!entries.length) {
-    return `<div class="farming-panel"><div class="farming-head"><div><p class="eyebrow">FARMING FOCUS</p><h3>Wiki-backed raid sources</h3></div></div><div class="farming-empty"><strong>No proven material shortfall to farm</strong><span>Unknown inventory stays out of farming recommendations until ownership is known.</span></div></div>`;
+    return `<div class="farming-panel"><div class="farming-head"><div><p class="eyebrow">FARMING FOCUS</p><h3>Wiki-backed raid sources</h3></div></div><div class="farming-empty"><strong>No proven material shortfall to farm</strong><span>Unavailable inventory stays out of farming recommendations until ownership is observed.</span></div></div>`;
   }
   const visible = entries.slice(0, limit);
   return `<div class="farming-panel">
@@ -402,7 +402,7 @@ function renderFarmingFocus(entries: readonly FarmingFocusEntry[], limit: number
       <button type="button" class="farming-open-raids" data-farming-open-raids>Open Raids</button>
     </div>
     <div class="farming-material-list">${visible.map(renderFarmingMaterial).join('')}</div>
-    ${entries.length > limit ? `<p class="farming-note">${entries.length - limit} more known material deficit${entries.length - limit === 1 ? '' : 's'} in Goals.</p>` : ''}
+    ${entries.length > limit ? `<p class="farming-note">${entries.length - limit} more proven material deficit${entries.length - limit === 1 ? '' : 's'} in Goals.</p>` : ''}
   </div>`;
 }
 
@@ -411,7 +411,7 @@ function renderFarmingMaterial(entry: FarmingFocusEntry): string {
   const wiki = entry.wiki;
   let sources = entry.material.wikiTitle?.trim()
     ? '<div class="farming-source-state">Loading GBF Wiki sources…</div>'
-    : '<div class="farming-source-state"><strong>Wiki source unknown</strong><span>No modeled Wiki title exists for this material, so GBF Tool does not guess a source page.</span></div>';
+    : '<div class="farming-source-state"><strong>Wiki source not modeled</strong><span>No modeled Wiki title exists for this material, so GBF Tool does not guess a source page.</span></div>';
   if (wiki?.state === 'unavailable') {
     sources = `<div class="farming-source-state"><strong>Wiki source unavailable</strong><span>${escapeHtml(wiki.limitation ?? 'No safe source conclusion can be made.')}</span><a href="${escapeAttribute(wiki.sourceUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Material page ↗</a></div>`;
   } else if (wiki?.state === 'known') {
