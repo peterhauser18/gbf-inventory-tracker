@@ -20,7 +20,7 @@ test('retargeting detaches the previous target before attaching the revalidated 
   const end = background.indexOf('async function enableNetworkObservation', start);
   assert.ok(start >= 0 && end > start);
   const switchSource = background.slice(start, end);
-  const targetless = switchSource.indexOf('setRuntimeState({ active: true, scanId: state.scanId })');
+  const targetless = switchSource.indexOf('await setRuntimeState(preservedState)');
   const detach = switchSource.indexOf('chrome.debugger.detach({ tabId: previousTabId })');
   const revalidate = switchSource.indexOf('isVerifiedGbfTab(candidateTabId)', detach);
   const attach = switchSource.indexOf('chrome.debugger.attach({ tabId: candidateTabId }', revalidate);
@@ -44,10 +44,17 @@ test('combat lock is keyed by the existing raid instance id and only the same in
 test('moving a locked fight tab preserves its raid instance and reattaches the same tab', () => {
   assert.match(background, /chrome\.tabs\.onAttached\.addListener\(\(tabId\) => \{\s*void recoverMovedCombatTarget\(tabId\);\s*\}\)/s);
   assert.match(background, /async function recoverMovedCombatTarget[\s\S]*state\.combatTabId !== tabId[\s\S]*!state\.combatInstanceId[\s\S]*queueObservationRetarget\(tabId\)/);
-  const start = background.indexOf('async function handleUnexpectedDetach');
-  const end = background.indexOf('function normalizeResourceType', start);
-  assert.ok(start >= 0 && end > start);
-  const detachSource = background.slice(start, end);
+  const switchStart = background.indexOf('async function switchObservationTarget');
+  const switchEnd = background.indexOf('async function enableNetworkObservation', switchStart);
+  const switchSource = background.slice(switchStart, switchEnd);
+  assert.match(switchSource, /const preserveCombatLock = state\.combatTabId === candidateTabId && Boolean\(state\.combatInstanceId\)/);
+  assert.match(switchSource, /if \(!preserveCombatLock\) await clearCombatParseContext\(\)/);
+  assert.match(switchSource, /combatInstanceId: state\.combatInstanceId/);
+
+  const detachStart = background.indexOf('async function handleUnexpectedDetach');
+  const detachEnd = background.indexOf('function normalizeResourceType', detachStart);
+  assert.ok(detachStart >= 0 && detachEnd > detachStart);
+  const detachSource = background.slice(detachStart, detachEnd);
   assert.match(detachSource, /if \(reason === 'canceled_by_user'\) \{\s*await clearCombatParseContext\(\)/s);
   assert.match(detachSource, /const next: RuntimeState = \{\s*\.\.\.state,[\s\S]*delete next\.tabId/);
   assert.match(detachSource, /state\.combatTabId === tabId && state\.combatInstanceId[\s\S]*queueObservationRetarget\(tabId\)/);
