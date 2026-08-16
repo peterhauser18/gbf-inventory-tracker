@@ -1,10 +1,31 @@
-.combat-panel, .raid-card { margin-top: 16px; padding: 18px; border: 1px solid #dcdcd5; border-radius: 14px; background: #fff; }
+.combat-panel, .raid-card { margin-top: 16px; border: 1px solid #dcdcd5; border-radius: 14px; background: #fff; }
+.raid-card { padding: 18px; }
+.combat-panel { padding: 0; overflow: hidden; }
+.combat-panel > summary { list-style: none; cursor: pointer; padding: 18px; user-select: none; }
+.combat-panel > summary::-webkit-details-marker { display: none; }
+.combat-panel > summary::after { content: '+'; flex: 0 0 auto; font-size: 18px; font-weight: 800; color: #73756e; }
+.combat-panel[open] > summary::after { content: '−'; }
+.combat-panel-body { padding: 0 18px 18px; }
 .combat-heading, .raid-head, .raid-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.combat-heading > div { min-width: 0; }
 .combat-heading h3, .raid-head h3 { margin: 4px 0; }
-.combat-table, .raid-drops { margin-top: 12px; border: 1px solid #dcddd6; border-radius: 10px; overflow: hidden; }
-.combat-row { display: grid; grid-template-columns: minmax(140px, 1.3fr) repeat(6, minmax(64px, .7fr)); gap: 8px; align-items: center; padding: 9px 10px; border-top: 1px solid #e5e6df; font-size: 11px; }
-.combat-row:first-child { border-top: 0; }
-.combat-row.header { background: #f0f0ec; color: #73756e; font-size: 9px; font-weight: 850; text-transform: uppercase; letter-spacing: .05em; }
+.combat-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.combat-metrics .metric-card { min-width: 0; }
+.combat-metrics .metric-card:nth-child(1) { grid-column: 1 / -1; grid-row: 1; }
+.combat-metrics .metric-card:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+.combat-metrics .metric-card:nth-child(4) { grid-column: 1; grid-row: 3; }
+.combat-metrics .metric-card:nth-child(5) { grid-column: 2; grid-row: 3; }
+.combat-metrics .metric-card:nth-child(2) { grid-column: 3; grid-row: 3; }
+.combat-metrics .metric-card > strong { overflow-wrap: anywhere; line-height: 1.12; }
+.combat-table, .raid-drops, .participant-table { margin-top: 12px; border: 1px solid #dcddd6; border-radius: 10px; overflow: hidden; }
+.combat-row { display: grid; grid-template-columns: minmax(190px, 1.5fr) repeat(6, minmax(64px, .7fr)); gap: 8px; align-items: center; padding: 9px 10px; border-top: 1px solid #e5e6df; font-size: 11px; }
+.combat-row:first-child, .participant-row:first-child { border-top: 0; }
+.combat-row.header, .participant-row.header { background: #f0f0ec; color: #73756e; font-size: 9px; font-weight: 850; text-transform: uppercase; letter-spacing: .05em; }
+.combat-character { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.combat-character > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.combat-character-hp { color: #74766f; font-size: 10px; white-space: nowrap; }
+.participant-row { display: grid; grid-template-columns: 64px minmax(180px, 2fr) 80px 120px 90px minmax(110px, 1fr); gap: 10px; align-items: center; padding: 9px 10px; border-top: 1px solid #e5e6df; font-size: 11px; }
+.participant-row > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .combat-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 12px; }
 .combat-stat-grid > div { display: grid; gap: 4px; padding: 10px; border: 1px solid #e0e1da; border-radius: 9px; }
 .combat-stat-grid span { color: #797b74; font-size: 10px; }
@@ -26,8 +47,15 @@
 .raid-note { display: flex; gap: 8px; margin-top: 12px; align-items: stretch; }
 .raid-note textarea { flex: 1; resize: vertical; border: 1px solid #d0d1ca; border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 11px; }
 @media (max-width: 1050px) {
-  .combat-row { grid-template-columns: minmax(120px, 1fr) repeat(6, 58px); }
+  .combat-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .combat-metrics .metric-card:nth-child(1),
+  .combat-metrics .metric-card:nth-child(3) { grid-column: 1 / -1; }
+  .combat-metrics .metric-card:nth-child(4) { grid-column: 1; grid-row: 3; }
+  .combat-metrics .metric-card:nth-child(5) { grid-column: 2; grid-row: 3; }
+  .combat-metrics .metric-card:nth-child(2) { grid-column: 1 / -1; grid-row: 4; }
+  .combat-row { grid-template-columns: minmax(170px, 1fr) repeat(6, 58px); }
   .combat-log-row { grid-template-columns: 60px 1fr 1fr 80px; }
+  .participant-row { grid-template-columns: 55px minmax(140px, 2fr) 65px 95px 75px minmax(90px, 1fr); }
 }
 
 :root[data-theme='dark'] .combat-panel,
@@ -36,6 +64,7 @@
 :root[data-theme='dark'] .combat-log-row,
 :root[data-theme='dark'] .tracked-card,
 :root[data-theme='dark'] .combat-table,
+:root[data-theme='dark'] .participant-table,
 :root[data-theme='dark'] .raid-drops,
 :root[data-theme='dark'] .raid-note textarea,
 :root[data-theme='dark'] .import-button,
@@ -48,12 +77,17 @@
   color: #e7e8e2;
 }
 :root[data-theme='dark'] .combat-row.header,
+:root[data-theme='dark'] .participant-row.header,
 :root[data-theme='dark'] .tracked-card { background: #20221d; }
 :root[data-theme='dark'] .combat-row,
+:root[data-theme='dark'] .participant-row,
 :root[data-theme='dark'] .combat-log-row,
 :root[data-theme='dark'] .wiki-reference { border-color: #34372f; }
 :root[data-theme='dark'] .combat-stat-grid span,
+:root[data-theme='dark'] .combat-character-hp,
 :root[data-theme='dark'] .tracked-title span,
 :root[data-theme='dark'] .tracked-rate span,
 :root[data-theme='dark'] .wiki-reference,
-:root[data-theme='dark'] .combat-row.header { color: #a7aaa0; }
+:root[data-theme='dark'] .combat-row.header,
+:root[data-theme='dark'] .participant-row.header,
+:root[data-theme='dark'] .combat-panel > summary::after { color: #a7aaa0; }
