@@ -1,10 +1,13 @@
 import { classifyVerifiedNormalDamage, criticalDecision } from './damage-semantics.ts';
-import type { CombatObservation, NormalizedRaidParse, ParsedCombatAction, ParsedDamageHit } from './types.ts';
+import type { CombatSummonContext, VerifiedCombatObservation } from './multiraid.ts';
+import type { NormalizedRaidParse, ParsedCombatAction, ParsedDamageHit } from './types.ts';
 
 type Obj = Record<string, unknown>;
 
-export function enrichVerifiedScenarioSemantics(body: unknown, observation: CombatObservation): void {
-  if (!obj(body) || !Array.isArray(body.scenario)) return;
+export function enrichVerifiedScenarioSemantics(body: unknown, observation: VerifiedCombatObservation): void {
+  if (!obj(body)) return;
+  enrichVerifiedSummonContext(body, observation);
+  if (!Array.isArray(body.scenario)) return;
   const rawGroups = verifiedNormalGroups(body.scenario);
   const normalActions = observation.actions.filter((action) => action.kind === 'normal');
   const count = Math.min(rawGroups.length, normalActions.length);
@@ -45,6 +48,44 @@ export function preserveVerifiedNormalFacts(
   parse.stats.criticalHits = normalEntries.length > 0 && normalEntries.every((entry) => entry.critical !== undefined)
     ? normalEntries.filter((entry) => entry.critical).length
     : undefined;
+}
+
+function enrichVerifiedSummonContext(body: Obj, observation: VerifiedCombatObservation): void {
+  const context = observation.context;
+  if (!context) return;
+
+  const startSummons = verifiedSummonRoster(body.summon);
+  if (startSummons.length > 0) context.summons = startSummons;
+
+  const status = obj(body.status) ? body.status : undefined;
+  const statusSummons = status && Array.isArray(status.summon) ? status.summon : undefined;
+  if (!statusSummons || !context.summons?.length) return;
+
+  context.summons = context.summons.map((summon, index) => {
+    const value = statusSummons[index];
+    if (!obj(value)) return summon;
+    const cooldown = num(value.recast);
+    if (cooldown === undefined) return summon;
+    return { ...summon, cooldown, available: cooldown === 0 };
+  });
+}
+
+function verifiedSummonRoster(value: unknown): CombatSummonContext[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 6).flatMap((entry) => {
+    if (!obj(entry)) return [];
+    const id = str(entry.id);
+    const name = str(entry.name);
+    const cooldown = num(entry.recast);
+    if (!id && !name) return [];
+    return [{
+      id,
+      name,
+      cooldown,
+      available: cooldown === undefined ? undefined : cooldown === 0,
+      used: false,
+    }];
+  });
 }
 
 function verifiedNormalGroups(scenario: unknown[]): ParsedDamageHit[][] {
