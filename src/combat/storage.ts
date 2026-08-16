@@ -8,6 +8,7 @@ import {
   type CombatActorContext,
   type CombatParseContext,
   type CombatParticipantDisplay,
+  type CombatSummonContext,
   type VerifiedCombatObservation,
 } from './multiraid.ts';
 import type { NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord } from './types.ts';
@@ -86,6 +87,10 @@ function sanitizeCombatParseContext(context: CombatParseContext): CombatParseCon
     instanceId: context.instanceId,
     actorSlots: context.actorSlots.map(sanitizeActorContext),
     actors: context.actors?.map(sanitizeActorContext),
+    mainCharacterId: safeText(context.mainCharacterId, 80),
+    accountDisplayName: safeText(context.accountDisplayName, 80),
+    turn: safeNumber(context.turn),
+    summons: context.summons?.slice(0, 6).map(sanitizeSummonContext),
     participants: context.participants?.slice(0, 30).map(sanitizeParticipantDisplay),
   };
 }
@@ -97,6 +102,16 @@ function sanitizeActorContext(actor: CombatActorContext): CombatActorContext {
     hp: safeNumber(actor.hp),
     maxHp: safeNumber(actor.maxHp),
     alive: typeof actor.alive === 'boolean' ? actor.alive : undefined,
+  };
+}
+
+function sanitizeSummonContext(summon: CombatSummonContext): CombatSummonContext {
+  return {
+    id: safeText(summon.id, 80),
+    name: safeText(summon.name, 120),
+    cooldown: safeNumber(summon.cooldown),
+    available: typeof summon.available === 'boolean' ? summon.available : undefined,
+    used: typeof summon.used === 'boolean' ? summon.used : undefined,
   };
 }
 
@@ -112,6 +127,10 @@ function sanitizeParticipantDisplay(participant: CombatParticipantDisplay): Comb
       ? participant.status
       : undefined,
   };
+}
+
+function safeText(value: unknown, maxLength: number): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim().slice(0, maxLength) : undefined;
 }
 
 function safeNumber(value: unknown): number | undefined {
