@@ -27,6 +27,11 @@ export interface WikiAbilityText {
   description: string;
 }
 
+export interface WikiSummonEffectText {
+  name?: string;
+  description: string;
+}
+
 export interface WikiSummonSource {
   masterId: string;
   wikiTitle?: string;
@@ -36,8 +41,8 @@ export interface WikiSummonSource {
 }
 
 export interface WikiSummonGameplayText {
-  call?: WikiAbilityText;
-  aura?: WikiAbilityText;
+  call?: WikiSummonEffectText;
+  aura?: WikiSummonEffectText;
 }
 
 export interface WikiGameplayMetadataIndex {
@@ -109,10 +114,10 @@ export function selectSummonGameplay(
   const auraDescription = firstAvailableAtOrBelow(source.auras, slot);
   return {
     call: callDescription
-      ? { name: source.callName ?? 'Call', description: callDescription }
+      ? { name: source.callName, description: callDescription }
       : undefined,
     aura: auraDescription
-      ? { name: 'Aura', description: auraDescription }
+      ? { description: auraDescription }
       : undefined,
   };
 }
