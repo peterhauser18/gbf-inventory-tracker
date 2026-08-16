@@ -81,13 +81,13 @@ function renderCypherModern(view: CombatView): string {
     ${renderLiveStats(view)}
     <div class="preset-cypher-grid">
       <div class="preset-main-column">
-        ${renderPartyCards(view, 'large')}
-        ${renderSelectedAnalysis(view, 'wide')}
+        ${accordion(view, 'party', 'Party', renderPartyCards(view, 'large'))}
+        ${accordion(view, 'analysis', 'Party Analysis', renderSelectedAnalysis(view, 'wide'))}
       </div>
-      ${renderSummonsPanel(view, 'sidebar')}
+      ${accordion(view, 'summons', 'Summons', renderSummonsPanel(view, 'sidebar'))}
     </div>
-    ${renderParticipantsPanel(view)}
-    ${renderLogPanel(view)}
+    ${accordion(view, 'participants', 'Participants', renderParticipantsTable(view))}
+    ${accordion(view, 'log', 'Combat Log', renderLog(view))}
   </div>`;
 }
 
@@ -95,9 +95,9 @@ function renderCockpit(view: CombatView): string {
   return `<div class="combat-preset preset-combat-cockpit">
     ${renderRaidHeader(view)}
     ${renderLiveStats(view)}
-    ${renderCockpitTable(view)}
-    ${renderSummonsPanel(view, 'strip')}
-    <div class="preset-bottom-split">${renderParticipantsPanel(view)}${renderLogPanel(view)}</div>
+    ${accordion(view, 'party', 'Party & inline analysis', renderCockpitTable(view))}
+    ${accordion(view, 'summons', 'Summons', renderSummonsPanel(view, 'strip'))}
+    <div class="preset-bottom-split">${accordion(view, 'participants', 'Participants', renderParticipantsTable(view))}${accordion(view, 'log', 'Combat Log', renderLog(view))}</div>
   </div>`;
 }
 
@@ -106,11 +106,11 @@ function renderPartyFirst(view: CombatView): string {
     ${renderRaidHeader(view)}
     ${renderLiveStats(view)}
     <div class="party-first-row">
-      ${renderPartyCards(view, 'hero')}
-      ${renderSummonsPanel(view, 'sidebar')}
+      ${accordion(view, 'party', 'Party', renderPartyCards(view, 'hero'))}
+      ${accordion(view, 'summons', 'Summons', renderSummonsPanel(view, 'sidebar'))}
     </div>
-    ${renderSelectedAnalysis(view, 'wide')}
-    <div class="preset-bottom-split">${renderParticipantsPanel(view)}${renderLogPanel(view)}</div>
+    ${accordion(view, 'analysis', 'Party Analysis', renderSelectedAnalysis(view, 'wide'))}
+    <div class="preset-bottom-split">${accordion(view, 'participants', 'Participants', renderParticipantsTable(view))}${accordion(view, 'log', 'Combat Log', renderLog(view))}</div>
   </div>`;
 }
 
@@ -119,10 +119,10 @@ function renderAnalyzerSplit(view: CombatView): string {
     ${renderRaidHeader(view)}
     ${renderLiveStats(view)}
     <div class="analyzer-split-grid">
-      <div>${renderPartyCards(view, 'stacked')}${renderSummonsPanel(view, 'strip')}</div>
-      ${renderSelectedAnalysis(view, 'deep')}
+      <div>${accordion(view, 'party', 'Party', renderPartyCards(view, 'stacked'))}${accordion(view, 'summons', 'Summons', renderSummonsPanel(view, 'strip'))}</div>
+      ${accordion(view, 'analysis', 'Selected character analysis', renderSelectedAnalysis(view, 'deep'))}
     </div>
-    <div class="preset-bottom-split">${renderParticipantsPanel(view)}${renderLogPanel(view)}</div>
+    <div class="preset-bottom-split">${accordion(view, 'participants', 'Participants', renderParticipantsTable(view))}${accordion(view, 'log', 'Combat Log', renderLog(view))}</div>
   </div>`;
 }
 
@@ -161,7 +161,7 @@ function renderRaidHeader(view: CombatView): string {
 function renderLiveStats(view: CombatView): string {
   const raid = view.raid;
   const honors = raid.participants?.honors ?? raid.participants?.contribution;
-  const average = raid.coverage.startObserved && view.turns.currentTurn && raid.partyDamage !== undefined
+  const average = raid.coverage.startObserved && view.turns.currentTurn !== undefined && view.turns.currentTurn > 0 && raid.partyDamage !== undefined
     ? raid.partyDamage / view.turns.currentTurn
     : undefined;
   return `<section class="combat-live-stats">
@@ -242,20 +242,12 @@ function renderSummonStrip(view: CombatView): string {
   return `<div class="summon-strip">${view.summons.map((summon) => `<article class="summon-card">${renderImage(summon.imageUrl, summon.name)}<strong>${escapeHtml(summon.name)}</strong><span>Observed</span></article>`).join('')}</div>`;
 }
 
-function renderParticipantsPanel(view: CombatView): string {
-  return `<section class="combat-subpanel"><div class="section-title"><p class="eyebrow">PARTICIPANTS</p><h3>Raid participants</h3></div>${renderParticipantsTable(view)}</section>`;
-}
-
 function renderParticipantsTable(view: CombatView): string {
   if (!view.participantRows.length) {
     const count = view.raid.participants?.count;
     return `<p class="muted">${count === undefined ? 'No participant snapshot observed yet.' : `${formatNumber(count)} participants observed; detailed rows are not available in this session.`}</p>`;
   }
   return `<div class="participant-grid"><div class="participant-grid-row head"><span>#</span><span>Player</span><span>Rank</span><span>Honors</span><span>HP</span><span>Status</span></div>${view.participantRows.slice(0, 30).map((participant) => `<div class="participant-grid-row"><strong>${participant.placement === undefined ? '—' : `#${participant.placement}`}</strong><span>${escapeHtml(participant.name)}</span><span>${optionalNumber(participant.level)}</span><span>${optionalNumber(participant.honors)}</span><span>${participant.hpPercent === undefined ? '—' : `${participant.hpPercent.toFixed(1)}%`}</span><span>${escapeHtml(participantStatus(participant))}</span></div>`).join('')}</div>`;
-}
-
-function renderLogPanel(view: CombatView): string {
-  return `<section class="combat-subpanel"><div class="section-title"><p class="eyebrow">LOG</p><h3>Combat log</h3></div>${renderLog(view)}</section>`;
 }
 
 function renderLog(view: CombatView): string {
