@@ -1,4 +1,8 @@
-import { ingestAccountRecord } from './account/ingest.ts';
+import {
+  accountEvidenceForVerifiedResponseUrl,
+  ingestAccountRecord,
+  type AccountEvidenceKey,
+} from './account/ingest.ts';
 import { loadAccountDatabase, resetAccountDatabase, saveAccountDatabase } from './account/storage.ts';
 import { CaptureEventBuffer } from './capture/event-buffer.ts';
 import { processObservedResponse } from './capture/observer.ts';
@@ -102,7 +106,8 @@ async function queueAccountReset(): Promise<void> {
   await accountQueue;
 }
 
-async function queueAccountIngest(record: CapturedResponseRecord): Promise<void> {
+async function queueAccountIngest(record: CapturedResponseRecord): Promise<AccountEvidenceKey | null> {
+  let changedEvidence: AccountEvidenceKey | null = null;
   accountQueue = accountQueue
     .catch(() => {})
     .then(async () => {
@@ -110,8 +115,10 @@ async function queueAccountIngest(record: CapturedResponseRecord): Promise<void>
       const next = ingestAccountRecord(current, record);
       if (!next || next === current) return;
       await saveAccountDatabase(next);
+      changedEvidence = accountEvidenceForVerifiedResponseUrl(record.meta.url);
     });
   await accountQueue;
+  return changedEvidence;
 }
 
 async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
@@ -256,8 +263,18 @@ async function saveObservedResponse(record: CapturedResponseRecord): Promise<voi
   }
   if (route !== 'account') return;
 
-  await queueAccountIngest(record);
+  const changedEvidence = await queueAccountIngest(record);
+  if (changedEvidence) notifyDashboardAccountUpdate(changedEvidence);
   await saveCapturedResponse(record);
+}
+
+function notifyDashboardAccountUpdate(evidence: AccountEvidenceKey): void {
+  void chrome.runtime.sendMessage({
+    type: 'gbfit-dashboard-account-updated',
+    evidence: [evidence],
+  }).catch(() => {
+    // No dashboard listener is normal when the dashboard is closed.
+  });
 }
 
 async function handleUnexpectedDetach(tabId: number, reason: string): Promise<void> {
