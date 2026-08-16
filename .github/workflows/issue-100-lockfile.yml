@@ -35,8 +35,7 @@ jobs:
         run: |
           git fetch origin main '+refs/heads/agent/*:refs/remotes/origin/agent/*'
           deleted=0
-          for ref in refs/remotes/origin/agent/*; do
-            [ -e "$ref" ] || continue
+          while IFS= read -r ref; do
             branch="${ref#refs/remotes/origin/}"
             if [ "$branch" = "$CURRENT_BRANCH" ]; then
               continue
@@ -48,5 +47,5 @@ jobs:
             else
               echo "Keeping unmerged branch: $branch"
             fi
-          done
+          done < <(git for-each-ref --format='%(refname)' refs/remotes/origin/agent/)
           echo "Deleted $deleted merged agent branches"
