@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  loadWikiGameplayFamily,
   loadWikiGameplayMetadata,
   normalizeWikiGameplayText,
   normalizeWikiTitle,
   selectSummonGameplay,
 } from './wiki-gameplay-metadata.ts';
 
-function gameplayFetcher(failTable?: string) {
+function gameplayFetcher(failTable?: string, calls?: string[]) {
   return async (input: string | URL) => {
     const url = new URL(input.toString());
     const table = url.searchParams.get('tables') ?? '';
+    calls?.push(table);
     if (table === failTable) return { ok: false, status: 503, json: async () => ({}) };
 
     const rows = table === 'character_skills'
@@ -75,6 +77,19 @@ test('one failed public table stays unavailable without discarding proven other 
   assert.deepEqual(metadata.weaponsByTitle.get('fixture weapon'), undefined);
   assert.equal(metadata.charactersById.get('3040000000')?.[0]?.name, 'First Skill');
   assert.equal(metadata.summonsById.get('2040000000')?.callName, 'Fixture Call');
+});
+
+test('family loader requests only the selected public Cargo table', async () => {
+  const cases = [
+    ['characters', 'character_skills'],
+    ['weapons', 'weapon_skills'],
+    ['summons', 'summons'],
+  ] as const;
+  for (const [family, table] of cases) {
+    const calls: string[] = [];
+    await loadWikiGameplayFamily(family, gameplayFetcher(undefined, calls));
+    assert.deepEqual(calls, [table]);
+  }
 });
 
 test('Wiki markup is reduced to escaped-render-safe plain text without inventing missing text', () => {
