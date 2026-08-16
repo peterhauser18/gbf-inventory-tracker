@@ -81,22 +81,31 @@ function enrichVerifiedSummonContext(body: Obj, observation: VerifiedCombatObser
 }
 
 function verifiedSummonRoster(value: unknown, supporterValue: unknown): CombatSummonContext[] {
-  const summons = Array.isArray(value)
-    ? value.slice(0, 5).flatMap((entry) => {
-        if (!obj(entry)) return [];
-        const id = str(entry.id);
-        const name = str(entry.name);
-        const cooldown = num(entry.recast);
-        if (!id && !name) return [];
-        return [{ id, name, cooldown, used: false }];
-      })
-    : [];
+  const hasOwnRoster = Array.isArray(value) && value.length > 0;
+  const hasSupporter = obj(supporterValue);
+  if (!hasOwnRoster && !hasSupporter) return [];
 
-  if (summons.length === 5 && obj(supporterValue)) {
+  const summons: CombatSummonContext[] = [];
+  if (Array.isArray(value)) {
+    for (let index = 0; index < 5; index += 1) {
+      const entry = value[index];
+      if (!obj(entry)) {
+        summons.push({});
+        continue;
+      }
+      const id = str(entry.id);
+      const name = str(entry.name);
+      const cooldown = num(entry.recast);
+      summons.push(id || name || cooldown !== undefined ? { id, name, cooldown, used: false } : {});
+    }
+  }
+  while (summons.length < 5) summons.push({});
+
+  if (hasSupporter) {
     const id = str(supporterValue.id);
     const name = str(supporterValue.name);
     const cooldown = num(supporterValue.recast);
-    if (id || name || cooldown !== undefined) summons.push({ id, name, cooldown, used: false });
+    summons.push(id || name || cooldown !== undefined ? { id, name, cooldown, used: false } : {});
   }
   return summons;
 }
