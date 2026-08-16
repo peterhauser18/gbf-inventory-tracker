@@ -1,5 +1,6 @@
 export type DashboardDestinationKey =
   | 'overview'
+  | 'goals'
   | 'combat'
   | 'raids'
   | 'eternals'
@@ -14,7 +15,7 @@ export type DashboardDestinationKey =
   | 'developer';
 
 export type DashboardNavigationGroup = 'overview' | 'detail' | 'system';
-export type DashboardDestinationOwner = 'dashboard' | 'combat';
+export type DashboardDestinationOwner = 'dashboard' | 'combat' | 'goals';
 
 export interface DashboardDestination {
   key: DashboardDestinationKey;
@@ -39,6 +40,14 @@ export const DASHBOARD_DESTINATIONS: readonly DashboardDestination[] = [
     group: 'overview',
     owner: 'dashboard',
     keywords: ['home', 'dashboard', 'summary', 'status'],
+  },
+  {
+    key: 'goals',
+    label: 'Goals',
+    description: 'Pinned Eternal and Evoker targets, next actions and material deficits.',
+    group: 'overview',
+    owner: 'goals',
+    keywords: ['pins', 'targets', 'progress', 'next actions', 'materials', 'deficits'],
   },
   {
     key: 'combat',
@@ -139,7 +148,7 @@ export const DASHBOARD_DESTINATIONS: readonly DashboardDestination[] = [
 ] as const;
 
 export const DASHBOARD_NAV_GROUPS: readonly DashboardNavigationGroupDefinition[] = [
-  { key: 'overview', label: 'Overview', destinations: ['overview'] },
+  { key: 'overview', label: 'Overview', destinations: ['overview', 'goals'] },
   {
     key: 'detail',
     label: 'Detail',
