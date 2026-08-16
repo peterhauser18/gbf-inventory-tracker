@@ -2,6 +2,7 @@ import { resolveSafeExternalImageUrl } from './resolver.ts';
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const WIKI_ORIGIN = 'https://gbf.wiki';
+// The old Items page carries grouped entries (for example orbs/crystals); Category:Items supplies newer item pages it omits.
 const TREASURE_INDEX_PAGE = 'Items';
 const TREASURE_CATEGORY = 'Category:Items';
 const CACHE_KEY = 'gbfit:wiki-treasure-images:v6';
