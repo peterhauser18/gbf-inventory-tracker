@@ -97,7 +97,11 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
         const thumbnail = isObject(page.thumbnail) && typeof page.thumbnail.source === 'string'
           ? resolveSafeExternalImageUrl(page.thumbnail.source) ?? undefined
           : undefined;
-        if (thumbnail) result.set(normalizeWikiTreasureTitle(page.title), thumbnail);
+        if (thumbnail) {
+          result.set(normalizeWikiTreasureTitle(page.title), thumbnail);
+          const itemId = wikiTreasureItemId(thumbnail);
+          if (itemId) result.set(normalizeWikiTreasureTitle(`Treasure ${itemId}`), thumbnail);
+        }
       }
     }
     const continuation = payload && isObject(payload.continue) ? payload.continue : undefined;
@@ -106,6 +110,15 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
       : undefined;
   } while (continueToken);
   return result;
+}
+
+function wikiTreasureItemId(imageUrl: string): string | undefined {
+  try {
+    const match = new URL(imageUrl).pathname.match(/Item_article_s_(\d+)\.(?:jpe?g|png|webp)/i);
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
 }
 
 function readCache(storage: StorageLike | undefined): { cachedAt: number; index: Map<string, string> } | undefined {
