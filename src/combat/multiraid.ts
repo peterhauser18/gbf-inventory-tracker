@@ -380,13 +380,33 @@ function verifiedScenarioContext(scenario: unknown[], context: CombatParseContex
 
 function applyScenarioPartyState(context: CombatParseContext, raw: Obj): void {
   const cmd = str(raw.cmd)?.toLowerCase();
-  const target = str(raw.to, raw.target)?.toLowerCase();
+  const target = str(raw.target, raw.to)?.toLowerCase();
   if (target === 'player' && (cmd === 'damage' || cmd === 'heal' || cmd === 'super')) {
     collectPlayerHp(raw.list ?? raw.damage, context);
   }
   if (cmd === 'die' && target === 'player') {
-    const pos = num(raw.pos);
-    if (pos !== undefined) applyExplicitPlayerDeath(context, pos);
+    for (const pos of explicitPlayerPositions(raw)) applyExplicitPlayerDeath(context, pos);
+  }
+}
+
+function explicitPlayerPositions(raw: Obj): number[] {
+  const positions = new Set<number>();
+  const direct = num(raw.pos);
+  if (direct !== undefined) positions.add(direct);
+  collectPositions(raw.list, positions);
+  return [...positions];
+}
+
+function collectPositions(value: unknown, positions: Set<number>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectPositions(item, positions);
+    return;
+  }
+  if (!obj(value)) return;
+  const pos = num(value.pos);
+  if (pos !== undefined) positions.add(pos);
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'list' || key === 'damage' || /^\d+$/.test(key)) collectPositions(child, positions);
   }
 }
 
@@ -460,18 +480,15 @@ function mergeActorInto(actors: CombatActorContext[], actor: CombatActorContext)
 function verifiedParticipantDisplay(body: Obj): CombatParticipantDisplay[] {
   const members = Array.isArray(body.multi_member_info) ? body.multi_member_info.filter(obj) : [];
   const ranking = Array.isArray(body.mvp_info) ? body.mvp_info.filter(obj) : [];
-  const memberByName = new Map<string, Obj | null>();
-  for (const member of members) {
-    const name = str(member.nickname, member.name);
-    if (!name) continue;
-    memberByName.set(name, memberByName.has(name) ? null : member);
-  }
+  const rankingByName = uniqueByDisplayName(ranking);
+  const memberByName = uniqueByDisplayName(members);
+  const source = members.length > 0 ? members : ranking;
 
-  const source = ranking.length > 0 ? ranking : members;
   return source.slice(0, 30).flatMap((value, index) => {
     const name = str(value.nickname, value.name);
     if (!name) return [];
-    const member = memberByName.get(name) ?? (ranking.length === 0 ? value : undefined);
+    const member = members.length > 0 ? value : memberByName.get(name) ?? undefined;
+    const ranked = rankingByName.get(name) ?? (ranking.length > 0 && members.length === 0 ? value : undefined);
     const retired = member ? bool(member.retired_flag, member.retired) : undefined;
     const dead = member ? bool(member.is_dead, member.dead) : undefined;
     const status = retired === true ? 'retired' as const
@@ -480,14 +497,24 @@ function verifiedParticipantDisplay(body: Obj): CombatParticipantDisplay[] {
           : undefined;
     return [{
       name,
-      placement: num(value.rank) ?? (ranking.length === 0 ? undefined : index + 1),
-      level: num(value.level, member?.level),
-      honors: num(value.point, value.honors, value.honour),
+      placement: ranked ? num(ranked.rank) : undefined,
+      level: num(member?.level, ranked?.level, value.level),
+      honors: ranked ? num(ranked.point, ranked.honors, ranked.honour) : undefined,
       host: member ? bool(member.is_host) : undefined,
       hpPercent: member ? num(member.hp_ratio) : undefined,
       status,
     }];
   });
+}
+
+function uniqueByDisplayName(values: Obj[]): Map<string, Obj | null> {
+  const result = new Map<string, Obj | null>();
+  for (const value of values) {
+    const name = str(value.nickname, value.name);
+    if (!name) continue;
+    result.set(name, result.has(name) ? null : value);
+  }
+  return result;
 }
 
 function verifiedDamageHits(value: unknown, kind: DamageKind): ParsedDamageHit[] {
