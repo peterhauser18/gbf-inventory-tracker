@@ -12,6 +12,7 @@ import {
   type GoalPin,
   type PinnedGoalSummary,
 } from './goals.ts';
+import { resolveWikiUrl } from './resolver.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 let plannerCards: PlannerCard[] = [];
@@ -192,8 +193,6 @@ function renderGoalsView(): void {
       ? `<div class="goal-empty"><strong>Goals unavailable</strong><span>${escapeHtml(modelError || 'The local planner could not be loaded.')}</span></div>`
       : '';
   const { goals, stalePins } = resolvePinnedGoals(plannerCards, pins);
-  const active = goals.filter((goal) => goal.targetReached !== true);
-  const deficits = deficitRows(aggregatePinnedMaterialDeficits(active));
 
   content.innerHTML = `
     <div class="command-bar">
@@ -208,15 +207,15 @@ function renderGoalsView(): void {
       <div>
         <p class="eyebrow">GOALS</p>
         <h2>Pinned progress targets</h2>
-        <p class="muted">Pins are local dashboard preferences. Each target includes only modeled, still-unreached steps through that target.</p>
+        <p class="muted">Pins are local dashboard preferences. Expand a target to inspect requirements and Wiki-backed farming sources for proven shortfalls.</p>
       </div>
       <div class="goal-storage-status">${storageAvailable ? 'Local persistence' : 'Session only · storage unavailable'}</div>
     </header>
-    ${modelMessage || renderGoalsBody(goals, stalePins, deficits)}
+    ${modelMessage || renderGoalsBody(goals, stalePins)}
   `;
 }
 
-function renderGoalsBody(goals: readonly PinnedGoalSummary[], stalePins: readonly GoalPin[], deficits: readonly GoalMaterialDeficit[]): string {
+function renderGoalsBody(goals: readonly PinnedGoalSummary[], stalePins: readonly GoalPin[]): string {
   if (goals.length === 0) {
     const hint = modelState === 'empty'
       ? 'No local account snapshot is available yet.'
@@ -236,11 +235,6 @@ function renderGoalsBody(goals: readonly PinnedGoalSummary[], stalePins: readonl
         ${goals.map(renderGoalCard).join('')}
         ${stalePins.length ? `<p class="goal-warning">${stalePins.length} saved goal reference${stalePins.length === 1 ? ' is' : 's are'} unavailable in the current modeled planner and is not included in totals.</p>` : ''}
       </div>
-      <article class="goal-panel goal-deficit-panel">
-        <div class="goal-panel-head"><div><p class="eyebrow">TOTAL DEFICITS</p><h3>Across active pins</h3></div>${qualityChip(goalSummaryQuality(goals.filter((goal) => goal.targetReached !== true)))}</div>
-        <p class="muted">Required quantities are summed across active goals; proven inventory is subtracted once per material.</p>
-        ${renderDeficits(deficits, 20)}
-      </article>
     </section>
   `;
 }
@@ -250,7 +244,7 @@ function renderGoalCard(goal: PinnedGoalSummary): string {
   const unknown = goal.materials.filter((material) => material.state === 'unknown').length;
   const stage = goal.currentStep?.targetDisplay ?? goal.targetDisplay;
   return `
-    <article class="goal-card ${goal.targetReached === true ? 'reached' : ''}">
+    <article class="goal-card ${goal.targetReached === true ? 'reached' : ''}" data-goal-key="${escapeAttribute(goal.key)}">
       <div class="goal-card-main">
         <div class="goal-title-row">
           <div><strong>${escapeHtml(goal.title)}</strong><span>Target ${escapeHtml(goal.targetDisplay)}</span></div>
@@ -275,19 +269,41 @@ function renderGoalCard(goal: PinnedGoalSummary): string {
 
 function renderGoalRequirements(materials: readonly GoalMaterialDeficit[]): string {
   if (materials.length === 0) return '<div class="goal-requirement-ready">No remaining modeled material requirement for this target.</div>';
-  const visible = materials.slice(0, 4);
+  const knownMissing = materials.filter((material) => material.state === 'known' && (material.missing ?? 0) > 0).length;
+  const unknown = materials.filter((material) => material.state === 'unknown').length;
   return `
-    <div class="goal-requirements">
-      <span class="goal-requirements-label">Modeled requirements</span>
-      ${visible.map((material) => `
-        <div class="goal-requirement-row">
-          <span>${escapeHtml(material.name)}</span>
-          <small>${material.state === 'known'
-            ? `Have ${formatNumber(material.owned ?? 0)} · Required ${formatNumber(material.required)} · Missing ${formatNumber(material.missing ?? 0)}`
-            : `Have ? · Required ${formatNumber(material.required)} · Missing ?`}</small>
-        </div>
-      `).join('')}
-      ${materials.length > visible.length ? `<span class="goal-requirements-more">+${materials.length - visible.length} more modeled requirement${materials.length - visible.length === 1 ? '' : 's'}</span>` : ''}
+    <details class="goal-requirements" data-goal-requirements>
+      <summary class="goal-requirements-summary">
+        <span>Requirements</span>
+        <small>${knownMissing} missing · ${unknown} unknown · ${materials.length} modeled</small>
+      </summary>
+      <div class="goal-requirement-list">
+        ${materials.map(renderGoalRequirement).join('')}
+      </div>
+    </details>
+  `;
+}
+
+function renderGoalRequirement(material: GoalMaterialDeficit): string {
+  const missing = material.state === 'known' ? material.missing ?? 0 : undefined;
+  const statusClass = material.state === 'unknown' ? 'unknown' : missing === 0 ? 'enough' : 'missing';
+  const wikiTitle = material.wikiTitle?.trim();
+  const wikiUrl = resolveWikiUrl({
+    wikiTitle,
+    displayName: material.name,
+    publicId: material.itemId,
+  });
+  const icon = wikiTitle
+    ? `<span class="goal-material-icon"><img data-goal-material-icon data-wiki-title="${escapeAttribute(wikiTitle)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></span>`
+    : '<span class="goal-material-icon empty" aria-hidden="true"></span>';
+  return `
+    <div class="goal-requirement-row ${statusClass}" data-goal-material-key="${escapeAttribute(material.key)}">
+      ${icon}
+      <a class="goal-requirement-name" href="${escapeAttribute(wikiUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">${escapeHtml(material.name)}</a>
+      <small>${material.state === 'known'
+        ? `Have ${formatNumber(material.owned ?? 0)} · Required ${formatNumber(material.required)} · Missing ${formatNumber(missing ?? 0)}`
+        : `Have ? · Required ${formatNumber(material.required)} · Missing ?`}</small>
+      ${material.state === 'known' && (missing ?? 0) > 0 ? '<div class="goal-material-farming" data-goal-material-farming></div>' : ''}
     </div>
   `;
 }

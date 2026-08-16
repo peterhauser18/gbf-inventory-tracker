@@ -5,7 +5,6 @@ import {
   serializeCaptureExport,
 } from './capture/export.ts';
 import { CAPTURE_CATEGORIES, isGbfPageUrl } from './capture/policy.ts';
-import { getCapturedResponsesForScan } from './capture/storage.ts';
 import type { CaptureControlMessage, CaptureStatusResponse } from './capture/types.ts';
 
 const app = document.querySelector<HTMLElement>('#app');
@@ -15,12 +14,12 @@ app.innerHTML = `
   <section class="shell">
     <header>
       <p class="eyebrow">LOCAL-FIRST GBF COMPANION</p>
-      <h1>GBF Inventory Tracker</h1>
+      <h1>GBF Tracker</h1>
       <p class="muted">Open the dashboard anytime. If an active GBF tab is available, live read-only debugger observation starts automatically.</p>
     </header>
 
     <button id="dashboard" class="dashboard-button" type="button" title="Always opens the dashboard. On an active GBF tab it also starts debugger-only read-only observation.">Open Dashboard</button>
-    <p class="muted" id="dashboard-note">Dashboard always opens. With an active GBF tab, observation starts first.</p>
+    <p class="muted" id="dashboard-note">Dashboard always opens. With an active GBF tab, observation starts in parallel.</p>
 
     <details class="developer">
       <summary class="card developer-summary">Developer</summary>
@@ -82,40 +81,37 @@ let latestStatus: CaptureStatusResponse | null = null;
 
 dashboardButton.addEventListener('click', async () => {
   dashboardButton.disabled = true;
-  dashboardNote.textContent = 'Opening dashboard and checking whether read-only observation can be started…';
+  dashboardNote.textContent = 'Opening dashboard; read-only observation will start independently when possible…';
 
-  let observationStatus = await sendMessage({ type: 'gbfit:get-status' });
-  let observationError: string | undefined;
-
+  let tabId: number | undefined;
   try {
-    if (!observationStatus.active) {
-      const tabId = await findActiveGbfTabId();
-      if (tabId !== undefined) {
-        observationStatus = await sendMessage({ type: 'gbfit:start-observation', tabId });
-        if (!observationStatus.active) {
-          observationError = observationStatus.error ?? observationStatus.message;
-        }
-      }
-    }
-  } catch (error) {
-    observationError = error instanceof Error ? error.message : String(error);
+    tabId = await findActiveGbfTabId();
+  } catch {
+    // Dashboard access must not depend on being able to inspect the active tab.
   }
+
+  const observationPromise = tabId !== undefined
+    ? sendMessage({ type: 'gbfit:start-observation', tabId })
+    : sendMessage({ type: 'gbfit:get-status' });
 
   try {
     await openDashboardTab();
-    render(observationStatus);
-    if (observationStatus.active) {
-      dashboardNote.textContent = 'Dashboard opened. Read-only observation remains active until you stop it or Chrome detaches it.';
-    } else if (observationError) {
-      dashboardNote.textContent = `Dashboard opened without observation: ${observationError}`;
-    } else {
-      dashboardNote.textContent = 'Dashboard opened without observation. Open it again from an active GBF tab to start live tracking.';
-    }
   } catch (error) {
     dashboardNote.textContent = `Could not open dashboard: ${error instanceof Error ? error.message : String(error)}`;
-  } finally {
     dashboardButton.disabled = false;
+    return;
   }
+
+  const observationStatus = await observationPromise;
+  render(observationStatus);
+  if (observationStatus.active) {
+    dashboardNote.textContent = 'Dashboard opened. Read-only observation remains active until you stop it or Chrome detaches it.';
+  } else if (observationStatus.error) {
+    dashboardNote.textContent = `Dashboard opened without observation: ${observationStatus.error}`;
+  } else {
+    dashboardNote.textContent = 'Dashboard opened without observation. Open it again from an active GBF tab to start live tracking.';
+  }
+  dashboardButton.disabled = false;
 });
 
 resetAccountButton.addEventListener('click', async () => {
@@ -174,6 +170,7 @@ exportButton.addEventListener('click', async () => {
   exportButton.disabled = true;
   exportNote.textContent = 'Preparing sanitized local export…';
   try {
+    const { getCapturedResponsesForScan } = await import('./capture/storage.ts');
     const records = await getCapturedResponsesForScan(scan.id);
     const exportedAt = Date.now();
     const bundle = buildSanitizedExportBundle(scan, records, exportedAt);

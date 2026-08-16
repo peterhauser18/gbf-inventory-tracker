@@ -7,6 +7,7 @@ const digest = readFileSync(new URL('./analysis-digest.ts', import.meta.url), 'u
 const dashboardCss = readFileSync(new URL('./phase5.css', import.meta.url), 'utf8');
 const popupCss = readFileSync(new URL('../popup-responsive.css', import.meta.url), 'utf8');
 const dashboardHtml = readFileSync(new URL('../../dashboard.html', import.meta.url), 'utf8');
+const dashboardEntry = readFileSync(new URL('../dashboard-entry.ts', import.meta.url), 'utf8');
 const popupHtml = readFileSync(new URL('../../popup.html', import.meta.url), 'utf8');
 
 test('phase 5 UI is local read/compare only with no GBF transport or persistence write primitives', () => {
@@ -25,10 +26,12 @@ test('digest schema contains summary counts and quality but no raw identity/requ
   assert.match(digest, /rejectUnknownKeys/);
 });
 
-test('dashboard and popup load phase 5 polish surfaces without replacing existing controllers', () => {
-  assert.match(dashboardHtml, /roster-ui\.ts/);
-  assert.match(dashboardHtml, /combat-compare-ui\.ts/);
-  assert.match(dashboardHtml, /phase5-ui\.ts/);
+test('dashboard lazy-loads phase 5 polish surfaces without replacing existing controllers', () => {
+  assert.match(dashboardHtml, /dashboard-entry\.ts/);
+  assert.doesNotMatch(dashboardHtml, /roster-ui\.ts|combat-compare-ui\.ts|phase5-ui\.ts/);
+  assert.match(dashboardEntry, /import\('\.\/dashboard\/roster-ui\.ts'\)/);
+  assert.match(dashboardEntry, /import\('\.\/combat\/combat-compare-ui\.ts'\)/);
+  assert.match(dashboardEntry, /import\('\.\/dashboard\/phase5-ui\.ts'\)/);
   assert.match(popupHtml, /popup-responsive\.css/);
   assert.match(popupHtml, /popup\.ts/);
 });
