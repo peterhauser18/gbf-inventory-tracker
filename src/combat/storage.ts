@@ -28,7 +28,7 @@ export async function ingestCapturedCombatRecord(record: CapturedResponseRecord)
     const context = await getCombatParseContext();
     const parsed = parseVerifiedMultiraidObservation(record, context);
     if (!parsed) return null;
-    const turn = directlyObservedTurn(record.body);
+    const turn = directlyObservedTurn(record);
     const parsedWithTurn: VerifiedCombatObservation = turn === undefined ? parsed : { ...parsed, observedTurn: turn };
     const observation: VerifiedCombatObservation = !context && parsedWithTurn.context
       ? { ...parsedWithTurn, forceNewRaid: true }
@@ -115,7 +115,13 @@ function safeNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-function directlyObservedTurn(body: unknown): number | undefined {
+function directlyObservedTurn(record: CapturedResponseRecord): number | undefined {
+  try {
+    if (new URL(record.meta.url).pathname !== '/rest/multiraid/start.json') return undefined;
+  } catch {
+    return undefined;
+  }
+  const body = record.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
   const value = (body as Record<string, unknown>).turn;
   const parsed = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
