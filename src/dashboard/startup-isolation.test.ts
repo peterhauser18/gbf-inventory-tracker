@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const html = readFileSync(new URL('../../dashboard.html', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../dashboard-entry.ts', import.meta.url), 'utf8');
+const vite = readFileSync(new URL('../../vite.config.ts', import.meta.url), 'utf8');
 
 const enhancementModules = [
   'roster-ui.ts',
@@ -31,8 +32,13 @@ test('core render does not immediately fan out into every dashboard enhancement'
   assert.doesNotMatch(entry, /void Promise\.allSettled/);
 });
 
-test('external dashboard destinations load their owner before replaying the click', () => {
+test('Goals loads its own owner without starting Farming in the same click path', () => {
   assert.match(entry, /section === 'goals'/);
+  assert.match(entry, /import\('\.\/dashboard\/goals-ui\.ts'\)/);
+  assert.doesNotMatch(entry, /farming-ui\.ts/);
+});
+
+test('external dashboard destinations load their owner before replaying the click', () => {
   assert.match(entry, /section === 'combat' \|\| section === 'raids'/);
   assert.match(entry, /section === 'roster'/);
   assert.match(entry, /interceptUntilLoaded/);
@@ -52,4 +58,8 @@ test('core-owned destinations load only their optional enhancement on demand', (
 test('account writes cannot reload the page before an active dashboard section exists', () => {
   assert.match(entry, /if \(section && sectionUsesAccountEvidence\(section, changed\)\) scheduleReload\(section, 500\)/);
   assert.doesNotMatch(entry, /if \(!section \|\| sectionUsesAccountEvidence/);
+});
+
+test('extension builds do not emit modulepreload links for Edge extension pages', () => {
+  assert.match(vite, /modulePreload:\s*false/);
 });
