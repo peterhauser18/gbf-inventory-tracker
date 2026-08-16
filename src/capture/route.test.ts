@@ -1,0 +1,19 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { classifyObservedResponseUrl, shouldReadObservedResponse } from './route.ts';
+
+test('debugger capture accepts only verified GBF account and combat response families', () => {
+  assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/npc/list/2?ignored=1'), 'account');
+  assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/rest/multiraid/normal_attack_result.json'), 'combat');
+  assert.equal(classifyObservedResponseUrl('https://game.granbluefantasy.jp/quest/start'), null);
+  assert.equal(classifyObservedResponseUrl('https://example.com/npc/list/2'), null);
+});
+
+test('response bodies are eligible only for allowlisted XHR/fetch responses', () => {
+  const accountUrl = 'https://game.granbluefantasy.jp/item/article_list_by_filter_mode';
+  assert.equal(shouldReadObservedResponse(accountUrl, 'xhr'), true);
+  assert.equal(shouldReadObservedResponse(accountUrl, 'fetch'), true);
+  assert.equal(shouldReadObservedResponse(accountUrl, 'document'), false);
+  assert.equal(shouldReadObservedResponse(accountUrl, 'other'), false);
+  assert.equal(shouldReadObservedResponse('https://game.granbluefantasy.jp/quest/start', 'fetch'), false);
+});
