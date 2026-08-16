@@ -64,6 +64,16 @@ test('Treasure page HTML resolves normal and grouped-page images by the concrete
     'https://gbf.wiki/images/w/water/Water_Crystal.jpg',
   );
 
+  const lowOrbs = `
+    <div>
+      <img alt="Fire Orb" src="/images/8/8a/Fire_Orb.jpg">
+      <img alt="Water Orb" src="/images/1/14/Water_Orb.jpg">
+    </div>`;
+  assert.equal(
+    parseWikiTreasurePageHtml(lowOrbs, 'Fire Orb'),
+    'https://gbf.wiki/images/8/8a/Fire_Orb.jpg',
+  );
+
   const unsafe = '<img alt="Gray Sandstone" src="https://game.granbluefantasy.jp/assets/item.png">';
   assert.equal(parseWikiTreasurePageHtml(unsafe, 'Gray Sandstone'), undefined);
 });
