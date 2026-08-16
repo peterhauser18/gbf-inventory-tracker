@@ -5,7 +5,7 @@ import {
   serializeCaptureExport,
 } from './capture/export.ts';
 import { launchDashboardWithObservation } from './capture/dashboard-launch.ts';
-import { CAPTURE_CATEGORIES } from './capture/policy.ts';
+import { CAPTURE_CATEGORIES, isGbfPageUrl } from './capture/policy.ts';
 import { getCapturedResponsesForScan } from './capture/storage.ts';
 import type { CaptureControlMessage, CaptureStatusResponse } from './capture/types.ts';
 
@@ -87,7 +87,10 @@ dashboardButton.addEventListener('click', async () => {
   try {
     const response = await launchDashboardWithObservation({
       getStatus: async () => sendMessage({ type: 'gbfit:get-status' }),
-      startObservation: async () => sendMessage({ type: 'gbfit:start-observation' }),
+      startObservation: async () => {
+        const tabId = await getActiveGbfTabId();
+        return await sendMessage({ type: 'gbfit:start-observation', tabId });
+      },
       openDashboard: async () => {
         await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
       },
@@ -137,9 +140,17 @@ clearExceptAccountButton.addEventListener('click', async () => {
 toggle.addEventListener('click', async () => {
   toggle.disabled = true;
   exportButton.disabled = true;
-  const type = latestStatus?.active ? 'gbfit:stop-observation' : 'gbfit:start-observation';
-  const response = await sendMessage({ type });
-  render(response);
+  try {
+    const response = latestStatus?.active
+      ? await sendMessage({ type: 'gbfit:stop-observation' })
+      : await sendMessage({ type: 'gbfit:start-observation', tabId: await getActiveGbfTabId() });
+    render(response);
+  } catch (error) {
+    await refresh();
+    trackingNote.textContent = error instanceof Error ? error.message : String(error);
+  } finally {
+    toggle.disabled = false;
+  }
 });
 
 exportButton.addEventListener('click', async () => {
@@ -180,6 +191,14 @@ async function runStorageCleanup(
   const response = await sendMessage(message);
   render(response);
   storageNote.textContent = response.error ?? successMessage;
+}
+
+async function getActiveGbfTabId(): Promise<number> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined || !isGbfPageUrl(tab.url)) {
+    throw new Error('Open game.granbluefantasy.jp in the active tab, then open the extension again.');
+  }
+  return tab.id;
 }
 
 async function sendMessage(message: CaptureControlMessage): Promise<CaptureStatusResponse> {
