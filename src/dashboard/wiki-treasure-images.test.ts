@@ -48,7 +48,6 @@ test('treasure image index resolves direct and grouped item-template image metad
       }),
     };
   };
-
   const result = await loadWikiTreasureImageIndex({ fetchImpl, now: 10 });
   assert.equal(calls.length, 2);
   for (const call of calls) {
