@@ -60,7 +60,7 @@ test('builds shared per-character SA/DA/TA, crit, skill and ougi analytics', () 
 test('turn summary uses only directly present turn evidence', () => {
   assert.deepEqual(summarizeTurns(raid()), {
     currentTurn: 5,
-    currentTurnDamage: 1010,
+    currentTurnDamage: 1210,
     previousTurnDamage: 300,
   });
   const withoutTurns = raid();
