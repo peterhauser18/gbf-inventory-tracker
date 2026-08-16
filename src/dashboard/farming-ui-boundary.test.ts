@@ -32,25 +32,37 @@ test('Goals keep Wiki assets lazy and inline instead of restoring a broad Farmin
   assert.match(goals, /data-goal-material-farming/);
   assert.match(ui, /document\.addEventListener\('toggle', handleToggle, true\)/);
   assert.match(ui, /details\.matches\('\[data-goal-requirements\]'\)/);
-  assert.match(ui, /loadWikiMaterialThumbnails\(titles\)/);
+  assert.match(ui, /loadWikiMaterialThumbnails\(titles, \{ itemIdsByTitle \}\)/);
   assert.match(ui, /syncGoalInlineFarming\(activeGoals\)/);
   assert.doesNotMatch(ui, /renderFocusSurface\(goalsView/);
 });
 
-test('Goals prefetch thumbnail metadata before the first requirements expand', () => {
+test('Goals prefetch thumbnail metadata with resolved item ids before the first requirements expand', () => {
   assert.match(ui, /queueMicrotask\(\(\) => void prefetchGoalMaterialThumbnails\(\)\)/);
-  assert.match(ui, /if \(!app\?\.querySelector\('\[data-goals-view\]'\)\) return;/);
+  assert.match(ui, /if \(!app\?\.querySelector\('\[data-goals-view\]'\) \|\| localState !== 'ready'\) return;/);
   assert.match(ui, /goalThumbnailUrls = new Map/);
   assert.match(ui, /goalThumbnailPrefetch/);
+  assert.match(ui, /const itemIdsByTitle = resolvedGoalItemIdsByTitle\(\)/);
   assert.match(ui, /void prefetchGoalMaterialThumbnails\(\);/);
   assert.match(ui, /applyPrefetchedGoalIcons\(details\)/);
 });
 
-test('Goal icons hydrate before Farming planner state is required', () => {
-  const start = ui.indexOf('async function hydrateGoalRequirements');
+test('Goal icon lookup uses only unambiguous technical ids from resolved local materials', () => {
+  const start = ui.indexOf('function resolvedGoalItemIdsByTitle');
   const end = ui.indexOf('function goalForDetails', start);
   assert.ok(start >= 0 && end > start);
+  const resolver = ui.slice(start, end);
+  assert.match(resolver, /material\.itemId\?\.trim\(\)/);
+  assert.match(resolver, /if \(current && current !== itemId\)/);
+  assert.match(resolver, /ambiguous\.add\(key\)/);
+});
+
+test('Goal icons hydrate after local planner readiness and before Farming source resolution', () => {
+  const start = ui.indexOf('async function hydrateGoalRequirements');
+  const end = ui.indexOf('function resolvedGoalItemIdsByTitle', start);
+  assert.ok(start >= 0 && end > start);
   const hydration = ui.slice(start, end);
+  assert.match(hydration, /localState !== 'ready'/);
   assert.ok(hydration.indexOf('await hydrateGoalRequirementIcons(details)') >= 0);
   assert.ok(hydration.indexOf('await hydrateGoalRequirementIcons(details)') < hydration.indexOf('const goal = goalForDetails(details)'));
   assert.match(hydration, /querySelectorAll<HTMLImageElement>\('\[data-goal-material-icon\]'\)/);
