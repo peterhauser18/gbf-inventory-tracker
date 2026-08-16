@@ -1,69 +1,92 @@
 import './styles.css';
 import { filterRaidHistory, summarizeTrackedDrop, toggleTrackedItem } from './aggregate.ts';
 import { serializeRaidParse } from './export.ts';
+import type { CombatActorContext, CombatParseContext, CombatParticipantDisplay } from './multiraid.ts';
 import {
   getAllDropPreferences,
+  getCombatLiveContext,
   getLatestCombatParse,
   getRaidHistory,
   importRaidParseJson,
   saveDropPreferences,
   updateRaidLocalState,
 } from './storage.ts';
-import type { NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord, WikiDropReference } from './types.ts';
+import type { CharacterDamage, NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord, WikiDropReference } from './types.ts';
 import { loadWikiDropReferences } from './wiki.ts';
 
 export class CombatDashboardController {
   private latest: NormalizedRaidParse | null = null;
+  private liveContext: CombatParseContext | null = null;
   private history: RaidHistoryRecord[] = [];
   private preferences: RaidDropPreferences[] = [];
   private readonly wikiReferences = new Map<string, WikiDropReference>();
+  private readonly collapsedCombatPanels = new Set<string>();
   private readonly onChanged: () => void;
 
   constructor(onChanged: () => void) { this.onChanged = onChanged; }
 
   async refresh(): Promise<void> {
-    const [latest, history, preferences] = await Promise.all([getLatestCombatParse(), getRaidHistory(), getAllDropPreferences()]);
+    const [latest, liveContext, history, preferences] = await Promise.all([
+      getLatestCombatParse(),
+      getCombatLiveContext(),
+      getRaidHistory(),
+      getAllDropPreferences(),
+    ]);
     this.latest = latest;
+    this.liveContext = liveContext ?? null;
     this.history = history;
     this.preferences = preferences;
   }
 
   renderCombat(): string {
     const raid = this.latest;
-    if (!raid) return '<div class="empty"><strong>No combat parse observed yet</strong><span>Combat data appears here only from eligible responses already received while passive observation is running.</span></div>';
+    if (!raid) return '<div class="empty"><strong>No combat parse observed yet</strong><span>Combat data appears here only from eligible responses already received during normal play.</span></div>';
     const bossHp = raid.boss?.hp !== undefined
       ? `${formatNumber(raid.boss.hp)}${raid.boss.maxHp !== undefined ? ` / ${formatNumber(raid.boss.maxHp)}` : ''}${raid.boss.hpPercent !== undefined ? ` (${raid.boss.hpPercent.toFixed(1)}%)` : ''}`
       : 'unknown';
     const participant = raid.participants;
-    return `
+    const honors = participant?.honors ?? participant?.contribution;
+    const liveContext = this.liveContext?.raidTechnicalId === raid.raidTechnicalId ? this.liveContext : null;
+    const participantRows = liveContext?.participants ?? [];
+
+    const overview = `
       <section class="overview-grid combat-metrics">
-        ${metric('Raid', raid.raidName ?? raid.raidTechnicalId, raid.parserQuality)}
-        ${metric('Result', raid.result, raid.resultQuality)}
-        ${metric('Boss HP', bossHp, raid.boss?.quality ?? 'unknown')}
-        ${metric('Party damage', raid.partyDamage === undefined ? 'unknown' : formatNumber(raid.partyDamage), raid.damageQuality)}
-        ${metric('Honors', participant?.honors === undefined ? 'unknown' : formatNumber(participant.honors), participant?.quality ?? 'unknown')}
-        ${metric('Participants', participant?.count === undefined ? 'unknown' : formatNumber(participant.count), participant?.quality ?? 'unknown')}
-      </section>
-      <section class="combat-panel">
-        <div class="combat-heading"><div><p class="eyebrow">DAMAGE</p><h3>Party breakdown</h3></div>${qualityChip(raid.damageQuality)}</div>
-        ${raid.characterDamage.length ? `
-          <div class="combat-table" role="table">
-            <div class="combat-row header" role="row"><span>Character</span><span>Total</span><span>Normal</span><span>Skill</span><span>Ougi</span><span>Echo</span><span>Supp.</span></div>
-            ${raid.characterDamage.map((entry) => `<div class="combat-row" role="row">
-              <span>${escapeHtml(entry.actorName ?? entry.actorId)}</span><strong>${formatNumber(entry.total)}</strong>
-              <span>${optionalNumber(entry.breakdown.normal)}</span><span>${optionalNumber(entry.breakdown.skill)}</span>
-              <span>${optionalNumber(entry.breakdown.ougi)}</span><span>${optionalNumber(entry.breakdown.echo)}</span><span>${optionalNumber(entry.breakdown.supplemental)}</span>
-            </div>`).join('')}
-          </div>` : '<p class="muted">No supported damage actions have been observed for this raid.</p>'}
-      </section>
-      <section class="combat-panel">
-        <div class="combat-heading"><div><p class="eyebrow">OBSERVED STATS</p><h3>Combat facts</h3></div>${qualityChip(raid.stats.quality)}</div>
-        <div class="combat-stat-grid">${smallStat('Attack actions', raid.stats.attackActions)}${smallStat('Multiattacks', raid.stats.multiattacks)}${smallStat('Critical hits', raid.stats.criticalHits)}${smallStat('Skills used', raid.stats.skillsUsed)}${smallStat('Ougis used', raid.stats.ougisUsed)}${smallStat('Role', raid.role)}</div>
-      </section>
-      <section class="combat-panel">
-        <div class="combat-heading"><div><p class="eyebrow">LOG</p><h3>Observed actions</h3></div><span class="muted">${raid.log.length} entries</span></div>
-        ${raid.log.length ? `<div class="combat-log">${raid.log.slice(-100).reverse().map((entry) => `<div class="combat-log-row"><span>${entry.turn === undefined ? 'Turn ?' : `Turn ${entry.turn}`}</span><strong>${escapeHtml(entry.actorName ?? entry.actorId ?? 'Unknown actor')}</strong><span>${escapeHtml(entry.actionName ?? entry.actionKind)}</span><span>${formatNumber(entry.damage)} dmg</span></div>`).join('')}</div>` : '<p class="muted">No supported action events observed.</p>'}
+        ${metric('Raid', raid.raidName ?? raid.raidTechnicalId)}
+        ${metric('Result', raid.result)}
+        ${metric('Boss HP', bossHp)}
+        ${metric('Party damage', raid.partyDamage === undefined ? 'unknown' : formatNumber(raid.partyDamage))}
+        ${metric('Honors', honors === undefined ? 'unknown' : formatNumber(honors))}
       </section>`;
+
+    const damage = raid.characterDamage.length ? `
+      <div class="combat-table" role="table">
+        <div class="combat-row header" role="row"><span>Character</span><span>Total</span><span>Normal</span><span>Skill</span><span>Ougi</span><span>Echo</span><span>Supp.</span></div>
+        ${raid.characterDamage.map((entry) => `<div class="combat-row" role="row">
+          <span class="combat-character">${this.characterLabel(entry, liveContext)}</span><strong>${formatNumber(entry.total)}</strong>
+          <span>${optionalNumber(entry.breakdown.normal)}</span><span>${optionalNumber(entry.breakdown.skill)}</span>
+          <span>${optionalNumber(entry.breakdown.ougi)}</span><span>${optionalNumber(entry.breakdown.echo)}</span><span>${optionalNumber(entry.breakdown.supplemental)}</span>
+        </div>`).join('')}
+      </div>` : '<p class="muted">No supported damage actions have been observed for this raid.</p>';
+
+    const participants = participantRows.length > 0
+      ? `<div class="participant-table" role="table">
+          <div class="participant-row header" role="row"><span>Place</span><span>Player</span><span>Rank</span><span>Honors</span><span>HP</span><span>Status</span></div>
+          ${participantRows.slice(0, 30).map(renderParticipant).join('')}
+        </div>`
+      : `<p class="muted">${participant?.count === undefined ? 'No participant snapshot observed yet.' : `${formatNumber(participant.count)} participants observed; detailed participant rows are not available from the latest supported snapshot.`}</p>`;
+
+    const stats = `<div class="combat-stat-grid">${smallStat('Attack actions', raid.stats.attackActions)}${smallStat('Multiattacks', raid.stats.multiattacks)}${smallStat('Critical hits', raid.stats.criticalHits)}${smallStat('Skills used', raid.stats.skillsUsed)}${smallStat('Ougis used', raid.stats.ougisUsed)}${smallStat('Role', raid.role)}</div>`;
+    const log = raid.log.length
+      ? `<div class="combat-log">${raid.log.slice(-100).reverse().map((entry) => `<div class="combat-log-row"><span>${entry.turn === undefined ? 'Turn ?' : `Turn ${entry.turn}`}</span><strong>${escapeHtml(entry.actorName ?? entry.actorId ?? 'Unknown actor')}</strong><span>${escapeHtml(entry.actionName ?? entry.actionKind)}</span><span>${formatNumber(entry.damage)} dmg</span></div>`).join('')}</div>`
+      : '<p class="muted">No supported action events observed.</p>';
+
+    return [
+      this.combatPanel('overview', 'COMBAT', 'Overview', overview),
+      this.combatPanel('damage', 'DAMAGE', 'Party breakdown', damage),
+      this.combatPanel('participants', 'PARTICIPANTS', 'Raid participants', participants, participant?.count === undefined ? undefined : `${formatNumber(participant.count)} observed`),
+      this.combatPanel('stats', 'OBSERVED STATS', 'Combat facts', stats),
+      this.combatPanel('log', 'LOG', 'Observed actions', log, `${raid.log.length} entries`),
+    ].join('');
   }
 
   renderRaids(query: string): string {
@@ -72,12 +95,35 @@ export class CombatDashboardController {
   }
 
   bind(root: HTMLElement): void {
+    root.querySelectorAll<HTMLDetailsElement>('[data-combat-collapse]').forEach((details) => {
+      details.addEventListener('toggle', () => {
+        const key = details.dataset.combatCollapse;
+        if (!key) return;
+        if (details.open) this.collapsedCombatPanels.delete(key);
+        else this.collapsedCombatPanels.add(key);
+      });
+    });
     root.querySelector<HTMLInputElement>('[data-raid-import]')?.addEventListener('change', (event) => void this.importFile(event));
     root.querySelectorAll<HTMLButtonElement>('[data-raid-export]').forEach((button) => button.addEventListener('click', () => this.exportRaid(button.dataset.raidExport ?? '')));
     root.querySelectorAll<HTMLButtonElement>('[data-raid-favorite]').forEach((button) => button.addEventListener('click', () => void this.toggleFavorite(button.dataset.raidFavorite ?? '')));
     root.querySelectorAll<HTMLButtonElement>('[data-save-note]').forEach((button) => button.addEventListener('click', () => void this.saveNote(root, button.dataset.saveNote ?? '')));
     root.querySelectorAll<HTMLButtonElement>('[data-track-item]').forEach((button) => button.addEventListener('click', () => void this.toggleTracked(button)));
     root.querySelectorAll<HTMLButtonElement>('[data-wiki-rate]').forEach((button) => button.addEventListener('click', () => void this.loadWikiReference(button)));
+  }
+
+  private combatPanel(key: string, eyebrow: string, title: string, body: string, meta?: string): string {
+    const open = !this.collapsedCombatPanels.has(key);
+    return `<details class="combat-panel" data-combat-collapse="${escapeAttribute(key)}"${open ? ' open' : ''}>
+      <summary class="combat-heading"><div><p class="eyebrow">${escapeHtml(eyebrow)}</p><h3>${escapeHtml(title)}</h3></div>${meta ? `<span class="muted">${escapeHtml(meta)}</span>` : ''}</summary>
+      <div class="combat-panel-body">${body}</div>
+    </details>`;
+  }
+
+  private characterLabel(entry: CharacterDamage, context: CombatParseContext | null): string {
+    const actor = findActor(context, entry.actorId);
+    const name = entry.actorName ?? actor?.name ?? entry.actorId;
+    const hp = formatActorHp(actor);
+    return `<strong>${escapeHtml(name)}</strong>${hp ? `<span class="combat-character-hp">${escapeHtml(hp)}</span>` : ''}`;
   }
 
   private renderRaid(raid: RaidHistoryRecord): string {
@@ -168,14 +214,37 @@ export class CombatDashboardController {
   }
 }
 
+function renderParticipant(participant: CombatParticipantDisplay): string {
+  const status = [participant.host ? 'Host' : undefined, participant.status ? participant.status[0]?.toUpperCase() + participant.status.slice(1) : undefined]
+    .filter(Boolean).join(' · ') || '?';
+  return `<div class="participant-row" role="row">
+    <strong>${participant.placement === undefined ? '?' : `#${formatNumber(participant.placement)}`}</strong>
+    <span>${escapeHtml(participant.name)}</span>
+    <span>${participant.level === undefined ? '?' : formatNumber(participant.level)}</span>
+    <span>${participant.honors === undefined ? '?' : formatNumber(participant.honors)}</span>
+    <span>${participant.hpPercent === undefined ? '?' : `${participant.hpPercent.toFixed(1)}%`}</span>
+    <span>${escapeHtml(status)}</span>
+  </div>`;
+}
+
+function findActor(context: CombatParseContext | null, actorId: string): CombatActorContext | undefined {
+  if (!context) return undefined;
+  return (context.actors ?? context.actorSlots).find((actor) => actor.id === actorId)
+    ?? context.actorSlots.find((actor) => actor.id === actorId);
+}
+
+function formatActorHp(actor: CombatActorContext | undefined): string | undefined {
+  if (actor?.hp === undefined || actor.maxHp === undefined || actor.maxHp <= 0) return undefined;
+  return `${formatNumber(actor.hp)} (${(actor.hp / actor.maxHp * 100).toFixed(1)}%) / ${formatNumber(actor.maxHp)}`;
+}
+
 function renderWikiReference(reference: WikiDropReference): string {
   const rate = reference.state === 'precise' ? `${reference.ratePercent}%` : reference.state === 'qualitative' ? reference.label ?? 'qualitative' : 'unavailable';
   const context = [reference.chest, reference.sampleSize !== undefined ? `n=${formatNumber(reference.sampleSize)}` : undefined, reference.freshness].filter(Boolean).join(' · ');
   return `<div class="wiki-reference"><span>GBF Wiki reference: <strong>${escapeHtml(rate)}</strong></span>${context ? `<span>${escapeHtml(context)}</span>` : ''}${reference.limitation ? `<span>${escapeHtml(reference.limitation)}</span>` : ''}<a href="${escapeAttribute(reference.sourceUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Source ↗</a></div>`;
 }
-function metric(label: string, value: string, quality: 'known' | 'partial' | 'unknown'): string { return `<article class="metric-card"><div class="metric-head"><span>${escapeHtml(label)}</span>${qualityChip(quality)}</div><strong>${escapeHtml(value)}</strong></article>`; }
+function metric(label: string, value: string): string { return `<article class="metric-card"><div class="metric-head"><span>${escapeHtml(label)}</span></div><strong>${escapeHtml(value)}</strong></article>`; }
 function smallStat(label: string, value: string | number | undefined): string { return `<div><span>${escapeHtml(label)}</span><strong>${value === undefined ? '?' : escapeHtml(typeof value === 'number' ? formatNumber(value) : value)}</strong></div>`; }
-function qualityChip(quality: 'known' | 'partial' | 'unknown'): string { return `<span class="quality ${quality}">${quality}</span>`; }
 function optionalNumber(value: number | undefined): string { return value === undefined ? '?' : formatNumber(value); }
 function formatNumber(value: number): string { return new Intl.NumberFormat('en-US').format(value); }
 function formatDate(timestamp: number): string { return timestamp > 0 ? new Date(timestamp).toLocaleString() : 'unknown time'; }
