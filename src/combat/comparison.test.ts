@@ -19,7 +19,13 @@ function raid(id: string, localId: string, overrides: Partial<RaidHistoryRecord>
     participants: { honors: 100, quality: 'known' },
     stats: { quality: 'known' },
     log: [{ observedAt: 1, turn: 5, actorId: '3040000000', actorName: 'Alpha', actionKind: 'normal', damage: 500, breakdown: { normal: 500 } }],
-    drops: [], dropsQuality: 'known', coverage: {}, lastObservedAt: 10, localId, source: 'captured', favorite: false,
+    drops: [],
+    dropsQuality: 'known',
+    coverage: { startObserved: false, terminalObserved: false, parseGapObserved: false },
+    lastObservedAt: 10,
+    localId,
+    source: 'captured',
+    favorite: false,
     ...overrides,
   };
 }
