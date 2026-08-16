@@ -125,6 +125,9 @@ function unattributeDirectBossAbilityDamage(
     const signature = abilityDamageSignature(action.name, action.hits);
     const remaining = signatures.get(signature) ?? 0;
     if (remaining <= 0) continue;
+
+    // Direct boss-side auxiliary effects remain part of party damage, but the
+    // supplied result evidence does not attribute them to a character row.
     delete action.actorId;
     delete action.actorName;
     if (remaining === 1) signatures.delete(signature);
