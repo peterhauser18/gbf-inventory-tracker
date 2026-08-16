@@ -1,19 +1,20 @@
 import {
-  loadAccountDatabaseRevision,
-  type AccountDatabaseRevision,
-} from './account/storage.ts';
-import {
-  changedAccountEvidence,
   sectionUsesAccountEvidence,
   type AccountEvidenceKey,
 } from './dashboard/live-refresh.ts';
 
 const RESTORE_SECTION_KEY = 'gbfit:dashboard-restore-section';
-const REVISION_POLL_MS = 750;
 const dirtyEvidence = new Set<AccountEvidenceKey>();
 let reloadTimer: number | undefined;
-let revisionTimer: number | undefined;
-let lastRevision: AccountDatabaseRevision | null = null;
+
+chrome.runtime.onMessage.addListener((message: { type?: string; evidence?: AccountEvidenceKey[] }) => {
+  if (message?.type !== 'gbfit-dashboard-account-updated' || !Array.isArray(message.evidence)) return false;
+  for (const key of message.evidence) dirtyEvidence.add(key);
+
+  const section = activeSection();
+  if (section && sectionUsesAccountEvidence(section, message.evidence)) scheduleReload(section, 500);
+  return false;
+});
 
 document.addEventListener('click', (event) => {
   if (dirtyEvidence.size === 0) return;
@@ -29,39 +30,17 @@ document.addEventListener('click', (event) => {
 void bootDashboard();
 
 async function bootDashboard(): Promise<void> {
-  lastRevision = await readRevision();
   await import('./dashboard.ts');
   keepObservationCopyAccurate();
-  scheduleRevisionPoll();
 
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
-  if (!restoreSection) return;
-  restoreSectionWhenReady(restoreSection);
-}
-
-function scheduleRevisionPoll(): void {
-  if (revisionTimer !== undefined) window.clearTimeout(revisionTimer);
-  revisionTimer = window.setTimeout(() => {
-    void pollRevision().finally(scheduleRevisionPoll);
-  }, REVISION_POLL_MS);
-}
-
-async function pollRevision(): Promise<void> {
-  const next = await readRevision();
-  const changed = changedAccountEvidence(lastRevision, next);
-  lastRevision = next;
-  for (const key of changed) dirtyEvidence.add(key);
+  if (restoreSection) {
+    restoreSectionWhenReady(restoreSection);
+    return;
+  }
 
   const section = activeSection();
   if (section && sectionUsesAccountEvidence(section, [...dirtyEvidence])) scheduleReload(section, 500);
-}
-
-async function readRevision(): Promise<AccountDatabaseRevision | null> {
-  try {
-    return await loadAccountDatabaseRevision();
-  } catch {
-    return null;
-  }
 }
 
 function keepObservationCopyAccurate(): void {
