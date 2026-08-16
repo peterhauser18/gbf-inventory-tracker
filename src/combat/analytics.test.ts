@@ -27,9 +27,9 @@ function raid(): NormalizedRaidParse {
     }],
     stats: { quality: 'known' },
     log: [
-      { observedAt: 1, turn: 4, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'normal', damage: 100, breakdown: { normal: 100 }, multiattack: 1, criticalHits: 1 },
-      { observedAt: 2, turn: 4, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'normal', damage: 200, breakdown: { normal: 200 }, multiattack: 2 },
-      { observedAt: 3, turn: 5, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'normal', damage: 300, breakdown: { normal: 300 }, multiattack: 3, criticalHits: 2 },
+      { observedAt: 1, turn: 4, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'normal', damage: 100, breakdown: { normal: 100 }, multiattack: 1, critical: true, criticalHits: 1 },
+      { observedAt: 2, turn: 4, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'normal', damage: 200, breakdown: { normal: 200 }, multiattack: 2, critical: false, criticalHits: 0 },
+      { observedAt: 3, turn: 5, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'normal', damage: 300, breakdown: { normal: 300 }, multiattack: 3, critical: true, criticalHits: 12 },
       { observedAt: 4, turn: 5, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'skill', actionName: 'Red Skill', damage: 300, breakdown: { skill: 300 } },
       { observedAt: 5, turn: 5, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'skill', actionName: 'Red Skill', damage: 200, breakdown: { skill: 200 } },
       { observedAt: 6, turn: 5, actorId: '3040001000', actorName: 'Fixture Hero', actionKind: 'ougi', actionName: 'Big Ougi', damage: 300, breakdown: { ougi: 300 } },
@@ -42,14 +42,14 @@ function raid(): NormalizedRaidParse {
   };
 }
 
-test('builds shared per-character SA/DA/TA, crit, skill and ougi analytics', () => {
+test('builds shared per-character SA/DA/TA, attack-level crit, skill and ougi analytics', () => {
   const analysis = buildCharacterAnalysis(raid(), '3040001000');
   assert.deepEqual(analysis.single, { count: 1, damage: 100 });
   assert.deepEqual(analysis.double, { count: 1, damage: 200 });
   assert.deepEqual(analysis.triple, { count: 1, damage: 300 });
-  assert.equal(analysis.criticalHits, 3);
-  assert.equal(analysis.criticalDenominator, 6);
-  assert.equal(analysis.criticalRate, 0.5);
+  assert.equal(analysis.criticalHits, 2);
+  assert.equal(analysis.criticalDenominator, 3);
+  assert.equal(analysis.criticalRate, 2 / 3);
   assert.deepEqual(analysis.skills, [{ name: 'Red Skill', uses: 2, damage: 500 }]);
   assert.equal(analysis.ougiUses, 1);
   assert.equal(analysis.ougiDamage, 300);
@@ -57,12 +57,20 @@ test('builds shared per-character SA/DA/TA, crit, skill and ougi analytics', () 
   assert.equal(analysis.breakdown.supplemental, 30);
 });
 
-test('keeps critical rate unknown when normal attacks contain no crit evidence', () => {
+test('does not weight a repeated TA crit flag as three independent crit decisions', () => {
+  const weightedTrap = raid();
+  weightedTrap.log = weightedTrap.log.filter((entry) => entry.actionKind === 'normal').slice(0, 2);
+  weightedTrap.log[0] = { ...weightedTrap.log[0]!, multiattack: 1, critical: true, criticalHits: 1 };
+  weightedTrap.log[1] = { ...weightedTrap.log[1]!, multiattack: 3, critical: false, criticalHits: 0 };
+  const analysis = buildCharacterAnalysis(weightedTrap, '3040001000');
+  assert.equal(analysis.criticalHits, 1);
+  assert.equal(analysis.criticalDenominator, 2);
+  assert.equal(analysis.criticalRate, 0.5);
+});
+
+test('keeps critical rate unknown when any normal attack lacks source-proven crit evidence', () => {
   const withoutCritEvidence = raid();
-  withoutCritEvidence.log = withoutCritEvidence.log.map((entry) => {
-    const { criticalHits: _criticalHits, ...rest } = entry;
-    return rest;
-  });
+  withoutCritEvidence.log = withoutCritEvidence.log.map((entry, index) => index === 1 ? { ...entry, critical: undefined } : entry);
   const analysis = buildCharacterAnalysis(withoutCritEvidence, '3040001000');
   assert.equal(analysis.criticalHits, undefined);
   assert.equal(analysis.criticalDenominator, undefined);

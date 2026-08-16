@@ -91,3 +91,8 @@
 :root[data-theme='dark'] .combat-row.header,
 :root[data-theme='dark'] .participant-row.header,
 :root[data-theme='dark'] .combat-panel > summary::after { color: #a7aaa0; }
+
+/* Semantic display guard: Supplemental amount is not source-proven yet. */
+.analysis-breakdown > :nth-child(5) { display: none !important; }
+.cockpit-row > :nth-child(7) { display: none !important; }
+.cockpit-row { grid-template-columns: minmax(210px, 1.5fr) repeat(6, minmax(80px, .7fr)) !important; }
