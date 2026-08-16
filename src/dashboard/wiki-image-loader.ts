@@ -1,5 +1,5 @@
 import { resolveSafeExternalImageUrl } from './resolver.ts';
-import { loadWikiTreasureImageIndex, normalizeWikiTreasureTitle } from './wiki-treasure-images.ts';
+import { loadWikiTreasureImage } from './wiki-treasure-images.ts';
 
 export const MAX_WIKI_IMAGE_CONCURRENCY = 5;
 export const WIKI_IMAGE_CACHE_NAME = 'gbfit:wiki-images:v1';
@@ -309,29 +309,29 @@ function scanDom(): void {
 async function hydrateTreasureVisuals(): Promise<void> {
   if (treasureHydration || typeof document === 'undefined') return;
   const visuals = Array.from(document.querySelectorAll<HTMLElement>('.entity-visual.treasure'))
-    .filter((visual) => !visual.querySelector('img') && visual.dataset.wikiTreasureImage !== 'attempted');
+    .filter((visual) => !visual.querySelector('img')
+      && visual.dataset.wikiTreasureImage !== 'attempted'
+      && !isHiddenByCollapsedSurface(visual)
+      && isNearViewport(visual));
   if (visuals.length === 0) return;
 
-  treasureHydration = loadWikiTreasureImageIndex()
-    .then((index) => {
-      for (const visual of visuals) {
-        if (!visual.isConnected || visual.querySelector('img')) continue;
-        visual.dataset.wikiTreasureImage = 'attempted';
-        const title = treasureVisualTitle(visual);
-        if (!title) continue;
-        const remoteUrl = index.get(normalizeWikiTreasureTitle(title));
-        const deferred = deferWikiImageUrl(remoteUrl);
-        if (!deferred) continue;
-        const image = document.createElement('img');
-        image.dataset.entityImage = 'true';
-        image.src = deferred;
-        image.alt = '';
-        image.loading = 'lazy';
-        image.decoding = 'async';
-        image.referrerPolicy = 'no-referrer';
-        visual.append(image);
-      }
-    })
+  treasureHydration = Promise.all(visuals.map(async (visual) => {
+    if (!visual.isConnected || visual.querySelector('img')) return;
+    const title = treasureVisualTitle(visual);
+    visual.dataset.wikiTreasureImage = 'attempted';
+    if (!title) return;
+    const remoteUrl = await loadWikiTreasureImage(title);
+    const deferred = deferWikiImageUrl(remoteUrl);
+    if (!deferred || !visual.isConnected || visual.querySelector('img')) return;
+    const image = document.createElement('img');
+    image.dataset.entityImage = 'true';
+    image.src = deferred;
+    image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.referrerPolicy = 'no-referrer';
+    visual.append(image);
+  })).then(() => undefined)
     .catch(() => {})
     .finally(() => {
       treasureHydration = null;
