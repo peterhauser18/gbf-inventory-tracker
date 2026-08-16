@@ -2,7 +2,7 @@ import { resolveSafeExternalImageUrl } from './resolver.ts';
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const TREASURE_CATEGORY = 'Category:Items';
-const CACHE_KEY = 'gbfit:wiki-treasure-images:v1';
+const CACHE_KEY = 'gbfit:wiki-treasure-images:v2';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
@@ -10,7 +10,7 @@ type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 type JsonObject = Record<string, unknown>;
 
 interface CachedTreasureImagePayload {
-  version: 1;
+  version: 2;
   cachedAt: number;
   entries: Record<string, string>;
 }
@@ -48,9 +48,10 @@ export function buildWikiTreasureImageIndexUrl(continueToken?: string): string {
   url.searchParams.set('gcmtitle', TREASURE_CATEGORY);
   url.searchParams.set('gcmtype', 'page');
   url.searchParams.set('gcmlimit', 'max');
-  url.searchParams.set('prop', 'pageimages');
+  url.searchParams.set('prop', 'pageimages|images');
   url.searchParams.set('piprop', 'thumbnail');
   url.searchParams.set('pithumbsize', '64');
+  url.searchParams.set('imlimit', 'max');
   url.searchParams.set('format', 'json');
   url.searchParams.set('formatversion', '2');
   url.searchParams.set('origin', '*');
@@ -97,10 +98,12 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
         const thumbnail = isObject(page.thumbnail) && typeof page.thumbnail.source === 'string'
           ? resolveSafeExternalImageUrl(page.thumbnail.source) ?? undefined
           : undefined;
-        if (thumbnail) {
-          result.set(normalizeWikiTreasureTitle(page.title), thumbnail);
-          const itemId = wikiTreasureItemId(thumbnail);
-          if (itemId) result.set(normalizeWikiTreasureTitle(`Treasure ${itemId}`), thumbnail);
+        const fallback = thumbnail ? undefined : wikiTreasurePageImage(page);
+        const imageUrl = thumbnail ?? fallback;
+        if (imageUrl) {
+          result.set(normalizeWikiTreasureTitle(page.title), imageUrl);
+          const itemId = wikiTreasureItemId(imageUrl);
+          if (itemId) result.set(normalizeWikiTreasureTitle(`Treasure ${itemId}`), imageUrl);
         }
       }
     }
@@ -112,13 +115,30 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
   return result;
 }
 
+function wikiTreasurePageImage(page: JsonObject): string | undefined {
+  if (!Array.isArray(page.images)) return undefined;
+  for (const image of page.images) {
+    if (!isObject(image) || typeof image.title !== 'string') continue;
+    const filename = image.title.replace(/^File:/i, '').trim();
+    if (!wikiTreasureItemIdFromFilename(filename)) continue;
+    const redirect = `https://gbf.wiki/Special:Redirect/file/${encodeURIComponent(filename)}`;
+    return resolveSafeExternalImageUrl(redirect) ?? undefined;
+  }
+  return undefined;
+}
+
 function wikiTreasureItemId(imageUrl: string): string | undefined {
   try {
-    const match = new URL(imageUrl).pathname.match(/Item_article_s_(\d+)\.(?:jpe?g|png|webp)/i);
-    return match?.[1];
+    const pathname = decodeURIComponent(new URL(imageUrl).pathname);
+    return wikiTreasureItemIdFromFilename(pathname);
   } catch {
     return undefined;
   }
+}
+
+function wikiTreasureItemIdFromFilename(value: string): string | undefined {
+  const match = value.match(/Item_article_s_(\d+)\.(?:jpe?g|png|webp)(?:$|[/?#])/i);
+  return match?.[1];
 }
 
 function readCache(storage: StorageLike | undefined): { cachedAt: number; index: Map<string, string> } | undefined {
@@ -127,7 +147,7 @@ function readCache(storage: StorageLike | undefined): { cachedAt: number; index:
     const raw = storage.getItem(CACHE_KEY);
     if (!raw) return undefined;
     const value = JSON.parse(raw) as unknown;
-    if (!isObject(value) || value.version !== 1 || typeof value.cachedAt !== 'number' || !Number.isFinite(value.cachedAt) || !isObject(value.entries)) return undefined;
+    if (!isObject(value) || value.version !== 2 || typeof value.cachedAt !== 'number' || !Number.isFinite(value.cachedAt) || !isObject(value.entries)) return undefined;
     const index = new Map<string, string>();
     for (const [key, candidate] of Object.entries(value.entries)) {
       if (typeof candidate !== 'string') continue;
@@ -145,7 +165,7 @@ function writeCache(storage: StorageLike | undefined, index: ReadonlyMap<string,
   try {
     const entries: Record<string, string> = {};
     for (const [key, url] of index) entries[key] = url;
-    const payload: CachedTreasureImagePayload = { version: 1, cachedAt, entries };
+    const payload: CachedTreasureImagePayload = { version: 2, cachedAt, entries };
     storage.setItem(CACHE_KEY, JSON.stringify(payload));
   } catch {
     // Public metadata caching is optional.
