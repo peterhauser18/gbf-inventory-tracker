@@ -4,7 +4,7 @@ import {
   captureExportFilename,
   serializeCaptureExport,
 } from './capture/export.ts';
-import { CAPTURE_CATEGORIES, isGbfPageUrl } from './capture/policy.ts';
+import { CAPTURE_CATEGORIES } from './capture/policy.ts';
 import { getCapturedResponsesForScan } from './capture/storage.ts';
 import type { CaptureControlMessage, CaptureStatusResponse } from './capture/types.ts';
 
@@ -15,7 +15,7 @@ app.innerHTML = `
   <section class="shell">
     <header>
       <p class="eyebrow">LOCAL-FIRST GBF COMPANION</p>
-      <h1>GBF Inventory Tracker</h1>
+      <h1>GBF Tracker</h1>
       <p class="muted">Open the dashboard anytime. If an active GBF tab is available, live read-only debugger observation starts automatically.</p>
     </header>
 
@@ -32,7 +32,7 @@ app.innerHTML = `
           </div>
           <p class="muted" id="detail">No GBF page hooks run in the background. Start observation only when you want to update account or combat data.</p>
           <button id="toggle" type="button" disabled>Loading…</button>
-          <p class="muted" id="tracking-note">While active, Chrome shows its debugging notice. The extension only reads allowlisted responses GBF already received; it does not send, replay, intercept, or modify GBF requests.</p>
+          <p class="muted" id="tracking-note">While active, the browser shows its debugging notice. The extension only reads allowlisted responses GBF already received; it does not send, replay, intercept, or modify GBF requests.</p>
           <button id="reset-account" class="secondary" type="button">Reset account data</button>
         </div>
 
@@ -89,7 +89,7 @@ dashboardButton.addEventListener('click', async () => {
 
   try {
     if (!observationStatus.active) {
-      const tabId = await findActiveGbfTabId();
+      const tabId = await findActiveTabId();
       if (tabId !== undefined) {
         observationStatus = await sendMessage({ type: 'gbfit:start-observation', tabId });
         if (!observationStatus.active) {
@@ -105,7 +105,7 @@ dashboardButton.addEventListener('click', async () => {
     await openDashboardTab();
     render(observationStatus);
     if (observationStatus.active) {
-      dashboardNote.textContent = 'Dashboard opened. Read-only observation remains active until you stop it or Chrome detaches it.';
+      dashboardNote.textContent = 'Dashboard opened. Read-only observation remains active until you stop it or the browser detaches it.';
     } else if (observationError) {
       dashboardNote.textContent = `Dashboard opened without observation: ${observationError}`;
     } else {
@@ -119,7 +119,7 @@ dashboardButton.addEventListener('click', async () => {
 });
 
 resetAccountButton.addEventListener('click', async () => {
-  if (!window.confirm('Clear GBF Tool\'s locally accumulated account data? This does not change your GBF account.')) return;
+  if (!window.confirm('Clear GBF Tracker\'s locally accumulated account data? This does not change your GBF account.')) return;
   resetAccountButton.disabled = true;
   trackingNote.textContent = 'Clearing local account data…';
   try {
@@ -156,8 +156,9 @@ toggle.addEventListener('click', async () => {
   try {
     const response = latestStatus?.active
       ? await sendMessage({ type: 'gbfit:stop-observation' })
-      : await sendMessage({ type: 'gbfit:start-observation', tabId: await requireActiveGbfTabId() });
+      : await sendMessage({ type: 'gbfit:start-observation', tabId: await requireActiveTabId() });
     render(response);
+    if (response.error) trackingNote.textContent = response.error;
   } catch (error) {
     await refresh();
     trackingNote.textContent = error instanceof Error ? error.message : String(error);
@@ -206,15 +207,15 @@ async function runStorageCleanup(
   storageNote.textContent = response.error ?? successMessage;
 }
 
-async function findActiveGbfTabId(): Promise<number | undefined> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tab?.id !== undefined && isGbfPageUrl(tab.url) ? tab.id : undefined;
+async function findActiveTabId(): Promise<number | undefined> {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  return tab?.id;
 }
 
-async function requireActiveGbfTabId(): Promise<number> {
-  const tabId = await findActiveGbfTabId();
+async function requireActiveTabId(): Promise<number> {
+  const tabId = await findActiveTabId();
   if (tabId === undefined) {
-    throw new Error('Open game.granbluefantasy.jp in the active tab, then open the extension again.');
+    throw new Error('No active browser tab is available. Focus the GBF tab, then open the extension again.');
   }
   return tabId;
 }
@@ -242,7 +243,7 @@ function render(response: CaptureStatusResponse): void {
   latestStatus = response;
   status.textContent = response.message;
   detail.textContent = response.error ?? (response.active
-    ? 'Chrome debugger observation is active for this GBF tab.'
+    ? 'Browser debugger observation is active for this GBF tab.'
     : 'Observation is inactive; GBF requests are not instrumented or observed by the extension.');
   dashboardNote.textContent = response.active
     ? 'Read-only observation is active. Open Dashboard will reuse it without attaching twice.'
