@@ -32,6 +32,13 @@ test('core render does not immediately fan out into every dashboard enhancement'
   assert.doesNotMatch(entry, /void Promise\.allSettled/);
 });
 
+test('stored theme CSS and preference are applied by core boot without loading the toggle controller', () => {
+  assert.match(entry, /import '\.\/dashboard\/theme\.css'/);
+  assert.match(entry, /applyStoredTheme\(\)/);
+  assert.match(entry, /parseDashboardTheme\(localStorage\.getItem\(DASHBOARD_THEME_STORAGE_KEY\)\)/);
+  assert.match(entry, /document\.documentElement\.dataset\.theme = theme/);
+});
+
 test('Goals loads its own owner without starting Farming in the same click path', () => {
   assert.match(entry, /section === 'goals'/);
   assert.match(entry, /import\('\.\/dashboard\/goals-ui\.ts'\)/);
@@ -55,9 +62,17 @@ test('core-owned destinations load only their optional enhancement on demand', (
   assert.match(entry, /phase5-ui\.ts/);
 });
 
-test('account writes cannot reload the page before an active dashboard section exists', () => {
-  assert.match(entry, /if \(section && sectionUsesAccountEvidence\(section, changed\)\) scheduleReload\(section, 500\)/);
+test('hidden dashboard defers account reload and flushes relevant dirty evidence when visible again', () => {
+  assert.match(entry, /document\.visibilityState === 'visible'/);
+  assert.match(entry, /document\.addEventListener\('visibilitychange'/);
+  assert.match(entry, /window\.addEventListener\('focus', flushDirtyEvidence\)/);
+  assert.match(entry, /function flushDirtyEvidence\(\)/);
   assert.doesNotMatch(entry, /if \(!section \|\| sectionUsesAccountEvidence/);
+});
+
+test('obsolete Dashboard Developer observation card is removed from the rendered local UI', () => {
+  assert.match(entry, /heading\.textContent === 'Observation control'/);
+  assert.match(entry, /heading\.closest<HTMLElement>\('\.system-card'\)\?\.remove\(\)/);
 });
 
 test('extension builds do not emit modulepreload links for Edge extension pages', () => {
