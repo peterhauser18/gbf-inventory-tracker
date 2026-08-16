@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { processObservedResponse } from './observer.ts';
+import {
+  processObservedResponse,
+  readResponseBodyWithRetry,
+  ResponseBodyUnavailableError,
+} from './observer.ts';
 import type { ObservedResponse } from './types.ts';
 
 const meta: ObservedResponse = {
@@ -34,6 +38,46 @@ test('debugger observer reads an already-received allowlisted response body and 
   assert.ok(result);
   assert.deepEqual(calls, ['getResponseBody:request-1', 'save']);
   assert.equal(saved.length, 1);
+});
+
+test('transient debugger body failures are retried without replaying the GBF request', async () => {
+  let bodyReads = 0;
+  const slept: number[] = [];
+  const body = await readResponseBodyWithRetry(
+    {
+      getResponseBody: async () => {
+        bodyReads += 1;
+        if (bodyReads < 3) throw new Error('temporary CDP body race');
+        return { body: '{"ok":true}' };
+      },
+    },
+    'summon-request',
+    [5, 10],
+    async (delayMs) => { slept.push(delayMs); },
+  );
+
+  assert.equal(bodyReads, 3);
+  assert.deepEqual(slept, [5, 10]);
+  assert.equal(body.body, '{"ok":true}');
+});
+
+test('exhausted debugger body reads fail with a typed local error', async () => {
+  let bodyReads = 0;
+  await assert.rejects(
+    readResponseBodyWithRetry(
+      {
+        getResponseBody: async () => {
+          bodyReads += 1;
+          throw new Error('body unavailable');
+        },
+      },
+      'treasure-request',
+      [0, 0],
+      async () => {},
+    ),
+    (error: unknown) => error instanceof ResponseBodyUnavailableError && error.requestId === 'treasure-request',
+  );
+  assert.equal(bodyReads, 3);
 });
 
 test('non-GBF responses are rejected before any response-body read', async () => {

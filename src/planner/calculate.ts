@@ -37,6 +37,7 @@ function calculateRequirement(requirement: MaterialRequirement, snapshot: Accoun
 
   return {
     ...requirement,
+    itemId: requirement.itemId ?? item.itemId,
     state: 'known',
     owned: item.quantity,
     missing: Math.max(0, requirement.quantity - item.quantity),
