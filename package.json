@@ -13,9 +13,9 @@
     "test": "node --experimental-strip-types --test src/account/*.test.ts src/capture/*.test.ts src/dashboard/*.test.ts src/planner/*.test.ts src/combat/*.test.ts"
   },
   "devDependencies": {
-    "@types/chrome": "latest",
-    "@types/node": "latest",
-    "typescript": "latest",
-    "vite": "latest"
+    "@types/chrome": "0.2.2",
+    "@types/node": "26.1.2",
+    "typescript": "7.0.2",
+    "vite": "8.2.0"
   }
 }
