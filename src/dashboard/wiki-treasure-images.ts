@@ -89,6 +89,8 @@ export class WikiTreasureImageResolver {
   private async load(entry: QueueEntry): Promise<void> {
     let imageUrl: string | undefined;
     try {
+      // The concrete public Wiki page title is intentionally sent here. No GBF auth,
+      // account identifiers, owned amount, session data or Cygames request is involved.
       const response = await this.fetchImpl.call(globalThis, buildWikiTreasurePageImageUrl(entry.title), {
         credentials: 'omit',
         referrerPolicy: 'no-referrer',
