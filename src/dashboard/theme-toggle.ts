@@ -35,8 +35,9 @@ function syncToggle(): void {
     sidebar.insertBefore(button, note);
   }
 
-  button.textContent = dashboardThemeButtonLabel(theme);
-  button.setAttribute('aria-label', dashboardThemeButtonLabel(theme));
+  const label = dashboardThemeButtonLabel(theme);
+  if (button.textContent !== label) button.textContent = label;
+  button.setAttribute('aria-label', label);
   button.setAttribute('aria-pressed', String(theme === 'dark'));
 }
 
