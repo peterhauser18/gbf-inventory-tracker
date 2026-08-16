@@ -4,6 +4,7 @@ import {
   captureExportFilename,
   serializeCaptureExport,
 } from './capture/export.ts';
+import { launchDashboardWithObservation } from './capture/dashboard-launch.ts';
 import { CAPTURE_CATEGORIES } from './capture/policy.ts';
 import { getCapturedResponsesForScan } from './capture/storage.ts';
 import type { CaptureControlMessage, CaptureStatusResponse } from './capture/types.ts';
@@ -16,25 +17,26 @@ app.innerHTML = `
     <header>
       <p class="eyebrow">LOCAL-FIRST GBF COMPANION</p>
       <h1>GBF Inventory Tracker</h1>
-      <p class="muted">GBF data is read only while you explicitly enable debugger observation.</p>
+      <p class="muted">Open the dashboard from an active GBF tab to start live read-only debugger observation.</p>
     </header>
 
-    <button id="dashboard" class="secondary dashboard-button" type="button">Open Dashboard</button>
-
-    <div class="card">
-      <div class="status-row">
-        <span class="dot" id="status-dot"></span>
-        <strong id="status">Checking observation status…</strong>
-      </div>
-      <p class="muted" id="detail">No GBF page hooks run in the background. Start observation only when you want to update account or combat data.</p>
-      <button id="toggle" type="button" disabled>Loading…</button>
-      <p class="muted" id="tracking-note">While active, Chrome shows its debugging notice. The extension only reads allowlisted responses GBF already received; it does not send, replay, intercept, or modify GBF requests.</p>
-      <button id="reset-account" class="secondary" type="button">Reset account data</button>
-    </div>
+    <button id="dashboard" class="dashboard-button" type="button" title="Starts debugger-only read-only observation on the active GBF tab, then opens the dashboard.">Open Dashboard</button>
+    <p class="muted" id="dashboard-note">Observation starts before the dashboard opens. Chrome will show its debugging notice while tracking is active.</p>
 
     <details class="developer">
       <summary class="card developer-summary">Developer</summary>
       <div class="developer-content">
+        <div class="card">
+          <div class="status-row">
+            <span class="dot" id="status-dot"></span>
+            <strong id="status">Checking observation status…</strong>
+          </div>
+          <p class="muted" id="detail">No GBF page hooks run in the background. Start observation only when you want to update account or combat data.</p>
+          <button id="toggle" type="button" disabled>Loading…</button>
+          <p class="muted" id="tracking-note">While active, Chrome shows its debugging notice. The extension only reads allowlisted responses GBF already received; it does not send, replay, intercept, or modify GBF requests.</p>
+          <button id="reset-account" class="secondary" type="button">Reset account data</button>
+        </div>
+
         <div class="card">
           <div class="status-row">
             <strong>Current / last observation</strong>
@@ -57,11 +59,12 @@ app.innerHTML = `
       </div>
     </details>
 
-    <footer>Observation is off by default. Start it on an active GBF tab, browse or play normally, then stop it when you are done collecting data.</footer>
+    <footer>Dashboard starts observation only on the active GBF tab. Manual Start/Stop and cleanup controls remain available under Developer.</footer>
   </section>
 `;
 
 const dashboardButton = requiredButton('#dashboard');
+const dashboardNote = requiredElement('#dashboard-note');
 const resetAccountButton = requiredButton('#reset-account');
 const clearDiagnosticButton = requiredButton('#clear-diagnostic');
 const clearExceptAccountButton = requiredButton('#clear-except-account');
@@ -80,8 +83,20 @@ let latestStatus: CaptureStatusResponse | null = null;
 
 dashboardButton.addEventListener('click', async () => {
   dashboardButton.disabled = true;
+  dashboardNote.textContent = 'Starting or reusing read-only observation before opening the dashboard…';
   try {
-    await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+    const response = await launchDashboardWithObservation({
+      getStatus: async () => sendMessage({ type: 'gbfit:get-status' }),
+      startObservation: async () => sendMessage({ type: 'gbfit:start-observation' }),
+      openDashboard: async () => {
+        await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+      },
+    });
+    render(response);
+    dashboardNote.textContent = 'Dashboard opened. Read-only observation remains active until you stop it or Chrome detaches it.';
+  } catch (error) {
+    await refresh();
+    dashboardNote.textContent = error instanceof Error ? error.message : String(error);
   } finally {
     dashboardButton.disabled = false;
   }
@@ -93,7 +108,7 @@ resetAccountButton.addEventListener('click', async () => {
   trackingNote.textContent = 'Clearing local account data…';
   try {
     await sendMessage({ type: 'gbfit:reset-account-data' });
-    trackingNote.textContent = 'Local account data cleared. Start observation again when you want to rebuild it from normal GBF activity.';
+    trackingNote.textContent = 'Local account data cleared. Open Dashboard from an active GBF tab when you want to rebuild it from normal GBF activity.';
   } catch (error) {
     trackingNote.textContent = error instanceof Error ? error.message : String(error);
   } finally {
@@ -188,6 +203,9 @@ function render(response: CaptureStatusResponse): void {
   detail.textContent = response.error ?? (response.active
     ? 'Chrome debugger observation is active for this GBF tab.'
     : 'Observation is inactive; GBF requests are not instrumented or observed by the extension.');
+  dashboardNote.textContent = response.active
+    ? 'Read-only observation is active. Open Dashboard will reuse it without attaching twice.'
+    : 'Open Dashboard starts observation on the active GBF tab before opening.';
   dot.classList.toggle('active', response.active);
   toggle.disabled = false;
   toggle.textContent = response.active ? 'Stop observation' : 'Start observation';
