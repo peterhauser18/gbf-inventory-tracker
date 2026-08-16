@@ -20,13 +20,15 @@ test('retargeting detaches the previous target before attaching the revalidated 
   const end = background.indexOf('async function enableNetworkObservation', start);
   assert.ok(start >= 0 && end > start);
   const switchSource = background.slice(start, end);
+  const targetless = switchSource.indexOf('setRuntimeState({ active: true, scanId: state.scanId })');
   const detach = switchSource.indexOf('chrome.debugger.detach({ tabId: previousTabId })');
   const revalidate = switchSource.indexOf('isVerifiedGbfTab(candidateTabId)', detach);
   const attach = switchSource.indexOf('chrome.debugger.attach({ tabId: candidateTabId }', revalidate);
-  assert.ok(detach >= 0);
+  assert.ok(targetless >= 0);
+  assert.ok(detach > targetless);
   assert.ok(revalidate > detach);
   assert.ok(attach > revalidate);
-  assert.match(switchSource, /expectedDetachTabIds\.add\(previousTabId\)/);
+  assert.match(switchSource, /if \(candidateAttached\)[\s\S]*chrome\.debugger\.detach\(\{ tabId: candidateTabId \}\)/);
 });
 
 test('combat lock is keyed by the existing raid instance id and only the same instance can release it', () => {
