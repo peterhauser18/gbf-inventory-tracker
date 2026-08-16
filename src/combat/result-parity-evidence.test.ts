@@ -50,13 +50,16 @@ function startBody(turn = 1, scenario: unknown[] = []) {
   };
 }
 
-test('verified normal concurrent lanes stay normal unless a proven echo pattern is present', () => {
+test('verified complete concurrent lane grids stay normal unless a proven echo pattern is present', () => {
   const concurrent = classifyVerifiedNormalDamage([
     { amount: 100, kind: 'normal', attackCount: 0, concurrentAttackCount: 0 },
     { amount: 40, kind: 'normal', attackCount: 0, concurrentAttackCount: 1 },
-    { amount: 30, kind: 'normal', attackCount: 0, concurrentAttackCount: 2 },
+    { amount: 101, kind: 'normal', attackCount: 1, concurrentAttackCount: 0 },
+    { amount: 41, kind: 'normal', attackCount: 1, concurrentAttackCount: 1 },
+    { amount: 102, kind: 'normal', attackCount: 2, concurrentAttackCount: 0 },
+    { amount: 42, kind: 'normal', attackCount: 2, concurrentAttackCount: 1 },
   ]);
-  assert.deepEqual(concurrent.map((hit) => hit.kind), ['normal', 'normal', 'normal']);
+  assert.deepEqual(concurrent.map((hit) => hit.kind), ['normal', 'normal', 'normal', 'normal', 'normal', 'normal']);
 
   const echo = classifyVerifiedNormalDamage([
     { amount: 100, kind: 'normal', attackCount: 0, concurrentAttackCount: 0, isRandomAttack: true },
@@ -110,20 +113,24 @@ test('six 2M direct-boss auxiliary effects are party-only damage', () => {
       cmd: 'attack',
       from: 'player',
       pos: 0,
-      total_attack_num: 1,
+      total_attack_num: 2,
       damage: [[
-        { value: 10, attack_count: 0, concurrent_attack_count: 0 },
-        { value: 4, attack_count: 0, concurrent_attack_count: 1 },
+        { value: 5, attack_count: 0, concurrent_attack_count: 0 },
+        { value: 2, attack_count: 0, concurrent_attack_count: 1 },
+        { value: 5, attack_count: 1, concurrent_attack_count: 0 },
+        { value: 2, attack_count: 1, concurrent_attack_count: 1 },
       ]],
     },
     {
       cmd: 'attack',
       from: 'player',
       pos: 1,
-      total_attack_num: 1,
+      total_attack_num: 2,
       damage: [[
-        { value: 8, attack_count: 0, concurrent_attack_count: 0 },
-        { value: 3, attack_count: 0, concurrent_attack_count: 1 },
+        { value: 4, attack_count: 0, concurrent_attack_count: 0 },
+        { value: 1, attack_count: 0, concurrent_attack_count: 1 },
+        { value: 4, attack_count: 1, concurrent_attack_count: 0 },
+        { value: 2, attack_count: 1, concurrent_attack_count: 1 },
       ]],
     },
   ] }, 11), context);
@@ -163,6 +170,7 @@ test('six 2M direct-boss auxiliary effects are party-only damage', () => {
   assert.equal((raid.partyDamage ?? 0) - characterTotal, 12_000_000);
   assert.deepEqual(byActor.get('mc-tech'), {
     actorId: 'mc-tech',
+    actorName: undefined,
     total: 26,
     breakdown: { normal: 19, other: 7 },
     quality: 'partial',
