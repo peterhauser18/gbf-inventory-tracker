@@ -23,12 +23,30 @@ test('dashboard HTML boots only the core entry module', () => {
   }
 });
 
-test('enhancements load only after the first core dashboard render', () => {
+test('core render does not immediately fan out into every dashboard enhancement', () => {
   assert.match(entry, /const initialRender = waitForInitialDashboardRender\(app\)/);
   assert.match(entry, /await import\('\.\/dashboard\.ts'\)/);
   assert.match(entry, /await initialRender/);
-  assert.match(entry, /void loadDashboardEnhancements\(\)/);
-  assert.match(entry, /Promise\.allSettled/);
+  assert.doesNotMatch(entry, /loadDashboardEnhancements/);
+  assert.doesNotMatch(entry, /void Promise\.allSettled/);
+});
+
+test('external dashboard destinations load their owner before replaying the click', () => {
+  assert.match(entry, /section === 'goals'/);
+  assert.match(entry, /section === 'combat' \|\| section === 'raids'/);
+  assert.match(entry, /section === 'roster'/);
+  assert.match(entry, /interceptUntilLoaded/);
+  assert.match(entry, /ensureEnhancement\(key, load\)\.then\(\(\) => element\.click\(\)\)/);
+});
+
+test('core-owned destinations load only their optional enhancement on demand', () => {
+  assert.match(entry, /section === 'characters'/);
+  assert.match(entry, /collection-tracker-ui\.ts/);
+  assert.match(entry, /section === 'eternals' \|\| section === 'evokers'/);
+  assert.match(entry, /goals-ui\.ts/);
+  assert.match(entry, /section === 'settings'/);
+  assert.match(entry, /theme-toggle\.ts/);
+  assert.match(entry, /phase5-ui\.ts/);
 });
 
 test('account writes cannot reload the page before an active dashboard section exists', () => {
