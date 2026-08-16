@@ -1,10 +1,8 @@
 import type { ParsedDamageHit } from './types.ts';
 
 export function criticalDecision(hits: readonly ParsedDamageHit[]): boolean | undefined {
-  const observed = hits
-    .map((hit) => hit.critical)
-    .filter((value): value is boolean => value !== undefined);
-  if (observed.length === 0) return undefined;
+  if (hits.length === 0 || hits.some((hit) => hit.critical === undefined)) return undefined;
+  const observed = hits.map((hit) => hit.critical as boolean);
   return observed.every((value) => value === observed[0]) ? observed[0] : undefined;
 }
 
@@ -28,8 +26,9 @@ export function classifyVerifiedNormalDamage(
 
 function isVerifiedFlurryEchoPattern(hits: readonly ParsedDamageHit[]): boolean {
   if (hits.length < 4 || !hits.every((hit) => hit.isRandomAttack === true)) return false;
-  const attackCounts = new Set(hits.map((hit) => hit.attackCount).filter((value) => value !== undefined));
-  if (attackCounts.size > 1) return false;
+  if (hits.some((hit) => hit.attackCount === undefined)) return false;
+  const attackCounts = new Set(hits.map((hit) => hit.attackCount as number));
+  if (attackCounts.size !== 1) return false;
 
   const lanes = hits.map((hit) => hit.concurrentAttackCount);
   if (lanes.some((lane) => lane === undefined)) return false;
