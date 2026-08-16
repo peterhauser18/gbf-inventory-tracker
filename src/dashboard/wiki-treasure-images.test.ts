@@ -27,7 +27,7 @@ test('treasure image metadata uses one fixed account-independent Category:Items 
   assert.equal(url.searchParams.has('ids'), false);
 });
 
-test('treasure image index follows public continuation, falls back to technical page images and stays credential-free', async () => {
+test('treasure image index follows public continuation and uses technical or page-title image fallbacks', async () => {
   const calls: Array<{ url: URL; init?: RequestInit }> = [];
   const fetchImpl = async (input: string | URL, init?: RequestInit) => {
     const url = new URL(input.toString());
@@ -39,6 +39,13 @@ test('treasure image index follows public continuation, falls back to technical 
       json: async () => continued ? ({
         query: { pages: [
           { title: 'Gold Brick', thumbnail: { source: 'https://gbf.wiki/images/Item_article_s_10.jpg' } },
+          {
+            title: 'Satin Feather',
+            images: [
+              { title: 'File:Decorative_banner.png' },
+              { title: 'File:Satin_Feather.jpg' },
+            ],
+          },
           { title: 'Unsafe Item', thumbnail: { source: 'https://game.granbluefantasy.jp/assets/item.png' } },
         ] },
       }) : ({
@@ -47,7 +54,7 @@ test('treasure image index follows public continuation, falls back to technical 
           {
             title: 'Harp Stone',
             images: [
-              { title: 'File:Decorative_banner.png' },
+              { title: 'File:Harp_Stone.jpg' },
               { title: 'File:Item_article_s_20.jpg' },
             ],
           },
@@ -70,12 +77,16 @@ test('treasure image index follows public continuation, falls back to technical 
     'https://gbf.wiki/Special:Redirect/file/Item_article_s_20.jpg',
   );
   assert.equal(result.get('treasure 20'), result.get('harp stone'));
+  assert.equal(
+    result.get('satin feather'),
+    'https://gbf.wiki/Special:Redirect/file/Satin_Feather.jpg',
+  );
   assert.equal(result.get('gold brick'), 'https://gbf.wiki/images/Item_article_s_10.jpg');
   assert.equal(result.get('treasure 10'), 'https://gbf.wiki/images/Item_article_s_10.jpg');
   assert.equal(result.has('unsafe item'), false);
 });
 
-test('fresh v2 treasure metadata cache avoids a second public Wiki query', async () => {
+test('fresh v3 treasure metadata cache avoids a second public Wiki query', async () => {
   const storage = memoryStorage();
   let calls = 0;
   const fetchImpl = async () => {
@@ -86,8 +97,8 @@ test('fresh v2 treasure metadata cache avoids a second public Wiki query', async
       json: async () => ({
         query: { pages: [
           {
-            title: 'Harp Stone',
-            images: [{ title: 'File:Item_article_s_20.jpg' }],
+            title: 'Satin Feather',
+            images: [{ title: 'File:Satin_Feather.jpg' }],
           },
         ] },
       }),
@@ -97,6 +108,5 @@ test('fresh v2 treasure metadata cache avoids a second public Wiki query', async
   const first = await loadWikiTreasureImageIndex({ fetchImpl, storage, now: 10 });
   const second = await loadWikiTreasureImageIndex({ fetchImpl, storage, now: 20 });
   assert.equal(calls, 1);
-  assert.equal(second.get('harp stone'), first.get('harp stone'));
-  assert.equal(second.get('treasure 20'), first.get('treasure 20'));
+  assert.equal(second.get('satin feather'), first.get('satin feather'));
 });
