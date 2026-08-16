@@ -12,6 +12,7 @@ import {
   type GoalPin,
   type PinnedGoalSummary,
 } from './goals.ts';
+import { resolveWikiUrl } from './resolver.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 let plannerCards: PlannerCard[] = [];
@@ -287,13 +288,18 @@ function renderGoalRequirement(material: GoalMaterialDeficit): string {
   const missing = material.state === 'known' ? material.missing ?? 0 : undefined;
   const statusClass = material.state === 'unknown' ? 'unknown' : missing === 0 ? 'enough' : 'missing';
   const wikiTitle = material.wikiTitle?.trim();
+  const wikiUrl = resolveWikiUrl({
+    wikiTitle,
+    displayName: material.name,
+    publicId: material.itemId,
+  });
   const icon = wikiTitle
     ? `<span class="goal-material-icon"><img data-goal-material-icon data-wiki-title="${escapeAttribute(wikiTitle)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" /></span>`
     : '<span class="goal-material-icon empty" aria-hidden="true"></span>';
   return `
     <div class="goal-requirement-row ${statusClass}" data-goal-material-key="${escapeAttribute(material.key)}">
       ${icon}
-      <span class="goal-requirement-name">${escapeHtml(material.name)}</span>
+      <a class="goal-requirement-name" href="${escapeAttribute(wikiUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">${escapeHtml(material.name)}</a>
       <small>${material.state === 'known'
         ? `Have ${formatNumber(material.owned ?? 0)} · Required ${formatNumber(material.required)} · Missing ${formatNumber(missing ?? 0)}`
         : `Have ? · Required ${formatNumber(material.required)} · Missing ?`}</small>
