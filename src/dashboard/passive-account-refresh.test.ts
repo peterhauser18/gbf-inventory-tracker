@@ -7,6 +7,8 @@ const source = readFileSync(new URL('../dashboard-entry.ts', import.meta.url), '
 test('dashboard entry refreshes Characters from passive account storage changes', () => {
   assert.match(source, /ACCOUNT_DATABASE_STORAGE_KEY/);
   assert.match(source, /chrome\.storage\.onChanged\.addListener/);
+  assert.match(source, /characterObservationChanged/);
+  assert.match(source, /value\.observedAt\.characters/);
   assert.match(source, /section !== 'overview' && section !== 'characters'/);
   assert.match(source, /targetSection !== 'characters'/);
 });
