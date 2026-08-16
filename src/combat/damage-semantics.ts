@@ -14,10 +14,51 @@ export function classifyVerifiedNormalDamage(
   }
 
   const echoPattern = isVerifiedFlurryEchoPattern(hits);
+  const concurrentNormalPattern = !echoPattern && isVerifiedConcurrentNormalPattern(hits);
   return hits.map((hit) => ({
     ...hit,
-    kind: echoPattern && (hit.concurrentAttackCount ?? 0) > 0 ? 'echo' : 'normal',
+    kind: (hit.concurrentAttackCount ?? 0) === 0
+      ? 'normal'
+      : echoPattern
+        ? 'echo'
+        : concurrentNormalPattern
+          ? 'normal'
+          : 'other',
   }));
+}
+
+function isVerifiedConcurrentNormalPattern(hits: readonly ParsedDamageHit[]): boolean {
+  if (hits.length < 4) return false;
+  if (hits.some((hit) => hit.attackCount === undefined || hit.concurrentAttackCount === undefined)) return false;
+
+  const grouped = new Map<number, Map<number, number>>();
+  for (const hit of hits) {
+    const attackCount = hit.attackCount as number;
+    const lane = hit.concurrentAttackCount as number;
+    const lanes = grouped.get(attackCount) ?? new Map<number, number>();
+    lanes.set(lane, (lanes.get(lane) ?? 0) + 1);
+    grouped.set(attackCount, lanes);
+  }
+
+  const attackCounts = [...grouped.keys()].sort((a, b) => a - b);
+  if (attackCounts.some((value, index) => value !== index)) return false;
+
+  let expectedLaneCount: number | undefined;
+  let repeatedSingleAttackPattern = false;
+  for (const attackCount of attackCounts) {
+    const laneCounts = grouped.get(attackCount);
+    if (!laneCounts) return false;
+    const lanes = [...laneCounts.keys()].sort((a, b) => a - b);
+    if (lanes.length < 2 || lanes.some((value, index) => value !== index)) return false;
+    if (expectedLaneCount === undefined) expectedLaneCount = lanes.length;
+    else if (lanes.length !== expectedLaneCount) return false;
+
+    const multiplicities = lanes.map((lane) => laneCounts.get(lane) ?? 0);
+    if (!multiplicities.every((value) => value === multiplicities[0])) return false;
+    if ((multiplicities[0] ?? 0) >= 2) repeatedSingleAttackPattern = true;
+  }
+
+  return grouped.size >= 2 || repeatedSingleAttackPattern;
 }
 
 function isVerifiedFlurryEchoPattern(hits: readonly ParsedDamageHit[]): boolean {
