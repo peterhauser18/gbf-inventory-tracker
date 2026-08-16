@@ -37,7 +37,7 @@ test('treasure image index follows public continuation, filters unsafe hosts and
       status: 200,
       json: async () => continued ? ({
         query: { pages: [
-          { title: 'Gold Brick', thumbnail: { source: 'https://gbf.wiki/images/gold-brick.png' } },
+          { title: 'Gold Brick', thumbnail: { source: 'https://gbf.wiki/images/Item_article_s_10.jpg' } },
           { title: 'Unsafe Item', thumbnail: { source: 'https://game.granbluefantasy.jp/assets/item.png' } },
         ] },
       }) : ({
@@ -58,7 +58,8 @@ test('treasure image index follows public continuation, filters unsafe hosts and
     assert.equal(call.init?.referrerPolicy, 'no-referrer');
   }
   assert.equal(result.get('harp stone'), 'https://gbf.wiki/images/harp-stone.png');
-  assert.equal(result.get('gold brick'), 'https://gbf.wiki/images/gold-brick.png');
+  assert.equal(result.get('gold brick'), 'https://gbf.wiki/images/Item_article_s_10.jpg');
+  assert.equal(result.get('treasure 10'), 'https://gbf.wiki/images/Item_article_s_10.jpg');
   assert.equal(result.has('unsafe item'), false);
 });
 
