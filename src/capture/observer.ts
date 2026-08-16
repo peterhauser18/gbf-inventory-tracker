@@ -1,4 +1,5 @@
-import { buildCapturedResponse, isCaptureCandidate } from './policy.ts';
+import { buildCapturedResponse } from './policy.ts';
+import { shouldReadObservedResponse } from './route.ts';
 import type {
   CapturedResponseRecord,
   DebuggerResponseBody,
@@ -18,7 +19,7 @@ export async function processObservedResponse(
   save: CaptureRecordSink,
   capturedAt = Date.now(),
 ): Promise<CapturedResponseRecord | null> {
-  if (!isCaptureCandidate(meta)) return null;
+  if (!shouldReadObservedResponse(meta.url, meta.resourceType)) return null;
 
   const responseBody = await reader.getResponseBody(meta.requestId);
   const rawBody = responseBody.base64Encoded

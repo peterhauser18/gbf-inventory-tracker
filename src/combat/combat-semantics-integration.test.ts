@@ -72,7 +72,7 @@ test('verified ambiguous concurrent pair stays other rather than being mislabele
   preserveVerifiedNormalFacts(parse, observation.actions);
   assert.equal(parse.partyDamage, 1_837_504);
   assert.deepEqual(parse.log[0]?.breakdown, { normal: 916989, other: 920515 });
-  assert.equal(parse.log[0]?.breakdown.echo, undefined);
+  assert.equal('echo' in (parse.log[0]?.breakdown ?? {}), false);
   assert.equal(parse.log[0]?.critical, true);
   assert.equal(parse.stats.criticalHits, 1);
 });

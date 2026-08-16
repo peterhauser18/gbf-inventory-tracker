@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { CapturedResponseRecord } from '../capture/types.ts';
+import { classifyObservedResponseUrl, shouldReadObservedResponse } from '../capture/route.ts';
 import { buildDashboardViewModel } from '../dashboard/model.ts';
-import { isVerifiedPassiveAccountUrl } from '../passive/page-observer.ts';
-import { classifyPassiveResponseUrl } from '../passive/route.ts';
-import { ingestAccountRecord } from './ingest.ts';
+import { ingestAccountRecord, isVerifiedAccountResponseUrl } from './ingest.ts';
 
 function npcRecord(rows: unknown[], capturedAt = 100): CapturedResponseRecord {
   return {
-    id: `passive:${capturedAt}`,
-    scanId: 'passive-account',
+    id: `observation:${capturedAt}`,
+    scanId: 'debugger-observation',
     meta: {
       requestId: String(capturedAt),
       url: 'https://game.granbluefantasy.jp/npc/list/1',
@@ -45,10 +44,11 @@ function characterRow(id: string, masterId: string): unknown {
   };
 }
 
-test('passive NPC list response reaches the account database and Characters view model', () => {
+test('allowlisted debugger NPC response reaches the account database and Characters view model', () => {
   const url = 'https://game.granbluefantasy.jp/npc/list/1?ignored=1';
-  assert.equal(isVerifiedPassiveAccountUrl(url), true);
-  assert.equal(classifyPassiveResponseUrl(url), 'account');
+  assert.equal(isVerifiedAccountResponseUrl(url), true);
+  assert.equal(classifyObservedResponseUrl(url), 'account');
+  assert.equal(shouldReadObservedResponse(url, 'xhr'), true);
 
   const next = ingestAccountRecord(null, npcRecord([
     characterRow('fixture-instance-1', '3040001000'),
@@ -67,7 +67,7 @@ test('passive NPC list response reaches the account database and Characters view
   assert.equal(view.characters[0]?.key, 'character:fixture-instance-1');
 });
 
-test('malformed passive NPC rows stay omitted instead of becoming fake characters', () => {
+test('malformed allowlisted NPC rows stay omitted instead of becoming fake characters', () => {
   const next = ingestAccountRecord(null, npcRecord([
     { param: { id: 'fixture-instance-broken', level: '80' } },
   ]));
@@ -77,8 +77,9 @@ test('malformed passive NPC rows stay omitted instead of becoming fake character
   assert.equal(next.snapshot.quality.characters, 'partial');
 });
 
-test('NPC-like paths outside the approved GBF origin are rejected', () => {
+test('NPC-like paths outside the approved GBF origin are rejected before body read', () => {
   const url = 'https://example.com/npc/list/1';
-  assert.equal(isVerifiedPassiveAccountUrl(url), false);
-  assert.equal(classifyPassiveResponseUrl(url), null);
+  assert.equal(isVerifiedAccountResponseUrl(url), false);
+  assert.equal(classifyObservedResponseUrl(url), null);
+  assert.equal(shouldReadObservedResponse(url, 'xhr'), false);
 });
