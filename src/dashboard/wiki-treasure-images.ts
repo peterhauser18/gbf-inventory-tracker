@@ -29,9 +29,7 @@ export async function loadWikiTreasureImageIndex(
   const fetchImpl = options.fetchImpl ?? fetch;
   const storage = options.storage ?? (options.fetchImpl ? undefined : safeLocalStorage());
   const now = options.now ?? Date.now();
-  if (options.fetchImpl || options.storage || options.now !== undefined) {
-    return loadCached(storage, fetchImpl, now);
-  }
+  if (options.fetchImpl || options.storage || options.now !== undefined) return loadCached(storage, fetchImpl, now);
   if (!defaultPromise) {
     defaultPromise = loadCached(storage, fetchImpl, now).catch((error) => {
       defaultPromise = null;
@@ -65,11 +63,7 @@ export function normalizeWikiTreasureTitle(value: string): string {
   return value.trim().replace(/_/g, ' ').replace(/\s+/g, ' ').toLowerCase();
 }
 
-async function loadCached(
-  storage: StorageLike | undefined,
-  fetchImpl: FetchLike,
-  now: number,
-): Promise<ReadonlyMap<string, string>> {
+async function loadCached(storage: StorageLike | undefined, fetchImpl: FetchLike, now: number): Promise<ReadonlyMap<string, string>> {
   const cached = readCache(storage);
   if (cached && now - cached.cachedAt < CACHE_TTL_MS) return cached.index;
   try {
@@ -86,24 +80,18 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
   const result = new Map<string, string>();
   let continueToken: string | undefined;
   do {
-    const response = await fetchImpl(buildWikiTreasureImageIndexUrl(continueToken), {
-      credentials: 'omit',
-      referrerPolicy: 'no-referrer',
-    });
+    const response = await fetchImpl(buildWikiTreasureImageIndexUrl(continueToken), { credentials: 'omit', referrerPolicy: 'no-referrer' });
     if (!response.ok) throw new Error(`GBF Wiki treasure image metadata request failed (${response.status})`);
     const body = await response.json();
     const payload = isObject(body) ? body : undefined;
     const query = payload && isObject(payload.query) ? payload.query : undefined;
     if (query && Array.isArray(query.pages)) {
       for (const page of query.pages) {
-        if (!isObject(page) || typeof page.title !== 'string') continue;
-        addPageTreasureImages(result, page);
+        if (isObject(page) && typeof page.title === 'string') addPageTreasureImages(result, page);
       }
     }
     const continuation = payload && isObject(payload.continue) ? payload.continue : undefined;
-    continueToken = continuation && typeof continuation.gcmcontinue === 'string'
-      ? continuation.gcmcontinue
-      : undefined;
+    continueToken = continuation && typeof continuation.gcmcontinue === 'string' ? continuation.gcmcontinue : undefined;
   } while (continueToken);
   return result;
 }
@@ -111,16 +99,13 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
 function addPageTreasureImages(result: Map<string, string>, page: JsonObject): void {
   const pageTitle = typeof page.title === 'string' ? page.title : undefined;
   if (!pageTitle) return;
-
   const thumbnail = isObject(page.thumbnail) && typeof page.thumbnail.source === 'string'
     ? resolveSafeExternalImageUrl(page.thumbnail.source) ?? undefined
     : undefined;
   const directFallback = thumbnail ? undefined : wikiTreasurePageImage(page);
   const sourceEntries = wikiTreasureSourceEntries(pageTitle, wikiPageSource(page));
-
   const direct = thumbnail ?? directFallback ?? sourceEntries.get(normalizeWikiTreasureTitle(pageTitle));
   if (direct) addTreasureImage(result, pageTitle, direct);
-
   for (const [name, imageUrl] of sourceEntries) {
     if (!result.has(name)) result.set(name, imageUrl);
     const itemId = wikiTreasureItemId(imageUrl);
@@ -151,26 +136,22 @@ function wikiTreasurePageImage(page: JsonObject): string | undefined {
 function wikiTreasureSourceEntries(pageTitle: string, source: string | undefined): Map<string, string> {
   const result = new Map<string, string>();
   if (!source) return result;
-
   for (const block of wikiTemplateBlocks(source)) {
     const names = templateFieldValues(block, /^(?:name|item|title)$/i)
       .map(cleanWikiText)
       .filter((value): value is string => Boolean(value));
     if (names.length !== 1) continue;
-
     const imageValues = templateFieldValues(block, /^(?:image|icon|img)$/i)
       .map((value) => value.replace(/^File:/i, '').trim())
       .filter((value) => /\.(?:jpe?g|png|webp)$/i.test(value));
     const ids = templateFieldValues(block, /^(?:id|itemid|item_id|item id)$/i)
       .map((value) => value.trim())
       .filter((value) => /^\d+$/.test(value));
-
     let imageUrl: string | undefined;
     if (imageValues.length === 1) imageUrl = safeWikiFileRedirect(imageValues[0]!);
     if (!imageUrl && ids.length === 1) imageUrl = technicalTreasureImageUrl(ids[0]!);
     if (imageUrl) result.set(normalizeWikiTreasureTitle(names[0]!), imageUrl);
   }
-
   if (!result.has(normalizeWikiTreasureTitle(pageTitle))) {
     const directImages = sourceImageValues(source);
     if (directImages.length === 1) {
@@ -178,7 +159,6 @@ function wikiTreasureSourceEntries(pageTitle: string, source: string | undefined
       if (imageUrl) result.set(normalizeWikiTreasureTitle(pageTitle), imageUrl);
     }
   }
-
   return result;
 }
 
@@ -224,10 +204,7 @@ function sourceImageValues(source: string): string[] {
 
 function cleanWikiText(value: string): string | undefined {
   const link = value.match(/^\[\[(?:[^|\]]+\|)?([^\]]+)\]\]$/);
-  const cleaned = (link?.[1] ?? value)
-    .replace(/''+/g, '')
-    .replace(/<[^>]*>/g, '')
-    .trim();
+  const cleaned = (link?.[1] ?? value).replace(/''+/g, '').replace(/<[^>]*>/g, '').trim();
   return cleaned || undefined;
 }
 
@@ -246,8 +223,7 @@ function wikiPageSource(page: JsonObject): string | undefined {
 
 function safeWikiFileRedirect(filename: string): string | undefined {
   if (!/\.(?:jpe?g|png|webp)$/i.test(filename)) return undefined;
-  const redirect = `https://gbf.wiki/Special:Redirect/file/${encodeURIComponent(filename)}`;
-  return resolveSafeExternalImageUrl(redirect) ?? undefined;
+  return resolveSafeExternalImageUrl(`https://gbf.wiki/Special:Redirect/file/${encodeURIComponent(filename)}`) ?? undefined;
 }
 
 function technicalTreasureImageUrl(itemId: string): string | undefined {
@@ -261,16 +237,14 @@ function wikiTreasureNamedImageMatches(pageTitle: string, filename: string): boo
 
 function wikiTreasureItemId(imageUrl: string): string | undefined {
   try {
-    const pathname = decodeURIComponent(new URL(imageUrl).pathname);
-    return wikiTreasureItemIdFromFilename(pathname);
+    return wikiTreasureItemIdFromFilename(decodeURIComponent(new URL(imageUrl).pathname));
   } catch {
     return undefined;
   }
 }
 
 function wikiTreasureItemIdFromFilename(value: string): string | undefined {
-  const match = value.match(/Item_article_s_(\d+)\.(?:jpe?g|png|webp)(?:$|[/?#])/i);
-  return match?.[1];
+  return value.match(/Item_article_s_(\d+)\.(?:jpe?g|png|webp)(?:$|[/?#])/i)?.[1];
 }
 
 function readCache(storage: StorageLike | undefined): { cachedAt: number; index: Map<string, string> } | undefined {
