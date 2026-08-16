@@ -24,7 +24,10 @@ test('recognized combat responses persist only normalized combat facts', () => {
     background,
     /const route = classifyObservedResponseUrl\(record\.meta\.url\);\s*if \(route === 'combat'\) \{\s*await ingestCapturedCombatRecord\(record\);\s*return;\s*\}/s,
   );
-  assert.doesNotMatch(background, /route === 'combat'[\s\S]{0,240}saveCapturedResponse/);
+  assert.match(
+    background,
+    /if \(route !== 'account'\) return;\s*await queueAccountIngest\(record\);\s*await saveCapturedResponse\(record\);/s,
+  );
 });
 
 test('raid instance correlation is session-only and strips non-public actor names', () => {
