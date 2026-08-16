@@ -8,6 +8,7 @@ import {
   type WikiSummonEffectText,
 } from './wiki-gameplay-metadata.ts';
 import {
+  EMPTY_ENTITY_METADATA,
   loadWikiEntityMetadata,
   type EntityMetadataIndex,
 } from './wiki-metadata.ts';
@@ -145,7 +146,7 @@ function loadDetailMetadata(): Promise<{ gameplay: WikiGameplayMetadataIndex; en
   if (!metadataPromise) {
     metadataPromise = Promise.all([
       loadWikiGameplayMetadata(),
-      loadWikiEntityMetadata(),
+      loadWikiEntityMetadata().catch(() => EMPTY_ENTITY_METADATA),
     ]).then(([gameplay, entities]) => ({ gameplay, entities })).catch((error) => {
       metadataPromise = null;
       throw error;
