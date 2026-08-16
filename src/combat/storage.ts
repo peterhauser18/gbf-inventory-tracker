@@ -5,7 +5,9 @@ import {
   isVerifiedCombatResponseUrl,
   mergeVerifiedMultiraidObservation,
   parseVerifiedMultiraidObservation,
+  type CombatActorContext,
   type CombatParseContext,
+  type CombatParticipantDisplay,
   type VerifiedCombatObservation,
 } from './multiraid.ts';
 import type { NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord } from './types.ts';
@@ -50,6 +52,11 @@ export async function getLatestCombatParse(): Promise<NormalizedRaidParse | null
   return value?.parse ?? null;
 }
 
+export async function getCombatLiveContext(): Promise<CombatParseContext | undefined> {
+  const context = await getCombatParseContext();
+  return context ? sanitizeCombatParseContext(context) : undefined;
+}
+
 export async function clearCombatParseContext(): Promise<void> {
   await chrome.storage.session.remove(CONTEXT_KEY);
 }
@@ -65,12 +72,40 @@ async function saveCombatParseContext(context: CombatParseContext): Promise<void
 
 function sanitizeCombatParseContext(context: CombatParseContext): CombatParseContext {
   return {
-    ...context,
-    actorSlots: context.actorSlots.map((actor) => ({
-      id: actor.id,
-      name: actor.id && /^30[234]\d{7}$/.test(actor.id) ? actor.name : undefined,
-    })),
+    raidTechnicalId: context.raidTechnicalId,
+    instanceId: context.instanceId,
+    actorSlots: context.actorSlots.map(sanitizeActorContext),
+    actors: context.actors?.map(sanitizeActorContext),
+    participants: context.participants?.slice(0, 30).map(sanitizeParticipantDisplay),
   };
+}
+
+function sanitizeActorContext(actor: CombatActorContext): CombatActorContext {
+  return {
+    id: actor.id,
+    name: actor.id && /^30[234]\d{7}$/.test(actor.id) ? actor.name : undefined,
+    hp: safeNumber(actor.hp),
+    maxHp: safeNumber(actor.maxHp),
+    alive: typeof actor.alive === 'boolean' ? actor.alive : undefined,
+  };
+}
+
+function sanitizeParticipantDisplay(participant: CombatParticipantDisplay): CombatParticipantDisplay {
+  return {
+    name: participant.name.slice(0, 80),
+    placement: safeNumber(participant.placement),
+    level: safeNumber(participant.level),
+    honors: safeNumber(participant.honors),
+    host: typeof participant.host === 'boolean' ? participant.host : undefined,
+    hpPercent: safeNumber(participant.hpPercent),
+    status: participant.status === 'active' || participant.status === 'dead' || participant.status === 'retired'
+      ? participant.status
+      : undefined,
+  };
+}
+
+function safeNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
 export async function getRaidHistory(): Promise<RaidHistoryRecord[]> {
