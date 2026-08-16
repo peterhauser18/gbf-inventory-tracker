@@ -20,7 +20,8 @@ test('debugger observation preserves response payloads without changing GBF requ
 test('allowlisted body reads do not block later debugger lifecycle events', () => {
   assert.match(background, /const CAPTURE_NETWORK_METHODS = new Set\(\[[\s\S]*Network\.responseReceived[\s\S]*Network\.loadingFinished[\s\S]*Network\.loadingFailed/);
   assert.match(background, /!CAPTURE_NETWORK_METHODS\.has\(method\)/);
-  assert.match(background, /if \(!url \|\| !requestId \|\| !shouldReadObservedResponse\(url, resourceType\)\) return;[\s\S]*const state = await getRuntimeState\(\)/);
+  assert.match(background, /if \(!url \|\| !requestId\) return;[\s\S]*const treasureIcon = parseObservedTreasureIconResponse\([\s\S]*const resourceType = normalizeResourceType\(event\?\.type\);[\s\S]*if \(!shouldReadObservedResponse\(url, resourceType\)\) return;[\s\S]*const state = await getRuntimeState\(\)/);
+  assert.match(background, /pendingTreasureIcons\.set\(requestId, \{ itemId: treasureIcon\.itemId \}\)/);
   assert.match(background, /const meta = pendingResponses\.take\(requestId\);[\s\S]*if \(!meta \|\| !shouldReadObservedResponse\(meta\.url, meta\.resourceType\)\) return;[\s\S]*const state = await getRuntimeState\(\)/);
   assert.match(background, /void captureObservedResponse\(tabId, state\.scanId, meta\);/);
 });
