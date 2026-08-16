@@ -52,14 +52,14 @@ export function buildRaidHistoryComparison(
   const leftTurn = observedTurn(left);
   const rightTurn = observedTurn(right);
   const metrics: RaidComparisonMetric[] = [
-    metric('party-damage', 'Party damage', left.partyDamage, right.partyDamage),
+    metric('party-damage', 'Party damage', knownPartyDamage(left), knownPartyDamage(right)),
     metric('duration', 'Duration', left.durationMs, right.durationMs, 'ms'),
     metric('observed-turns', 'Last observed turn', leftTurn, rightTurn),
     metric(
       'damage-per-observed-turn',
       'Damage / observed turn',
-      ratio(left.partyDamage, leftTurn),
-      ratio(right.partyDamage, rightTurn),
+      ratio(knownPartyDamage(left), leftTurn),
+      ratio(knownPartyDamage(right), rightTurn),
       undefined,
       1,
     ),
@@ -132,8 +132,13 @@ function metric(
   };
 }
 
+function knownPartyDamage(raid: RaidHistoryRecord): number | undefined {
+  return raid.damageQuality === 'known' ? raid.partyDamage : undefined;
+}
+
 function honors(raid: RaidHistoryRecord): number | undefined {
-  return raid.participants?.honors ?? raid.participants?.contribution;
+  if (raid.participants?.quality !== 'known') return undefined;
+  return raid.participants.honors ?? raid.participants.contribution;
 }
 
 function observedTurn(raid: RaidHistoryRecord): number | undefined {

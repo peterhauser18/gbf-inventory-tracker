@@ -46,6 +46,22 @@ test('derives deltas only when both compared values are known', () => {
   assert.equal(perTurn?.delta, 200);
 });
 
+test('does not derive party damage, per-turn or honors deltas from partial quality values', () => {
+  const comparison = buildRaidHistoryComparison(
+    raid('r1', 'a', { damageQuality: 'partial', partyDamage: 1000, participants: { honors: 100, quality: 'partial' } }),
+    raid('r1', 'b', { damageQuality: 'known', partyDamage: 1600, participants: { honors: 250, quality: 'known' }, lastObservedTurn: 4 }),
+  )!;
+  const partyDamage = comparison.metrics.find((row) => row.key === 'party-damage');
+  const perTurn = comparison.metrics.find((row) => row.key === 'damage-per-observed-turn');
+  const honors = comparison.metrics.find((row) => row.key === 'honors');
+  assert.equal(partyDamage?.left, undefined);
+  assert.equal(partyDamage?.delta, undefined);
+  assert.equal(perTurn?.left, undefined);
+  assert.equal(perTurn?.delta, undefined);
+  assert.equal(honors?.left, undefined);
+  assert.equal(honors?.delta, undefined);
+});
+
 test('does not turn partial damage breakdown into a numeric comparison', () => {
   const comparison = buildRaidHistoryComparison(
     raid('r1', 'a'),
