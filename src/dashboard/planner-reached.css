@@ -1,0 +1,28 @@
+.planner-reached {
+  margin-top: 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel-soft);
+}
+
+.planner-reached-summary {
+  width: 100%;
+  padding: 10px 11px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.planner-reached-summary::-webkit-details-marker { display: none; }
+.planner-reached-summary::marker { content: ''; }
+.planner-reached-summary:hover { background: var(--panel-hover); }
+.planner-reached-summary strong { font-size: 10px; }
+.planner-reached-steps {
+  margin: 0;
+  padding: 7px;
+  border-top: 1px solid var(--border);
+}
