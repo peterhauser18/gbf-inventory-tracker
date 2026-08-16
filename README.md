@@ -141,8 +141,6 @@ The cumulative local account database supports:
 
 Collection views update from new observed family evidence instead of requiring a completed diagnostic scan. A partial page/filter observation does not erase previously known members of the same family.
 
-Weapon Stashes are expandable **inline**. Their contained weapons render inside the stash instead of being moved into a separate right-side list, and stash-contained weapons still open the normal Weapon detail path.
-
 The Character view can generate/open/copy a GBF Wiki Collection Tracker representation from locally observed Character master IDs and proven uncap state. Unsupported entries are omitted rather than guessed.
 
 ### Eternal and Evoker planning
