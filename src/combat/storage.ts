@@ -11,6 +11,7 @@ import {
   type VerifiedCombatObservation,
 } from './multiraid.ts';
 import type { NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord } from './types.ts';
+import { enrichVerifiedScenarioSemantics, preserveVerifiedNormalFacts } from './verified-combat-semantics.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-combat';
 const DB_VERSION = 1;
@@ -28,12 +29,14 @@ export async function ingestCapturedCombatRecord(record: CapturedResponseRecord)
     const context = await getCombatParseContext();
     const parsed = parseVerifiedMultiraidObservation(record, context);
     if (!parsed) return null;
+    enrichVerifiedScenarioSemantics(record.body, parsed);
     const turn = directlyObservedTurn(record);
     const parsedWithTurn: VerifiedCombatObservation = turn === undefined ? parsed : { ...parsed, observedTurn: turn };
     const observation: VerifiedCombatObservation = !context && parsedWithTurn.context
       ? { ...parsedWithTurn, forceNewRaid: true }
       : parsedWithTurn;
     const next = mergeVerifiedMultiraidObservation(current, observation);
+    preserveVerifiedNormalFacts(next, observation.actions);
     if (observation.observedTurn !== undefined) {
       next.lastObservedTurn = Math.max(next.lastObservedTurn ?? 0, observation.observedTurn);
     }
