@@ -95,7 +95,7 @@ test('turn-one start scenario damage is retained and a later refresh snapshot do
   assert.equal(afterRefresh.partyDamage, 33);
 });
 
-test('sanitized result evidence semantics reconcile party and per-character totals', () => {
+test('direct boss auxiliary damage stays in party total without character attribution', () => {
   const start = parse(record(START, startBody(1, [
     { cmd: 'attack', from: 'player', pos: 0, damage: [[{ value: 5 }]] },
     { cmd: 'attack', from: 'player', pos: 1, damage: [[{ value: 2 }]] },
@@ -131,15 +131,21 @@ test('sanitized result evidence semantics reconcile party and per-character tota
   raid = mergeVerifiedMultiraidObservation(raid, attack);
   context = attack.context;
 
+  const partyOnlyScenario = Array.from({ length: 6 }, () => [
+    { cmd: 'ability', pos: 0, name: 'Synthetic Direct Boss Effect', to: 'boss' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 2_000_000 }] },
+  ]).flat();
   const ability = parse(record(ABILITY, { scenario: [
     { cmd: 'ability', pos: 1, name: 'Synthetic Skill', to: 'player' },
     { cmd: 'damage', to: 'boss', list: [{ value: 6 }] },
-    { cmd: 'ability', pos: 0, name: 'Synthetic Direct Boss Effect', to: 'boss' },
-    { cmd: 'damage', to: 'boss', list: [{ value: 20 }] },
+    ...partyOnlyScenario,
   ] }, 12), context);
   assert.ok(ability.context);
   assert.equal(ability.actions[0]?.actorId, '3020000001');
-  assert.equal(ability.actions[1]?.actorId, undefined);
+  const partyOnly = ability.actions.slice(1);
+  assert.equal(partyOnly.length, 6);
+  assert.equal(partyOnly.every((action) => action.actorId === undefined && action.actorName === undefined), true);
+  assert.equal(partyOnly.reduce((sum, action) => sum + action.hits.reduce((hitSum, hit) => hitSum + hit.amount, 0), 0), 12_000_000);
   raid = mergeVerifiedMultiraidObservation(raid, ability);
   context = ability.context;
 
@@ -151,7 +157,10 @@ test('sanitized result evidence semantics reconcile party and per-character tota
   raid = mergeVerifiedMultiraidObservation(raid, summon);
 
   const byActor = new Map(raid.characterDamage.map((row) => [row.actorId, row]));
-  assert.equal(raid.partyDamage, 65);
+  const characterTotal = raid.characterDamage.reduce((sum, row) => sum + row.total, 0);
+  assert.equal(raid.partyDamage, 12_000_045);
+  assert.equal(characterTotal, 45);
+  assert.equal((raid.partyDamage ?? 0) - characterTotal, 12_000_000);
   assert.deepEqual(byActor.get('mc-tech'), {
     actorId: 'mc-tech',
     total: 26,
