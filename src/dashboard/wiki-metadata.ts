@@ -1,3 +1,4 @@
+import { installWikiImageCleanupControl } from './wiki-image-cleanup-ui.ts';
 import {
   deferWikiImageUrl,
   deferredWikiImageTarget,
@@ -6,6 +7,7 @@ import {
 import { resolveSafeExternalImageUrl } from './resolver.ts';
 
 installWikiImageDomLoader();
+installWikiImageCleanupControl();
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const WIKI_ORIGIN = 'https://gbf.wiki';
