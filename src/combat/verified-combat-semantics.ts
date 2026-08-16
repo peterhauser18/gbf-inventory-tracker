@@ -93,8 +93,10 @@ function verifiedSummonRoster(value: unknown, supporterValue: unknown): CombatSu
     : [];
 
   if (summons.length === 5 && obj(supporterValue)) {
+    const id = str(supporterValue.id);
+    const name = str(supporterValue.name);
     const cooldown = num(supporterValue.recast);
-    if (cooldown !== undefined) summons.push({ cooldown, used: false });
+    if (id || name || cooldown !== undefined) summons.push({ id, name, cooldown, used: false });
   }
   return summons;
 }
