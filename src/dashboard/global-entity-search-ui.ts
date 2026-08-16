@@ -1,3 +1,4 @@
+import { installWikiDetailEnhancement } from './detail-wiki-ui.ts';
 import {
   entityOpenPlan,
   searchDashboardEntities,
@@ -24,6 +25,7 @@ export function installGlobalEntitySearch(): void {
   const app = document.querySelector<HTMLElement>('#dashboard-app');
   if (!app) return;
   installed = true;
+  installWikiDetailEnhancement();
 
   app.addEventListener('click', handleEntityResultClick, true);
   const observer = new MutationObserver(() => syncPalette(app));
