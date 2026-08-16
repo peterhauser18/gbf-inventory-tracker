@@ -36,12 +36,14 @@ test('treasure image metadata uses one fixed account-independent rendered Items 
   assert.equal(url.searchParams.has('generator'), false);
 });
 
-test('rendered Items rows resolve normal treasures and grouped-page labels without filename heuristics', () => {
+test('rendered Items rows use visible item labels even when several labels target grouped pages', () => {
   const result = parseWikiTreasureItemsHtml(itemsHtml);
   assert.equal(result.get('satin feather'), 'https://gbf.wiki/images/a/aa/Satin_Feather.jpg');
   assert.equal(result.get('blistering ore'), 'https://gbf.wiki/images/1/15/Item_article_s_15.jpg');
   assert.equal(result.get('fire crystal'), 'https://gbf.wiki/images/thumb/c/cr/Fire_Crystal.jpg/100px-Fire_Crystal.jpg');
   assert.equal(result.get('fire orb'), 'https://gbf.wiki/images/thumb/o/orb/Fire_Orb.jpg/100px-Fire_Orb.jpg');
+  assert.equal(result.has('elemental crystal'), false);
+  assert.equal(result.has('low orb'), false);
   assert.equal(result.has('unsafe item'), false);
 });
 
