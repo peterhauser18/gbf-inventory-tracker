@@ -18,8 +18,8 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (changed.length === 0) return;
   for (const key of changed) dirtyEvidence.add(key);
 
-  // Do not reload while observation is writing account updates. Repeated storage
-  // changes can otherwise keep an extension page permanently in its boot shell.
+  const section = activeSection();
+  if (section && sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
 });
 
 document.addEventListener('click', (event) => {
@@ -83,6 +83,10 @@ function restoreSectionWhenReady(section: string): void {
     observer.disconnect();
   });
   observer.observe(app, { childList: true, subtree: true });
+}
+
+function activeSection(): string | undefined {
+  return document.querySelector<HTMLElement>('.nav-item.active[data-section]')?.dataset.section;
 }
 
 function scheduleReload(section: string, delay: number): void {
