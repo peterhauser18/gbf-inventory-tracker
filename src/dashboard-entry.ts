@@ -220,7 +220,8 @@ function polishPlannerDetail(): void {
   const factValue = (label: string): string | undefined => {
     for (const row of factsSection.querySelectorAll<HTMLElement>('.facts > div')) {
       if (row.querySelector<HTMLElement>('dt')?.textContent?.trim() !== label) continue;
-      return row.querySelector<HTMLElement>('dd')?.childNodes[0]?.textContent?.trim() || undefined;
+      const value = row.querySelector<HTMLElement>('dd')?.childNodes[0]?.textContent?.trim();
+      return value && value !== 'unknown' ? value : undefined;
     }
     return undefined;
   };
