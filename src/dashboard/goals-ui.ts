@@ -263,12 +263,32 @@ function renderGoalCard(goal: PinnedGoalSummary): string {
           <span>Known deficits <strong>${knownMissing}</strong></span>
           <span>Unknown materials <strong>${unknown}</strong></span>
         </div>
+        ${renderGoalRequirements(goal.materials)}
       </div>
       <div class="goal-card-actions">
         <button type="button" class="goal-open-button" data-goal-open="${escapeAttribute(goal.plannerKey)}">Open planner</button>
         <button type="button" class="goal-unpin-button" data-goal-pin data-planner-key="${escapeAttribute(goal.plannerKey)}" data-goal-id="${escapeAttribute(goal.goalId)}">Unpin</button>
       </div>
     </article>
+  `;
+}
+
+function renderGoalRequirements(materials: readonly GoalMaterialDeficit[]): string {
+  if (materials.length === 0) return '<div class="goal-requirement-ready">No remaining modeled material requirement for this target.</div>';
+  const visible = materials.slice(0, 4);
+  return `
+    <div class="goal-requirements">
+      <span class="goal-requirements-label">Modeled requirements</span>
+      ${visible.map((material) => `
+        <div class="goal-requirement-row">
+          <span>${escapeHtml(material.name)}</span>
+          <small>${material.state === 'known'
+            ? `Have ${formatNumber(material.owned ?? 0)} · Required ${formatNumber(material.required)} · Missing ${formatNumber(material.missing ?? 0)}`
+            : `Have ? · Required ${formatNumber(material.required)} · Missing ?`}</small>
+        </div>
+      `).join('')}
+      ${materials.length > visible.length ? `<span class="goal-requirements-more">+${materials.length - visible.length} more modeled requirement${materials.length - visible.length === 1 ? '' : 's'}</span>` : ''}
+    </div>
   `;
 }
 
