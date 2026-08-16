@@ -15,6 +15,8 @@ test('phase 5 UI is local read/compare only with no GBF transport or persistence
   assert.doesNotMatch(ui, /saveAccountDatabase|localStorage\.setItem|chrome\.storage\.(?:local|session)\.set|indexedDB\.open/);
   assert.doesNotMatch(ui, /combat\/storage|capture\/storage|capture\/types/);
   assert.match(ui, /parseAnalysisDigest\(await file\.text\(\)\)/);
+  assert.match(ui, /phase5RenderRevision/);
+  assert.doesNotMatch(ui, /card\.innerHTML\s*!==\s*markup/);
 });
 
 test('digest schema contains summary counts and quality but no raw identity/request fields', () => {

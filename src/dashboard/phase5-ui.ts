@@ -17,6 +17,7 @@ let currentDigest: AnalysisDigest | null = null;
 let importError = '';
 let syncQueued = false;
 let loadPromise: Promise<void> | null = null;
+let snapshotStateRevision = 0;
 
 if (app) {
   app.addEventListener('click', handleClick, true);
@@ -86,9 +87,11 @@ async function ensureCurrentDigest(): Promise<void> {
   loadPromise = (async () => {
     const account = await loadAccountDatabase();
     currentDigest = account ? buildAnalysisDigest(account.snapshot, Date.now()) : null;
+    snapshotStateRevision += 1;
     if (isSettingsActive()) renderSnapshotCard();
   })().catch((error) => {
     importError = error instanceof Error ? error.message : String(error);
+    snapshotStateRevision += 1;
     if (isSettingsActive()) renderSnapshotCard();
   }).finally(() => {
     loadPromise = null;
@@ -112,6 +115,8 @@ function ensureSnapshotCard(): void {
 function renderSnapshotCard(): void {
   const card = app?.querySelector<HTMLElement>('[data-phase5-snapshot-card]');
   if (!card) return;
+  const revision = String(snapshotStateRevision);
+  if (card.dataset.phase5RenderRevision === revision) return;
   const comparison = importedDigest && currentDigest ? compareAnalysisDigests(importedDigest, currentDigest) : null;
   const markup = `
     <div>
@@ -127,7 +132,8 @@ function renderSnapshotCard(): void {
     ${importError ? `<div class="phase5-snapshot-error" role="status">${escapeHtml(importError)}</div>` : ''}
     ${comparison ? renderComparison(comparison) : '<p class="muted">Import a previous GBF Tool analysis digest to compare known summary values. No imported data is persisted.</p>'}
   `;
-  if (card.innerHTML !== markup) card.innerHTML = markup;
+  card.dataset.phase5RenderRevision = revision;
+  card.innerHTML = markup;
 }
 
 function renderComparison(comparison: ReturnType<typeof compareAnalysisDigests>): string {
@@ -159,6 +165,7 @@ function handleClick(event: MouseEvent): void {
   if (target?.closest('[data-phase5-clear]')) {
     importedDigest = null;
     importError = '';
+    snapshotStateRevision += 1;
     renderSnapshotCard();
   }
 }
@@ -175,6 +182,7 @@ async function exportCurrentDigest(): Promise<void> {
   const account = await loadAccountDatabase();
   if (!account) {
     importError = 'No local account snapshot is available to export.';
+    snapshotStateRevision += 1;
     renderSnapshotCard();
     return;
   }
@@ -182,6 +190,7 @@ async function exportCurrentDigest(): Promise<void> {
   currentDigest = buildAnalysisDigest(account.snapshot, exportedAt);
   downloadJson(analysisDigestFilename(exportedAt), serializeAnalysisDigest(currentDigest));
   importError = '';
+  snapshotStateRevision += 1;
   renderSnapshotCard();
 }
 
@@ -193,6 +202,7 @@ async function importDigest(file: File): Promise<void> {
     importedDigest = null;
     importError = error instanceof Error ? error.message : String(error);
   }
+  snapshotStateRevision += 1;
   renderSnapshotCard();
 }
 
