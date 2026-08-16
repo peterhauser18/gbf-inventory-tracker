@@ -29,7 +29,7 @@ jobs:
         run: npm run build
       - name: Diff check
         run: git diff --check origin/main...HEAD
-      - name: Delete merged stale agent branches
+      - name: Delete merged and superseded stale agent branches
         env:
           CURRENT_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
@@ -44,8 +44,30 @@ jobs:
               echo "Deleting merged branch: $branch"
               git push origin --delete "$branch"
               deleted=$((deleted + 1))
-            else
-              echo "Keeping unmerged branch: $branch"
             fi
           done < <(git for-each-ref --format='%(refname)' refs/remotes/origin/agent/)
-          echo "Deleted $deleted merged agent branches"
+
+          for branch in \
+            agent/issue-62-edge-tab-id \
+            agent/issue-80-white-wiki-images \
+            agent/issue-80-white-wiki-images-v2 \
+            agent/issue-90-brand-css-import \
+            agent/map-verified-multiraid-payloads \
+            agent/map-verified-multiraid-payloads-v2 \
+            agent/map-verified-multiraid-payloads-v3; do
+            if git ls-remote --exit-code --heads origin "refs/heads/$branch" >/dev/null 2>&1; then
+              echo "Deleting documented superseded branch: $branch"
+              git push origin --delete "$branch"
+              deleted=$((deleted + 1))
+            fi
+          done
+          echo "Deleted $deleted additional stale agent branches"
+      - name: Remove temporary validation workflow from PR head
+        env:
+          CURRENT_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/issue-100-lockfile.yml
+          git commit -m "Remove temporary release validation workflow"
+          git push origin HEAD:"$CURRENT_BRANCH"
