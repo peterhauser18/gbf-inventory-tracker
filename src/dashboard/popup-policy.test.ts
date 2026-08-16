@@ -23,9 +23,11 @@ test('popup keeps Dashboard as the normal action and developer controls collapse
 
 test('Dashboard always opens while observation only targets an explicitly active GBF tab', () => {
   assert.match(popup, /findActiveGbfTabId/);
-  assert.match(popup, /if \(tabId !== undefined\)/);
+  assert.match(popup, /const observationPromise = tabId !== undefined/);
   assert.match(popup, /sendMessage\(\{ type: 'gbfit:start-observation', tabId \}\)/);
+  assert.match(popup, /: sendMessage\(\{ type: 'gbfit:get-status' \}\)/);
   assert.match(popup, /await openDashboardTab\(\)/);
+  assert.match(popup, /const observationStatus = await observationPromise/);
   assert.match(popup, /Dashboard opened without observation/);
 });
 

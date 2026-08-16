@@ -118,7 +118,7 @@ test('matches consumable requirements by group and item kind instead of item id 
   assert.equal(result.materials[0]?.missing, 1);
 });
 
-test('can match a verified treasure by an exact unique name when static master data lacks its technical id', () => {
+test('can match a verified treasure by an exact unique name and preserves its observed technical id', () => {
   const named: UpgradeGoal = {
     id: 'named-treasure',
     label: 'Named treasure',
@@ -135,6 +135,7 @@ test('can match a verified treasure by an exact unique name when static master d
   account.quality.treasures = 'known';
   const result = calculateGoal(named, account);
   assert.equal(result.materials[0]?.state, 'known');
+  assert.equal(result.materials[0]?.itemId, 'fixture-id');
   assert.equal(result.materials[0]?.owned, 7);
   assert.equal(result.materials[0]?.missing, 3);
 });
@@ -156,4 +157,5 @@ test('does not guess by name when multiple treasure rows share the same display 
   account.quality.treasures = 'known';
   const result = calculateGoal(named, account);
   assert.equal(result.materials[0]?.state, 'unknown');
+  assert.equal(result.materials[0]?.itemId, undefined);
 });

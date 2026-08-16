@@ -22,6 +22,7 @@ if (app) {
 
   const observer = new MutationObserver(syncNavigation);
   observer.observe(app, { childList: true, subtree: true });
+  syncNavigation();
   void controller.refresh().then(syncNavigation).catch(syncNavigation);
   window.setInterval(() => {
     if (!selected) return;

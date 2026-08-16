@@ -9,8 +9,21 @@ export interface AccountStorageArea {
   remove(key: string): Promise<void>;
 }
 
+const pendingLoads = new WeakMap<AccountStorageArea, Promise<AccountDatabaseState | null>>();
+
 export async function loadAccountDatabase(area?: AccountStorageArea): Promise<AccountDatabaseState | null> {
   const storage = area ?? chromeAccountStorage();
+  const existing = pendingLoads.get(storage);
+  if (existing) return existing;
+
+  const pending = readAccountDatabase(storage).finally(() => {
+    if (pendingLoads.get(storage) === pending) pendingLoads.delete(storage);
+  });
+  pendingLoads.set(storage, pending);
+  return pending;
+}
+
+async function readAccountDatabase(storage: AccountStorageArea): Promise<AccountDatabaseState | null> {
   const result = await storage.get(ACCOUNT_DATABASE_STORAGE_KEY);
   const value = result[ACCOUNT_DATABASE_STORAGE_KEY];
   if (!isObject(value) || value.version !== ACCOUNT_DATABASE_VERSION || !isObject(value.snapshot)) return null;

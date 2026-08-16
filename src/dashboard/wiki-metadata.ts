@@ -3,6 +3,8 @@ import { resolveSafeExternalImageUrl } from './resolver.ts';
 const WIKI_API = 'https://gbf.wiki/api.php';
 const WIKI_ORIGIN = 'https://gbf.wiki';
 const PAGE_SIZE = 500;
+const ENTITY_METADATA_CACHE_KEY = 'gbfit:wiki-entity-metadata:v1';
+export const WIKI_ENTITY_METADATA_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type EntityMetadataKind = 'character' | 'weapon' | 'summon';
 
@@ -24,7 +26,16 @@ type FetchLike = (
   init?: RequestInit,
 ) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
 
+type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 type JsonObject = Record<string, unknown>;
+
+interface CachedEntityMetadataPayload {
+  version: 1;
+  cachedAt: number;
+  characters: EntityMetadata[];
+  weapons: EntityMetadata[];
+  summons: EntityMetadata[];
+}
 
 const TABLES: ReadonlyArray<readonly [keyof EntityMetadataIndex, EntityMetadataKind, string]> = [
   ['characters', 'character', 'characters'],
@@ -38,14 +49,38 @@ export const EMPTY_ENTITY_METADATA: EntityMetadataIndex = {
   summons: new Map(),
 };
 
+let defaultMetadataPromise: Promise<EntityMetadataIndex> | null = null;
+
 export async function loadWikiEntityMetadata(
   fetcher: FetchLike = fetch,
 ): Promise<EntityMetadataIndex> {
-  const entries = await Promise.all(TABLES.map(async ([key, kind, table]) => [
-    key,
-    await loadCargoTable(table, kind, fetcher),
-  ] as const));
-  return Object.fromEntries(entries) as unknown as EntityMetadataIndex;
+  if (fetcher !== fetch) return loadWikiEntityMetadataFresh(fetcher);
+  if (!defaultMetadataPromise) {
+    defaultMetadataPromise = loadWikiEntityMetadataCached(safeLocalStorage(), fetcher)
+      .catch((error) => {
+        defaultMetadataPromise = null;
+        throw error;
+      });
+  }
+  return defaultMetadataPromise;
+}
+
+export async function loadWikiEntityMetadataCached(
+  storage: StorageLike | undefined,
+  fetcher: FetchLike = fetch,
+  now = Date.now(),
+): Promise<EntityMetadataIndex> {
+  const cached = readEntityMetadataCache(storage);
+  if (cached && now - cached.cachedAt < WIKI_ENTITY_METADATA_CACHE_TTL_MS) return cached.index;
+
+  try {
+    const fresh = await loadWikiEntityMetadataFresh(fetcher);
+    writeEntityMetadataCache(storage, fresh, now);
+    return fresh;
+  } catch (error) {
+    if (cached) return cached.index;
+    throw error;
+  }
 }
 
 export function wikiEntityImageUrl(
@@ -68,6 +103,14 @@ export function wikiEntityImageUrl(
   if (!filename) return undefined;
   const candidate = `${WIKI_ORIGIN}/Special:Redirect/file/${encodeURIComponent(filename)}`;
   return resolveSafeExternalImageUrl(candidate) ?? undefined;
+}
+
+async function loadWikiEntityMetadataFresh(fetcher: FetchLike): Promise<EntityMetadataIndex> {
+  const entries = await Promise.all(TABLES.map(async ([key, kind, table]) => [
+    key,
+    await loadCargoTable(table, kind, fetcher),
+  ] as const));
+  return Object.fromEntries(entries) as unknown as EntityMetadataIndex;
 }
 
 async function loadCargoTable(
@@ -99,6 +142,67 @@ async function loadCargoTable(
     if (rows.length < PAGE_SIZE) break;
   }
   return result;
+}
+
+function readEntityMetadataCache(storage: StorageLike | undefined): { cachedAt: number; index: EntityMetadataIndex } | undefined {
+  if (!storage) return undefined;
+  try {
+    const raw = storage.getItem(ENTITY_METADATA_CACHE_KEY);
+    if (!raw) return undefined;
+    const value = JSON.parse(raw) as unknown;
+    if (!isObject(value) || value.version !== 1 || typeof value.cachedAt !== 'number' || !Number.isFinite(value.cachedAt)) return undefined;
+    const characters = metadataMap(value.characters);
+    const weapons = metadataMap(value.weapons);
+    const summons = metadataMap(value.summons);
+    if (!characters || !weapons || !summons) return undefined;
+    return { cachedAt: value.cachedAt, index: { characters, weapons, summons } };
+  } catch {
+    return undefined;
+  }
+}
+
+function writeEntityMetadataCache(storage: StorageLike | undefined, index: EntityMetadataIndex, cachedAt: number): void {
+  if (!storage) return;
+  try {
+    const payload: CachedEntityMetadataPayload = {
+      version: 1,
+      cachedAt,
+      characters: [...index.characters.values()],
+      weapons: [...index.weapons.values()],
+      summons: [...index.summons.values()],
+    };
+    storage.setItem(ENTITY_METADATA_CACHE_KEY, JSON.stringify(payload));
+  } catch {
+    // Public metadata caching is optional; quota/storage failures fall back to normal loading.
+  }
+}
+
+function metadataMap(value: unknown): Map<string, EntityMetadata> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result = new Map<string, EntityMetadata>();
+  for (const candidate of value) {
+    if (!isObject(candidate)) return undefined;
+    const masterId = text(candidate.masterId);
+    const name = text(candidate.name);
+    const wikiTitle = text(candidate.wikiTitle);
+    if (!masterId || !name || !wikiTitle) return undefined;
+    const imageUrl = text(candidate.imageUrl);
+    result.set(masterId, {
+      masterId,
+      name,
+      wikiTitle,
+      imageUrl: imageUrl ? resolveSafeExternalImageUrl(imageUrl) ?? undefined : undefined,
+    });
+  }
+  return result;
+}
+
+function safeLocalStorage(): StorageLike | undefined {
+  try {
+    return typeof localStorage === 'undefined' ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 function cargoUrl(table: string, offset: number): URL {
