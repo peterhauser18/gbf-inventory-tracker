@@ -1,9 +1,14 @@
-import { CombatDashboardController } from './dashboard.ts';
+import './raids-v2.css';
+import { CombatDashboardControllerV2 } from './dashboard-v2.ts';
+import { COMBAT_LAYOUT_PRESETS, type CombatLayoutPreset } from './layouts.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
+const LAYOUT_KEY = 'gbfit:combat-layout';
 let selected: 'combat' | 'raids' | null = null;
 let query = '';
-const controller = new CombatDashboardController(() => renderSelected());
+let layout = loadLayoutPreference();
+let lastSectionMarkup = '';
+const controller = new CombatDashboardControllerV2(() => renderSectionIfChanged());
 
 if (app) {
   app.addEventListener('click', (event) => {
@@ -11,6 +16,7 @@ if (app) {
     if (!button || button.dataset.section === 'combat' || button.dataset.section === 'raids') return;
     selected = null;
     query = '';
+    lastSectionMarkup = '';
   });
 
   const observer = new MutationObserver(syncNavigation);
@@ -18,7 +24,7 @@ if (app) {
   void controller.refresh().then(syncNavigation).catch(syncNavigation);
   window.setInterval(() => {
     if (!selected) return;
-    void controller.refresh().then(renderSelected).catch(() => {});
+    void controller.refresh().then(() => renderSectionIfChanged()).catch(() => {});
   }, 1000);
 }
 
@@ -44,7 +50,7 @@ function syncNavigation(): void {
     changed = true;
   }
 
-  if (selected && changed) renderSelected();
+  if (selected && changed) renderSelectedShell();
 }
 
 function makeNavButton(section: 'combat' | 'raids', label: string): HTMLButtonElement {
@@ -57,12 +63,13 @@ function makeNavButton(section: 'combat' | 'raids', label: string): HTMLButtonEl
     event.stopPropagation();
     selected = section;
     query = '';
-    renderSelected();
+    lastSectionMarkup = '';
+    renderSelectedShell();
   });
   return button;
 }
 
-function renderSelected(): void {
+function renderSelectedShell(): void {
   if (!app || !selected) return;
   const content = app.querySelector<HTMLElement>('.content');
   const nav = app.querySelector<HTMLElement>('.nav');
@@ -74,35 +81,68 @@ function renderSelected(): void {
 
   const title = selected === 'combat' ? 'Combat' : 'Raids';
   const description = selected === 'combat'
-    ? 'Latest supported raid facts derived only from passively received combat traffic; unknown data stays unknown.'
-    : 'Local completed/left raid history, pinned drops, personal observed rates, public wiki references, notes and parse import/export.';
-  const search = selected === 'raids' ? `
-    <label class="search">
-      <span>Search</span>
-      <input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" />
-    </label>
-  ` : '';
+    ? 'Live read-only raid analytics from already-received supported combat responses.'
+    : 'Local raid history, global pinned drops, personal observed rates, public wiki references, notes and normalized import/export.';
+  const controls = selected === 'combat'
+    ? `<label class="search combat-layout-control"><span>Layout</span><select id="combat-layout-select">${COMBAT_LAYOUT_PRESETS.map(([value, label]) => `<option value="${value}"${value === layout ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>`
+    : `<label class="search"><span>Search</span><input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" /></label>`;
 
   content.innerHTML = `
     <header class="content-header">
       <div><p class="eyebrow">${title.toUpperCase()}</p><h2>${title}</h2><p class="muted">${description}</p></div>
-      ${search}
+      ${controls}
     </header>
-    <div data-combat-section>${selected === 'combat' ? controller.renderCombat() : controller.renderRaids(query)}</div>
+    <div data-combat-section></div>
   `;
 
   content.querySelector<HTMLInputElement>('#combat-raid-search')?.addEventListener('input', (event) => {
     query = (event.currentTarget as HTMLInputElement).value;
-    renderSelected();
-    const searchInput = content.querySelector<HTMLInputElement>('#combat-raid-search');
-    searchInput?.focus();
-    searchInput?.setSelectionRange(query.length, query.length);
+    renderSectionIfChanged();
   });
-  controller.bind(content);
+  content.querySelector<HTMLSelectElement>('#combat-layout-select')?.addEventListener('change', (event) => {
+    const next = parseLayout((event.currentTarget as HTMLSelectElement).value);
+    if (!next) return;
+    layout = next;
+    localStorage.setItem(LAYOUT_KEY, layout);
+    lastSectionMarkup = '';
+    renderSectionIfChanged(true);
+  });
+
+  lastSectionMarkup = '';
+  renderSectionIfChanged(true);
 }
 
-function escapeAttribute(value: string): string {
+function renderSectionIfChanged(force = false): void {
+  if (!app || !selected) return;
+  const section = app.querySelector<HTMLElement>('[data-combat-section]');
+  if (!section) return;
+  const markup = selected === 'combat' ? controller.renderCombat(layout) : controller.renderRaids(query);
+  if (!force && markup === lastSectionMarkup) return;
+  lastSectionMarkup = markup;
+  section.innerHTML = markup;
+  controller.bind(section);
+}
+
+function loadLayoutPreference(): CombatLayoutPreset {
+  try {
+    return parseLayout(localStorage.getItem(LAYOUT_KEY)) ?? 'cypher-modern';
+  } catch {
+    return 'cypher-modern';
+  }
+}
+
+function parseLayout(value: string | null): CombatLayoutPreset | null {
+  return COMBAT_LAYOUT_PRESETS.some(([candidate]) => candidate === value)
+    ? value as CombatLayoutPreset
+    : null;
+}
+
+function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
   })[character] ?? character);
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value);
 }
