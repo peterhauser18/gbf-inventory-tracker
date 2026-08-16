@@ -13,6 +13,10 @@ function memoryStorage() {
   };
 }
 
+function revision(content: string) {
+  return [{ slots: { main: { content } } }];
+}
+
 test('treasure image metadata uses one fixed account-independent Category:Items generator query', () => {
   const url = new URL(buildWikiTreasureImageIndexUrl());
   assert.equal(url.origin, 'https://gbf.wiki');
@@ -20,14 +24,15 @@ test('treasure image metadata uses one fixed account-independent Category:Items 
   assert.equal(url.searchParams.get('generator'), 'categorymembers');
   assert.equal(url.searchParams.get('gcmtitle'), 'Category:Items');
   assert.equal(url.searchParams.get('gcmtype'), 'page');
-  assert.equal(url.searchParams.get('prop'), 'pageimages|images');
-  assert.equal(url.searchParams.get('imlimit'), 'max');
+  assert.equal(url.searchParams.get('prop'), 'pageimages|images|revisions');
+  assert.equal(url.searchParams.get('rvprop'), 'content');
+  assert.equal(url.searchParams.get('rvslots'), 'main');
   assert.equal(url.searchParams.has('titles'), false);
   assert.equal(url.searchParams.has('where'), false);
   assert.equal(url.searchParams.has('ids'), false);
 });
 
-test('treasure image index follows public continuation and uses technical or page-title image fallbacks', async () => {
+test('treasure image index resolves direct and grouped item-template image metadata without owned-ID queries', async () => {
   const calls: Array<{ url: URL; init?: RequestInit }> = [];
   const fetchImpl = async (input: string | URL, init?: RequestInit) => {
     const url = new URL(input.toString());
@@ -38,13 +43,20 @@ test('treasure image index follows public continuation and uses technical or pag
       status: 200,
       json: async () => continued ? ({
         query: { pages: [
-          { title: 'Gold Brick', thumbnail: { source: 'https://gbf.wiki/images/Item_article_s_10.jpg' } },
           {
             title: 'Satin Feather',
-            images: [
-              { title: 'File:Decorative_banner.png' },
-              { title: 'File:Satin_Feather.jpg' },
-            ],
+            revisions: revision('{{Item\n|name=Satin Feather\n|image=Satin_Feather.jpg\n}}'),
+          },
+          {
+            title: 'Blistering Ore',
+            revisions: revision('{{Item|name=Blistering Ore|id=15}}'),
+          },
+          {
+            title: 'Low Orb',
+            revisions: revision([
+              '{{Item|name=Red Orb|id=101}}',
+              '{{Item|name=Blue Orb|image=Blue_Orb.png}}',
+            ].join('\n')),
           },
           { title: 'Unsafe Item', thumbnail: { source: 'https://game.granbluefantasy.jp/assets/item.png' } },
         ] },
@@ -58,6 +70,7 @@ test('treasure image index follows public continuation and uses technical or pag
               { title: 'File:Item_article_s_20.jpg' },
             ],
           },
+          { title: 'Gold Brick', thumbnail: { source: 'https://gbf.wiki/images/Item_article_s_10.jpg' } },
         ] },
       }),
     };
@@ -67,26 +80,23 @@ test('treasure image index follows public continuation and uses technical or pag
   assert.equal(calls.length, 2);
   for (const call of calls) {
     assert.equal(call.url.searchParams.get('gcmtitle'), 'Category:Items');
-    assert.equal(call.url.searchParams.get('prop'), 'pageimages|images');
     assert.equal(call.url.searchParams.has('titles'), false);
+    assert.equal(call.url.searchParams.has('ids'), false);
     assert.equal(call.init?.credentials, 'omit');
     assert.equal(call.init?.referrerPolicy, 'no-referrer');
   }
-  assert.equal(
-    result.get('harp stone'),
-    'https://gbf.wiki/Special:Redirect/file/Item_article_s_20.jpg',
-  );
+
+  assert.equal(result.get('harp stone'), 'https://gbf.wiki/Special:Redirect/file/Item_article_s_20.jpg');
   assert.equal(result.get('treasure 20'), result.get('harp stone'));
-  assert.equal(
-    result.get('satin feather'),
-    'https://gbf.wiki/Special:Redirect/file/Satin_Feather.jpg',
-  );
   assert.equal(result.get('gold brick'), 'https://gbf.wiki/images/Item_article_s_10.jpg');
-  assert.equal(result.get('treasure 10'), 'https://gbf.wiki/images/Item_article_s_10.jpg');
+  assert.equal(result.get('satin feather'), 'https://gbf.wiki/Special:Redirect/file/Satin_Feather.jpg');
+  assert.equal(result.get('blistering ore'), 'https://gbf.wiki/Special:Redirect/file/Item_article_s_15.jpg');
+  assert.equal(result.get('red orb'), 'https://gbf.wiki/Special:Redirect/file/Item_article_s_101.jpg');
+  assert.equal(result.get('blue orb'), 'https://gbf.wiki/Special:Redirect/file/Blue_Orb.png');
   assert.equal(result.has('unsafe item'), false);
 });
 
-test('fresh v3 treasure metadata cache avoids a second public Wiki query', async () => {
+test('fresh v4 treasure metadata cache avoids a second public Wiki query', async () => {
   const storage = memoryStorage();
   let calls = 0;
   const fetchImpl = async () => {
@@ -98,7 +108,7 @@ test('fresh v3 treasure metadata cache avoids a second public Wiki query', async
         query: { pages: [
           {
             title: 'Satin Feather',
-            images: [{ title: 'File:Satin_Feather.jpg' }],
+            revisions: revision('{{Item|name=Satin Feather|image=Satin_Feather.jpg}}'),
           },
         ] },
       }),
