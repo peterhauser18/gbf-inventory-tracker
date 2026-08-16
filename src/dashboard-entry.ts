@@ -1,4 +1,5 @@
 import './dashboard/theme.css';
+import { ACCOUNT_DATABASE_VERSION } from './account/database.ts';
 import { ACCOUNT_DATABASE_STORAGE_KEY } from './account/storage.ts';
 import {
   changedAccountEvidence,
@@ -12,6 +13,7 @@ const dirtyEvidence = new Set<AccountEvidenceKey>();
 const enhancementLoads = new Map<string, Promise<void>>();
 const loadedEnhancements = new Set<string>();
 let reloadTimer: number | undefined;
+let firstAccountSnapshotPending = false;
 
 applyStoredTheme();
 
@@ -19,6 +21,13 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
   const change = changes[ACCOUNT_DATABASE_STORAGE_KEY];
   if (!change) return;
+
+  const firstSnapshotAvailable = !hasStoredAccountSnapshot(change.oldValue) && hasStoredAccountSnapshot(change.newValue);
+  if (firstSnapshotAvailable && !activeSection()) {
+    firstAccountSnapshotPending = true;
+    if (document.visibilityState === 'visible') scheduleFirstSnapshotReload();
+    return;
+  }
 
   const changed = changedAccountEvidence(change.oldValue, change.newValue);
   if (changed.length === 0) return;
@@ -187,10 +196,29 @@ function keepObservationCopyAccurate(): void {
 }
 
 function flushDirtyEvidence(): void {
-  if (dirtyEvidence.size === 0 || document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') return;
+  if (firstAccountSnapshotPending && !activeSection()) {
+    scheduleFirstSnapshotReload();
+    return;
+  }
+  if (dirtyEvidence.size === 0) return;
   const section = activeSection();
   if (!section || !sectionUsesAccountEvidence(section, [...dirtyEvidence])) return;
   scheduleReload(section, 0);
+}
+
+function scheduleFirstSnapshotReload(): void {
+  firstAccountSnapshotPending = false;
+  scheduleReload(undefined, 0);
+}
+
+function hasStoredAccountSnapshot(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as { version?: unknown; snapshot?: unknown };
+  return record.version === ACCOUNT_DATABASE_VERSION
+    && Boolean(record.snapshot)
+    && typeof record.snapshot === 'object'
+    && !Array.isArray(record.snapshot);
 }
 
 function restoreSectionWhenReady(section: string): void {
