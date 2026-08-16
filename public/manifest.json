@@ -3,6 +3,12 @@
   "name": "GBF Tracker",
   "version": "0.1.0",
   "description": "Local-first Granblue Fantasy collection tracker and Eternal/Evoker planner.",
+  "icons": {
+    "16": "icons/icon16.jpg",
+    "32": "icons/icon32.jpg",
+    "48": "icons/icon48.jpg",
+    "128": "icons/icon128.jpg"
+  },
   "permissions": [
     "storage",
     "activeTab",
@@ -14,7 +20,13 @@
   },
   "action": {
     "default_title": "GBF Tracker",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.jpg",
+      "32": "icons/icon32.jpg",
+      "48": "icons/icon48.jpg",
+      "128": "icons/icon128.jpg"
+    }
   },
   "host_permissions": [
     "https://gbf.wiki/*"
