@@ -1,4 +1,4 @@
-name: Issue 100 lockfile validation
+name: Issue 100 release hygiene validation
 
 on:
   pull_request:
@@ -19,9 +19,6 @@ jobs:
         with:
           node-version: '22.12.0'
           cache: npm
-          cache-dependency-path: package.json
-      - name: Generate lockfile
-        run: npm install --package-lock-only --ignore-scripts
       - name: Install locked dependencies
         run: npm ci
       - name: Typecheck
@@ -32,14 +29,24 @@ jobs:
         run: npm run build
       - name: Diff check
         run: git diff --check origin/main...HEAD
-      - name: Commit generated lockfile
+      - name: Delete merged stale agent branches
+        env:
+          CURRENT_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo "Lockfile already current"
-          else
-            git commit -m "Add npm lockfile"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-          fi
+          git fetch origin main '+refs/heads/agent/*:refs/remotes/origin/agent/*'
+          deleted=0
+          for ref in refs/remotes/origin/agent/*; do
+            [ -e "$ref" ] || continue
+            branch="${ref#refs/remotes/origin/}"
+            if [ "$branch" = "$CURRENT_BRANCH" ]; then
+              continue
+            fi
+            if git merge-base --is-ancestor "$ref" origin/main; then
+              echo "Deleting merged branch: $branch"
+              git push origin --delete "$branch"
+              deleted=$((deleted + 1))
+            else
+              echo "Keeping unmerged branch: $branch"
+            fi
+          done
+          echo "Deleted $deleted merged agent branches"
