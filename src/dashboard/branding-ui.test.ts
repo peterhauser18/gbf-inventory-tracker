@@ -25,8 +25,8 @@ test('extension branding uses the refreshed management icon asset', () => {
 test('popup and dashboard render real mascot image elements from extension URLs', () => {
   assert.match(brandRuntime, /chrome\.runtime\.getURL\('icons\/gbf-tracker-v2-48\.png'\)/);
   assert.match(brandRuntime, /document\.createElement\('img'\)/);
-  assert.match(brandRuntime, /popupHeader\.prepend/);
-  assert.match(brandRuntime, /dashboardBrand\.prepend/);
+  assert.match(brandRuntime, /header\.prepend/);
+  assert.match(brandRuntime, /brand\.prepend/);
   assert.match(brandRuntime, /heading\.textContent = 'GBF Tracker'/);
   assert.match(popupStyles, /gbf-popup-brand-icon/);
   assert.match(dashboardBrand, /gbf-dashboard-brand-icon/);
@@ -34,4 +34,11 @@ test('popup and dashboard render real mascot image elements from extension URLs'
   assert.doesNotMatch(dashboardBrand, /gbf-brand-image/);
   assert.match(dashboardHtml, /src\/brand-runtime\.ts/);
   assert.match(popupHtml, /src\/brand-runtime\.ts/);
+});
+
+test('dashboard branding is reapplied after each dashboard root rerender', () => {
+  assert.match(brandRuntime, /dashboardObserver\.observe\(dashboardRoot, \{ childList: true \}\)/);
+  assert.doesNotMatch(brandRuntime, /dashboardObserver\.disconnect/);
+  assert.doesNotMatch(brandRuntime, /document\.documentElement/);
+  assert.doesNotMatch(brandRuntime, /subtree: true/);
 });
