@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "GBF Inventory Tracker",
+  "name": "GBF Tracker",
   "version": "0.1.0",
   "description": "Local-first Granblue Fantasy collection tracker and Eternal/Evoker planner.",
   "permissions": [
@@ -13,7 +13,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "GBF Inventory Tracker",
+    "default_title": "GBF Tracker",
     "default_popup": "popup.html"
   },
   "host_permissions": [
