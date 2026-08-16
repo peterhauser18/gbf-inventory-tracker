@@ -187,12 +187,12 @@ export class CombatDashboardControllerV2 {
       <div><span>Boss HP</span><strong>${boss}</strong></div><div><span>Party damage</span><strong>${optionalNumber(raid.partyDamage)}</strong></div><div><span>Honors</span><strong>${optionalNumber(honors)}</strong></div><div><span>Last observed turn</span><strong>${turns.currentTurn ?? '—'}</strong></div>
     </div>
     ${analyses.length ? `<div class="raid-combat-table"><div class="raid-combat-row head"><span>Character</span><span>Total</span><span>Normal</span><span>Skill</span><span>Ougi</span></div>${analyses.map((analysis) => `<div class="raid-combat-row"><strong>${escapeHtml(analysis.actorName ?? analysis.actorId)}</strong><span>${formatNumber(analysis.totalDamage)}</span><span>${optionalNumber(analysis.breakdown.normal)}</span><span>${optionalNumber(analysis.breakdown.skill)}</span><span>${optionalNumber(analysis.breakdown.ougi)}</span></div>`).join('')}</div>` : '<p class="muted">No attributed character damage in this record.</p>'}
-    ${raid.log.length ? `<details class="raid-log-mini"><summary>Observed actions · ${formatNumber(raid.log.length)}</summary><div>${raid.log.slice(-50).reverse().map((entry) => `<div class="raid-log-row"><span>${entry.turn === undefined ? 'T—' : `T${entry.turn}`}</span><strong>${escapeHtml(entry.actorName ?? entry.actorId ?? 'Unknown actor')}</strong><span>${escapeHtml(entry.actionName ?? entry.actionKind)}</span><span>${formatNumber(entry.damage)}</span></div>`).join('')}</div></details>` : ''}`;
+    ${raid.log.length ? `<details class="raid-log-mini"><summary>Observed actions · ${formatNumber(raid.log.length)}</summary><div>${raid.log.slice(-50).reverse().map((entry) => `<div class="raid-log-row"><span>${entry.turn === undefined ? 'T—' : `T${entry.turn}`}</span><strong>${escapeHtml(entry.actorName ?? entry.actorId ?? 'Actor unavailable')}</strong><span>${escapeHtml(entry.actionName ?? entry.actionKind)}</span><span>${formatNumber(entry.damage)}</span></div>`).join('')}</div></details>` : ''}`;
   }
 
   private renderRaidDrops(raid: RaidHistoryRecord, preference: RaidDropPreferences | undefined): string {
     if (!raid.drops.length) {
-      return `<p class="muted raid-empty-drops">${raid.dropsQuality === 'known' ? 'No drops recorded in this complete reward result.' : 'Drop result unavailable or partial; absence is not treated as zero.'}</p>`;
+      return `<p class="muted raid-empty-drops">${raid.dropsQuality === 'known' ? 'No drops recorded in this complete reward result.' : 'Drop result incomplete or unavailable; absence is not treated as zero.'}</p>`;
     }
     return `<div class="raid-drop-table"><div class="raid-drop-grid head"><span>Drop</span><span>Qty</span><span>Chest/source</span><span>Important</span><span>Pinned</span></div>${raid.drops.map((drop) => {
       const important = preference?.importantItemIds.includes(drop.itemId) ?? false;
