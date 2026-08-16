@@ -54,12 +54,13 @@ function startBody(instanceId = 'instance-a') {
       { id: '2040004000', name: 'Synthetic Sub Summon C', recast: '0', start_recast: '0' },
       { id: '2040005000', name: 'Synthetic Sub Summon D', recast: '0', start_recast: '0' },
     ],
+    supporter: { recast: '4', start_recast: '4', available_skill: true },
     summon_enable: 1,
     is_all_unavailable: false,
   };
 }
 
-test('verified start makes six party slots, account name and five party summons available immediately', () => {
+test('verified start makes six party slots, account name and six summon slots available immediately', () => {
   const observation = parse(record(START, startBody(), 10));
   assert.ok(observation?.context);
   assert.equal(observation.context.actorSlots.length, 6);
@@ -72,10 +73,11 @@ test('verified start makes six party slots, account name and five party summons 
     { id: '2040003000', name: 'Synthetic Sub Summon B', cooldown: 0, used: false },
     { id: '2040004000', name: 'Synthetic Sub Summon C', cooldown: 0, used: false },
     { id: '2040005000', name: 'Synthetic Sub Summon D', cooldown: 0, used: false },
+    { cooldown: 4, used: false },
   ]);
 });
 
-test('verified turn context attributes skills, summons and attacks and refreshes summon recast by roster position', () => {
+test('verified turn context attributes skills, summons and attacks and refreshes own plus supporter recast', () => {
   const start = parse(record(START, startBody(), 10));
   assert.ok(start?.context);
   let raid = mergeVerifiedMultiraidObservation(null, start);
@@ -95,6 +97,7 @@ test('verified turn context attributes skills, summons and attacks and refreshes
       { cmd: 'summon', name: 'Synthetic Main Summon', list: [{ damage: [{ value: 200 }] }] },
     ],
     status: {
+      supporter: { recast: '3', start_recast: '4' },
       summon: [
         { recast: '9', start_recast: '0' },
         { recast: '2', start_recast: '3' },
@@ -108,10 +111,12 @@ test('verified turn context attributes skills, summons and attacks and refreshes
   }, 12), context);
   assert.ok(summon?.context);
   assert.equal(summon.actions[0]?.turn, 1);
+  assert.equal(summon.context.summons?.length, 6);
   assert.equal(summon.context.summons?.[0]?.cooldown, 9);
   assert.equal(summon.context.summons?.[0]?.used, true);
   assert.equal(summon.context.summons?.[0]?.available, undefined);
   assert.equal(summon.context.summons?.[1]?.cooldown, 2);
+  assert.equal(summon.context.summons?.[5]?.cooldown, 3);
   raid = mergeVerifiedMultiraidObservation(raid, summon);
   context = summon.context;
 
@@ -137,6 +142,27 @@ test('verified turn context attributes skills, summons and attacks and refreshes
     currentTurnDamage: 50,
     previousTurnDamage: 600,
   });
+});
+
+test('an unmatched observed summon name is attributed to the sixth supporter slot only when five own names are known', () => {
+  const start = parse(record(START, startBody(), 20));
+  assert.ok(start?.context);
+  const supporterUse = parse(record(SUMMON, {
+    scenario: [
+      { cmd: 'summon', name: 'Synthetic Friend Summon', list: [{ damage: [{ value: 500 }] }] },
+    ],
+    status: {
+      supporter: { recast: '8', start_recast: '4' },
+      summon: [
+        { recast: '0' }, { recast: '3' }, { recast: '0' }, { recast: '0' }, { recast: '0' },
+      ],
+    },
+  }, 21), start.context);
+  assert.ok(supporterUse?.context);
+  assert.equal(supporterUse.context.summons?.length, 6);
+  assert.equal(supporterUse.context.summons?.[5]?.name, 'Synthetic Friend Summon');
+  assert.equal(supporterUse.context.summons?.[5]?.used, true);
+  assert.equal(supporterUse.context.summons?.[5]?.cooldown, 8);
 });
 
 test('new same-type raid instance resets raid-local party auxiliaries instead of leaking prior state', () => {
@@ -170,9 +196,11 @@ test('live Combat UI renders context-first party, account-name MC, one summon su
   assert.match(layouts, /≈ \$\{formatNumber\(raid\.participants\.contribution\)\} \(partial\)/);
   assert.match(layouts, /GBF Tracker does not request the Players list/);
 
-  assert.match(semantics, /verifiedSummonRoster\(body\.summon\)/);
-  assert.match(semantics, /Array\.isArray\(status\.summon\)/);
-  assert.match(semantics, /cooldown = num\(value\.recast\)/);
+  assert.match(semantics, /verifiedSummonRoster\(body\.summon, body\.supporter\)/);
+  assert.match(semantics, /value\.slice\(0, 5\)/);
+  assert.match(semantics, /obj\(status\.supporter\)/);
+  assert.match(semantics, /supporterCooldown/);
+  assert.match(semantics, /summons\.length === 6/);
   assert.doesNotMatch(semantics, /available:\s*cooldown/);
   assert.match(storage, /accountDisplayName: safeText\(context\.accountDisplayName, 80\)/);
   assert.match(storage, /summons: context\.summons\?\.slice\(0, 6\)\.map\(sanitizeSummonContext\)/);
