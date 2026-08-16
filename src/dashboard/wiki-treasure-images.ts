@@ -23,19 +23,12 @@ export interface WikiTreasureImageLoadOptions {
 
 let defaultPromise: Promise<ReadonlyMap<string, string>> | null = null;
 
-export async function loadWikiTreasureImageIndex(
-  options: WikiTreasureImageLoadOptions = {},
-): Promise<ReadonlyMap<string, string>> {
+export async function loadWikiTreasureImageIndex(options: WikiTreasureImageLoadOptions = {}): Promise<ReadonlyMap<string, string>> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const storage = options.storage ?? (options.fetchImpl ? undefined : safeLocalStorage());
   const now = options.now ?? Date.now();
   if (options.fetchImpl || options.storage || options.now !== undefined) return loadCached(storage, fetchImpl, now);
-  if (!defaultPromise) {
-    defaultPromise = loadCached(storage, fetchImpl, now).catch((error) => {
-      defaultPromise = null;
-      throw error;
-    });
-  }
+  if (!defaultPromise) defaultPromise = loadCached(storage, fetchImpl, now).catch((error) => { defaultPromise = null; throw error; });
   return defaultPromise;
 }
 
@@ -86,9 +79,7 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
     const payload = isObject(body) ? body : undefined;
     const query = payload && isObject(payload.query) ? payload.query : undefined;
     if (query && Array.isArray(query.pages)) {
-      for (const page of query.pages) {
-        if (isObject(page) && typeof page.title === 'string') addPageTreasureImages(result, page);
-      }
+      for (const page of query.pages) if (isObject(page) && typeof page.title === 'string') addPageTreasureImages(result, page);
     }
     const continuation = payload && isObject(payload.continue) ? payload.continue : undefined;
     continueToken = continuation && typeof continuation.gcmcontinue === 'string' ? continuation.gcmcontinue : undefined;
@@ -137,16 +128,12 @@ function wikiTreasureSourceEntries(pageTitle: string, source: string | undefined
   const result = new Map<string, string>();
   if (!source) return result;
   for (const block of wikiTemplateBlocks(source)) {
-    const names = templateFieldValues(block, /^(?:name|item|title)$/i)
-      .map(cleanWikiText)
-      .filter((value): value is string => Boolean(value));
+    const names = templateFieldValues(block, /^(?:name|item|title)$/i).map(cleanWikiText).filter((value): value is string => Boolean(value));
     if (names.length !== 1) continue;
     const imageValues = templateFieldValues(block, /^(?:image|icon|img)$/i)
       .map((value) => value.replace(/^File:/i, '').trim())
       .filter((value) => /\.(?:jpe?g|png|webp)$/i.test(value));
-    const ids = templateFieldValues(block, /^(?:id|itemid|item_id|item id)$/i)
-      .map((value) => value.trim())
-      .filter((value) => /^\d+$/.test(value));
+    const ids = templateFieldValues(block, /^(?:id|itemid|item_id|item id)$/i).map((value) => value.trim()).filter((value) => /^\d+$/.test(value));
     let imageUrl: string | undefined;
     if (imageValues.length === 1) imageUrl = safeWikiFileRedirect(imageValues[0]!);
     if (!imageUrl && ids.length === 1) imageUrl = technicalTreasureImageUrl(ids[0]!);
@@ -167,11 +154,7 @@ function wikiTemplateBlocks(source: string): string[] {
   const stack: number[] = [];
   for (let index = 0; index < source.length - 1; index += 1) {
     const pair = source.slice(index, index + 2);
-    if (pair === '{{') {
-      stack.push(index);
-      index += 1;
-      continue;
-    }
+    if (pair === '{{') { stack.push(index); index += 1; continue; }
     if (pair !== '}}' || stack.length === 0) continue;
     const start = stack.pop();
     if (start !== undefined) blocks.push(source.slice(start, index + 2));
@@ -180,9 +163,7 @@ function wikiTemplateBlocks(source: string): string[] {
   return blocks;
 }
 
-function templateFieldValues(block: string, keyPattern: RegExp): string[] {
-  return sourceFieldValues(block, keyPattern);
-}
+function templateFieldValues(block: string, keyPattern: RegExp): string[] { return sourceFieldValues(block, keyPattern); }
 
 function sourceFieldValues(source: string, keyPattern: RegExp): string[] {
   const values: string[] = [];
@@ -226,9 +207,7 @@ function safeWikiFileRedirect(filename: string): string | undefined {
   return resolveSafeExternalImageUrl(`https://gbf.wiki/Special:Redirect/file/${encodeURIComponent(filename)}`) ?? undefined;
 }
 
-function technicalTreasureImageUrl(itemId: string): string | undefined {
-  return safeWikiFileRedirect(`Item_article_s_${itemId}.jpg`);
-}
+function technicalTreasureImageUrl(itemId: string): string | undefined { return safeWikiFileRedirect(`Item_article_s_${itemId}.jpg`); }
 
 function wikiTreasureNamedImageMatches(pageTitle: string, filename: string): boolean {
   const stem = filename.replace(/\.(?:jpe?g|png|webp)$/i, '');
@@ -236,11 +215,8 @@ function wikiTreasureNamedImageMatches(pageTitle: string, filename: string): boo
 }
 
 function wikiTreasureItemId(imageUrl: string): string | undefined {
-  try {
-    return wikiTreasureItemIdFromFilename(decodeURIComponent(new URL(imageUrl).pathname));
-  } catch {
-    return undefined;
-  }
+  try { return wikiTreasureItemIdFromFilename(decodeURIComponent(new URL(imageUrl).pathname)); }
+  catch { return undefined; }
 }
 
 function wikiTreasureItemIdFromFilename(value: string): string | undefined {
@@ -261,9 +237,7 @@ function readCache(storage: StorageLike | undefined): { cachedAt: number; index:
       if (safe) index.set(normalizeWikiTreasureTitle(key), safe);
     }
     return { cachedAt: value.cachedAt, index };
-  } catch {
-    return undefined;
-  }
+  } catch { return undefined; }
 }
 
 function writeCache(storage: StorageLike | undefined, index: ReadonlyMap<string, string>, cachedAt: number): void {
@@ -279,13 +253,8 @@ function writeCache(storage: StorageLike | undefined, index: ReadonlyMap<string,
 }
 
 function safeLocalStorage(): StorageLike | undefined {
-  try {
-    return typeof localStorage === 'undefined' ? undefined : localStorage;
-  } catch {
-    return undefined;
-  }
+  try { return typeof localStorage === 'undefined' ? undefined : localStorage; }
+  catch { return undefined; }
 }
 
-function isObject(value: unknown): value is JsonObject {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+function isObject(value: unknown): value is JsonObject { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
