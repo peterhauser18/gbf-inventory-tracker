@@ -25,10 +25,12 @@ const app = document.querySelector<HTMLElement>('#dashboard-app');
 const wikiSources = new Map<string, WikiMaterialRaidSources>();
 const wikiQueued = new Set<string>();
 const wikiQueue: string[] = [];
+const goalThumbnailUrls = new Map<string, string | undefined>();
 const hydratedGoalSources = new WeakSet<HTMLDetailsElement>();
 const iconHydrationInFlight = new WeakMap<HTMLDetailsElement, Promise<void>>();
 const MAX_WIKI_CONCURRENCY = 4;
 let wikiActive = 0;
+let goalThumbnailPrefetch: Promise<void> | null = null;
 let plannerCards: PlannerCard[] = [];
 let raids: RaidHistoryRecord[] = [];
 let preferences: RaidDropPreferences[] = [];
@@ -38,6 +40,8 @@ let refreshQueued = false;
 
 if (app) {
   document.addEventListener('click', handleClick, true);
+  document.addEventListener('toggle', handleToggle, true);
+  queueMicrotask(() => void prefetchGoalMaterialThumbnails());
   void refreshLocalData();
 }
 
@@ -113,19 +117,49 @@ function handleClick(event: MouseEvent): void {
   }
 
   if (target?.closest<HTMLButtonElement>('[data-goal-pin]')) {
-    queueMicrotask(() => void refreshLocalData());
-    return;
-  }
-
-  const requirementSummary = target?.closest<HTMLElement>('.goal-requirements-summary');
-  if (requirementSummary) {
-    const details = requirementSummary.closest<HTMLDetailsElement>('[data-goal-requirements]');
-    if (details) queueMicrotask(() => void hydrateGoalRequirements(details));
+    queueMicrotask(() => {
+      void prefetchGoalMaterialThumbnails();
+      void refreshLocalData();
+    });
     return;
   }
 
   const nav = target?.closest<HTMLButtonElement>('.nav-item[data-section="overview"], .nav-item[data-section="goals"]');
-  if (nav) queueMicrotask(() => void refreshLocalData());
+  if (nav) {
+    queueMicrotask(() => {
+      void prefetchGoalMaterialThumbnails();
+      void refreshLocalData();
+    });
+  }
+}
+
+function handleToggle(event: Event): void {
+  const details = event.target instanceof HTMLDetailsElement ? event.target : null;
+  if (!details?.matches('[data-goal-requirements]') || !details.open) return;
+  void hydrateGoalRequirements(details);
+}
+
+async function prefetchGoalMaterialThumbnails(): Promise<void> {
+  if (!app?.querySelector('[data-goals-view]')) return;
+  if (goalThumbnailPrefetch) return goalThumbnailPrefetch;
+
+  const titles = [...new Set(Array.from(app.querySelectorAll<HTMLImageElement>('[data-goal-material-icon]'))
+    .map((image) => image.dataset.wikiTitle?.trim())
+    .filter((title): title is string => Boolean(title)))]
+    .filter((title) => !goalThumbnailUrls.has(normalizeWikiTitle(title)));
+  if (titles.length === 0) return;
+
+  goalThumbnailPrefetch = loadWikiMaterialThumbnails(titles)
+    .then((thumbnails) => {
+      for (const title of titles) {
+        const key = normalizeWikiTitle(title);
+        if (thumbnails.has(key)) goalThumbnailUrls.set(key, thumbnails.get(key));
+      }
+    })
+    .finally(() => {
+      goalThumbnailPrefetch = null;
+    });
+  await goalThumbnailPrefetch;
 }
 
 async function hydrateGoalRequirements(details: HTMLDetailsElement): Promise<void> {
@@ -143,6 +177,8 @@ async function hydrateGoalRequirements(details: HTMLDetailsElement): Promise<voi
 
 async function hydrateGoalRequirementIcons(details: HTMLDetailsElement): Promise<void> {
   if (!details.isConnected || !details.open) return;
+  applyPrefetchedGoalIcons(details);
+
   const existing = iconHydrationInFlight.get(details);
   if (existing) return existing;
 
@@ -152,19 +188,28 @@ async function hydrateGoalRequirementIcons(details: HTMLDetailsElement): Promise
   const titles = [...new Set(images.map((image) => image.dataset.wikiTitle!.trim()))];
 
   const hydration = loadWikiMaterialThumbnails(titles).then((thumbnails) => {
-    if (!details.isConnected) return;
-    for (const image of images) {
-      if (!image.isConnected || image.getAttribute('src')) continue;
-      const title = image.dataset.wikiTitle?.trim();
-      if (!title) continue;
-      const url = thumbnails.get(normalizeWikiTitle(title));
-      if (url) image.src = url;
+    for (const title of titles) {
+      const key = normalizeWikiTitle(title);
+      if (thumbnails.has(key)) goalThumbnailUrls.set(key, thumbnails.get(key));
     }
+    if (details.isConnected) applyPrefetchedGoalIcons(details);
   }).finally(() => {
     iconHydrationInFlight.delete(details);
   });
   iconHydrationInFlight.set(details, hydration);
   await hydration;
+}
+
+function applyPrefetchedGoalIcons(details: HTMLDetailsElement): void {
+  details.querySelectorAll<HTMLImageElement>('[data-goal-material-icon]').forEach((image) => {
+    if (image.getAttribute('src')) return;
+    const title = image.dataset.wikiTitle?.trim();
+    if (!title) return;
+    const key = normalizeWikiTitle(title);
+    if (!goalThumbnailUrls.has(key)) return;
+    const url = goalThumbnailUrls.get(key);
+    if (url) image.src = url;
+  });
 }
 
 function goalForDetails(details: HTMLDetailsElement): PinnedGoalSummary | undefined {
@@ -202,6 +247,7 @@ function syncUi(): void {
 
   if (goalsView) {
     app.querySelectorAll('[data-farming-focus]').forEach((node) => node.remove());
+    void prefetchGoalMaterialThumbnails();
     app.querySelectorAll<HTMLDetailsElement>('[data-goal-requirements][open]').forEach((details) => {
       void hydrateGoalRequirementIcons(details);
     });
