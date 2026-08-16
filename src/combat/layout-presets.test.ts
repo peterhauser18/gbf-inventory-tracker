@@ -26,7 +26,7 @@ test('all visual presets consume the same shared view instead of duplicating cal
     assert.match(layouts, new RegExp(`function ${renderer}\\(view: CombatView\\)`));
   }
   assert.equal((layouts.match(/buildCharacterAnalyses\(input\.raid\)/g) ?? []).length, 1);
-  assert.equal((layouts.match(/summarizeTurns\(input\.raid\)/g) ?? []).length, 1);
+  assert.equal((layouts.match(/summarizeTurns\(input\.raid, context\?\.turn\)/g) ?? []).length, 1);
   assert.match(layouts, /data-character-select/);
   assert.match(layouts, /data-combat-image/);
   assert.match(layouts, /Party summons/);
