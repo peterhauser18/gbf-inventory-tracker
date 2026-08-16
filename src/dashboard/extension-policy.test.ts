@@ -4,9 +4,17 @@ import test from 'node:test';
 
 const manifest = JSON.parse(
   readFileSync(new URL('../../public/manifest.json', import.meta.url), 'utf8'),
-) as { permissions?: string[]; host_permissions?: string[]; content_scripts?: unknown[] };
+) as {
+  name?: string;
+  version?: string;
+  permissions?: string[];
+  host_permissions?: string[];
+  content_scripts?: unknown[];
+};
 
 test('extension has no GBF page injection and keeps browser permissions narrow', () => {
+  assert.equal(manifest.name, 'GBF Tracker');
+  assert.equal(manifest.version, '0.1.1');
   assert.deepEqual(manifest.permissions, ['storage', 'activeTab', 'debugger']);
   assert.deepEqual(manifest.host_permissions, ['https://gbf.wiki/*']);
   assert.equal(manifest.content_scripts, undefined);
