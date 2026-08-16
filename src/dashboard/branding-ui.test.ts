@@ -8,6 +8,9 @@ const manifest = JSON.parse(readFileSync(new URL('../../public/manifest.json', i
 };
 const dashboardBrand = readFileSync(new URL('./brand.css', import.meta.url), 'utf8');
 const popupStyles = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+const brandRuntime = readFileSync(new URL('../brand-runtime.ts', import.meta.url), 'utf8');
+const dashboardHtml = readFileSync(new URL('../../dashboard.html', import.meta.url), 'utf8');
+const popupHtml = readFileSync(new URL('../../popup.html', import.meta.url), 'utf8');
 
 test('unpacked extension icon slots use local PNG mascot assets', () => {
   for (const size of ['16', '32', '48', '128']) {
@@ -16,8 +19,11 @@ test('unpacked extension icon slots use local PNG mascot assets', () => {
   }
 });
 
-test('popup and dashboard brand surfaces use the mascot and GBF Tracker name', () => {
-  assert.match(popupStyles, /icons\/gbf-tracker-128\.png/);
-  assert.match(dashboardBrand, /icons\/gbf-tracker-128\.png/);
+test('popup and dashboard resolve their mascot from the extension runtime URL', () => {
+  assert.match(brandRuntime, /chrome\.runtime\.getURL\('icons\/gbf-tracker-128\.png'\)/);
+  assert.match(dashboardBrand, /--gbf-brand-image/);
+  assert.match(popupStyles, /--gbf-brand-image/);
+  assert.match(dashboardHtml, /src\/brand-runtime\.ts/);
+  assert.match(popupHtml, /src\/brand-runtime\.ts/);
   assert.match(dashboardBrand, /GBF Tracker/);
 });
