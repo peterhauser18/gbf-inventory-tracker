@@ -85,9 +85,11 @@ test('verified start makes six party slots, account name and six summon slots av
 });
 
 test('sparse own summon evidence keeps five positional own slots plus the supporter slot', () => {
-  const body = startBody();
-  body.summon[1] = {};
-  const observation = parse(record(START, body, 10));
+  const base = startBody();
+  const observation = parse(record(START, {
+    ...base,
+    summon: [base.summon[0], {}, base.summon[2], base.summon[3], base.summon[4]],
+  }, 10));
   assert.ok(observation?.context);
   assert.equal(observation.context.summons?.length, 6);
   assert.deepEqual(observation.context.summons?.[1], {});
