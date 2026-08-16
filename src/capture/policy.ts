@@ -16,6 +16,7 @@ export const CAPTURE_CATEGORIES: CaptureCategory[] = [
 
 const SENSITIVE_KEY = /(?:^|[_-])(auth|authorization|cookie|cookies|credential|credentials|csrf|password|passwd|secret|session|sid|token)(?:$|[_-])/i;
 const REDACTED = '[redacted]';
+const COMPACT_TREASURE_PATH = '/item/article_list_by_filter_mode';
 
 export function isGbfPageUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -116,8 +117,13 @@ export function buildCapturedResponse(
   }
 
   const url = sanitizeResponseUrl(meta.url);
-  const body = redactSensitiveJson(parsedBody);
-  const categories = inferCaptureCategories(url, body);
+  const path = new URL(url).pathname;
+  const body = path === COMPACT_TREASURE_PATH
+    ? compactTreasureResponse(parsedBody)
+    : redactSensitiveJson(parsedBody);
+  const categories = path === COMPACT_TREASURE_PATH
+    ? ['treasures'] satisfies CaptureCategory[]
+    : inferCaptureCategories(url, body);
 
   return {
     id: `${scanId}:${meta.requestId}`,
@@ -133,6 +139,31 @@ export function buildCapturedResponse(
     body,
     categories,
   };
+}
+
+function compactTreasureResponse(value: unknown): unknown {
+  if (!Array.isArray(value)) return { unexpectedTreasureResponse: true };
+  return value.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    const source = entry as Record<string, unknown>;
+    return {
+      item_id: compactTreasureId(source.item_id),
+      name: typeof source.name === 'string' ? source.name : undefined,
+      number: compactTreasureQuantity(source.number),
+    };
+  });
+}
+
+function compactTreasureId(value: unknown): string | number | undefined {
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  return undefined;
+}
+
+function compactTreasureQuantity(value: unknown): number | string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.length > 0) return value;
+  return undefined;
 }
 
 export function emptyCaptureSummary(id: string, startedAt: number): CaptureScanSummary {
