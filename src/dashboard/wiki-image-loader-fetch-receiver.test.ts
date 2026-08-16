@@ -6,6 +6,7 @@ test('Wiki image fetch runs with the global receiver required by browser fetch',
   let observedReceiver: unknown;
   const fetchImpl = (async function (this: unknown, _input: RequestInfo | URL, init?: RequestInit) {
     observedReceiver = this;
+    if (this !== globalThis) throw new TypeError('Illegal invocation');
     assert.equal(init?.credentials, 'omit');
     assert.equal(init?.referrerPolicy, 'no-referrer');
     return new Response('image', { headers: { 'Content-Type': 'image/png' } });
