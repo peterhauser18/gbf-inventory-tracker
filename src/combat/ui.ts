@@ -143,10 +143,11 @@ function renderSectionIfChanged(force = false): void {
   const section = app.querySelector<HTMLElement>('[data-combat-section]');
   if (!section) return;
   const markup = selected === 'combat' ? controller.renderCombat(layout) : controller.renderRaids(query);
-  if (!force && markup === lastSectionMarkup) {
-    if (selected === 'combat') applyCombatLiveUiFixes(section);
+  if (!force && markup === lastSectionMarkup && selected === 'combat') {
+    applyCombatLiveUiFixes(section);
     return;
   }
+  if (!force && markup === lastSectionMarkup) return;
   lastSectionMarkup = markup;
   section.innerHTML = markup;
   controller.bind(section);
