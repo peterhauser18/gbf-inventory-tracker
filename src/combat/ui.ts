@@ -1,4 +1,5 @@
 import './raids-v2.css';
+import './ui-v2.css';
 import { CombatDashboardControllerV2 } from './dashboard-v2.ts';
 import { COMBAT_LAYOUT_PRESETS, type CombatLayoutPreset } from './layouts.ts';
 
