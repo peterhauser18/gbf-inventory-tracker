@@ -9,15 +9,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   accountDirty = true;
 
   const section = activeSection();
-  if (section === 'combat' || section === 'raids') return;
-  scheduleReload(section);
+  if (section && section !== 'overview' && section !== 'characters') return;
+  scheduleReload(section, 500);
 });
 
 document.addEventListener('click', (event) => {
   if (!accountDirty) return;
   const button = (event.target as Element | null)?.closest<HTMLButtonElement>('.nav-item[data-section]');
   const targetSection = button?.dataset.section;
-  if (!targetSection || targetSection === 'combat' || targetSection === 'raids') return;
+  if (targetSection !== 'characters') return;
 
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -41,7 +41,7 @@ function activeSection(): string | undefined {
   return document.querySelector<HTMLElement>('.nav-item.active[data-section]')?.dataset.section;
 }
 
-function scheduleReload(section: string | undefined, delay = 150): void {
+function scheduleReload(section: string | undefined, delay: number): void {
   if (section) sessionStorage.setItem(RESTORE_SECTION_KEY, section);
   if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => window.location.reload(), delay);
