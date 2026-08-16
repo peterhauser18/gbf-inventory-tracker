@@ -48,6 +48,7 @@ test('only the proven already-loaded GBF small Treasure JPEG path is allowlisted
   const rejected = [
     ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/item/article/m/210.jpg', 'Image', 'image/jpeg', 200],
     ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sprite/v3/collect_item/parts.png', 'Image', 'image/png', 200],
+    ['https://prd-game-b-granbluefantasy.akamaized.net/assets_en/img/sp/assets/item/article/s/210.jpg', 'Image', 'image/jpeg', 200],
     ['https://game.granbluefantasy.jp/assets_en/img/sp/assets/item/article/s/210.jpg', 'Image', 'image/jpeg', 200],
     ['https://evil.example/assets_en/img/sp/assets/item/article/s/210.jpg', 'Image', 'image/jpeg', 200],
     ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/item/article/s/not-an-id.jpg', 'Image', 'image/jpeg', 200],
