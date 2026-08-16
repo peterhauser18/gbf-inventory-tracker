@@ -254,19 +254,27 @@ async function retargetObservation(candidateTabId: number): Promise<void> {
 async function switchObservationTarget(state: RuntimeState, candidateTabId: number): Promise<void> {
   if (!state.scanId) return;
   const previousTabId = state.tabId;
+  const preserveCombatLock = state.combatTabId === candidateTabId && Boolean(state.combatInstanceId);
+  const preservedState: RuntimeState = preserveCombatLock
+    ? {
+        active: true,
+        scanId: state.scanId,
+        combatTabId: state.combatTabId,
+        combatInstanceId: state.combatInstanceId,
+      }
+    : { active: true, scanId: state.scanId };
 
   pendingResponses.clear();
-  await clearCombatParseContext();
-  await setRuntimeState({ active: true, scanId: state.scanId });
+  if (!preserveCombatLock) await clearCombatParseContext();
+  await setRuntimeState(preservedState);
 
   if (previousTabId !== undefined) {
     try {
       await chrome.debugger.detach({ tabId: previousTabId });
     } catch (error) {
       await setRuntimeState({
-        active: true,
+        ...preservedState,
         tabId: previousTabId,
-        scanId: state.scanId,
         error: `Could not switch observation target: ${error instanceof Error ? error.message : String(error)}`,
       });
       return;
@@ -275,8 +283,7 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
 
   if (!await isVerifiedGbfTab(candidateTabId)) {
     await setRuntimeState({
-      active: true,
-      scanId: state.scanId,
+      ...preservedState,
       error: 'Observation is waiting for an active verified GBF tab.',
     });
     return;
@@ -287,7 +294,7 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
     await chrome.debugger.attach({ tabId: candidateTabId }, DEBUGGER_PROTOCOL_VERSION);
     candidateAttached = true;
     await enableNetworkObservation(candidateTabId);
-    await setRuntimeState({ active: true, tabId: candidateTabId, scanId: state.scanId });
+    await setRuntimeState({ ...preservedState, tabId: candidateTabId });
   } catch (error) {
     if (candidateAttached) {
       try {
@@ -297,8 +304,7 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
       }
     }
     await setRuntimeState({
-      active: true,
-      scanId: state.scanId,
+      ...preservedState,
       error: `Could not switch observation target: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
