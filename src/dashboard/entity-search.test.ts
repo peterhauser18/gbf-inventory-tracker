@@ -25,6 +25,8 @@ function card(
 
 function view(): DashboardViewModel {
   const stashChild = card('stash-weapon:3:w-stash', 'weapon', 'Higurashi', 'Lv 150 · Skill 15', ['3', 'w-stash', '1040009999']);
+  const stash = card('stash:3', 'stash', 'Weapon Stash', '1 observed weapon', [], [stashChild]);
+  stash.detailFields = [{ label: 'Stash ID', value: '3' }];
   return {
     capturedAt: 1,
     quality: {
@@ -47,7 +49,7 @@ function view(): DashboardViewModel {
     treasures: [card('treasure:10', 'treasure', 'Damascus Crystal', 'Owned 20', ['10'])],
     consumables: [card('consumable:recovery::20', 'consumable', 'Elixir', 'recovery · Owned 3', ['20'])],
     tickets: [card('ticket:draw::30', 'ticket', 'Premium Draw Ticket', 'draw · Owned 2', ['30'])],
-    stashes: [card('stash:3', 'stash', 'Weapon Stash', '1 observed weapon', ['3'], [stashChild])],
+    stashes: [stash],
   };
 }
 
