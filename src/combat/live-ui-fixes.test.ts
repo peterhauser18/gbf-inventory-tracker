@@ -45,13 +45,13 @@ test('late observation duration is explicitly partial instead of pretending to b
   assert.equal(liveDurationLabel(raid(), 75_000), 'not observed');
 });
 
-test('participant summary uses proven count or rows and never fabricates zero', () => {
+test('participant summary uses proven count or rows and never fabricates zero or a raid cap', () => {
   const context: CombatParseContext = {
     raidTechnicalId: 'raid-a',
     actorSlots: [],
     participants: [{ name: 'A' }, { name: 'B' }],
   };
-  assert.equal(participantSummary(raid({ participants: { count: 17, quality: 'known' } }), context), '17 / 30');
+  assert.equal(participantSummary(raid({ participants: { count: 17, quality: 'known' } }), context), '17 observed');
   assert.equal(participantSummary(raid(), context), '2+ observed');
   assert.equal(participantSummary(raid(), null), 'not observed');
 });
