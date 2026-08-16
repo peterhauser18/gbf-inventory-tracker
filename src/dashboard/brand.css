@@ -1,16 +1,17 @@
 .sidebar .brand .brand-mark {
-  color: transparent;
-  font-size: 0;
-  border-color: #2b3d49;
-  background: var(--gbf-brand-image, url('/icons/gbf-tracker-128.png')) center / cover no-repeat;
+  display: none;
+}
+
+.sidebar .brand .gbf-dashboard-brand-icon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid #2b3d49;
+  border-radius: 9px;
+  object-fit: cover;
 }
 
 .sidebar .brand h1 {
-  font-size: 0;
-}
-
-.sidebar .brand h1::after {
-  content: 'GBF Tracker';
   font-size: 20px;
   letter-spacing: -.025em;
 }
