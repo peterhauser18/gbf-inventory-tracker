@@ -9,7 +9,7 @@
 body { margin: 0; min-width: 380px; background: #090d12; }
 .shell { padding: 14px; display: grid; gap: 10px; }
 header { padding: 2px 2px 4px; display: grid; grid-template-columns: 42px minmax(0, 1fr); column-gap: 10px; align-items: start; }
-header::before { content: ''; grid-column: 1; grid-row: 1 / span 3; width: 42px; height: 42px; margin-top: 1px; border-radius: 9px; background: url('/icons/icon128.png') center / cover no-repeat; box-shadow: 0 0 0 1px #2b3d49; }
+header::before { content: ''; grid-column: 1; grid-row: 1 / span 3; width: 42px; height: 42px; margin-top: 1px; border-radius: 9px; background: var(--gbf-brand-image, url('/icons/gbf-tracker-128.png')) center / cover no-repeat; box-shadow: 0 0 0 1px #2b3d49; }
 header > * { grid-column: 2; min-width: 0; }
 h1 { margin: 2px 0 3px; font-size: 19px; letter-spacing: -.025em; }
 p { margin: 0; }
