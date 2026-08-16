@@ -2,6 +2,7 @@ import { resolveSafeExternalImageUrl } from './resolver.ts';
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const WIKI_ORIGIN = 'https://gbf.wiki';
+// A single public rendered page supplies the same visible name -> image mapping shown by the Wiki.
 const TREASURE_INDEX_PAGE = 'Items';
 const CACHE_KEY = 'gbfit:wiki-treasure-images:v5';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
