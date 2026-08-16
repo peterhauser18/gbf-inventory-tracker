@@ -1,7 +1,7 @@
 import { ingestAccountRecord } from './account/ingest.ts';
 import { loadAccountDatabase, resetAccountDatabase, saveAccountDatabase } from './account/storage.ts';
 import { CaptureEventBuffer } from './capture/event-buffer.ts';
-import { processObservedResponse } from './capture/observer.ts';
+import { processObservedResponse, ResponseBodyUnavailableError } from './capture/observer.ts';
 import { isGbfPageUrl } from './capture/policy.ts';
 import { classifyObservedResponseUrl, shouldReadObservedResponse } from './capture/route.ts';
 import {
@@ -24,6 +24,8 @@ import { cleanupLocalData, type LocalCleanupMode } from './storage/cleanup.ts';
 
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const STATE_KEY = 'gbfit:capture-state';
+const NETWORK_MAX_TOTAL_BUFFER_SIZE = 32 * 1024 * 1024;
+const NETWORK_MAX_RESOURCE_BUFFER_SIZE = 8 * 1024 * 1024;
 const pendingResponses = new CaptureEventBuffer();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
@@ -139,7 +141,10 @@ async function startObservation(explicitTabId?: number): Promise<CaptureStatusRe
     await startCaptureScan(scanId);
     scanStarted = true;
     await setRuntimeState({ active: true, tabId: target.tabId, scanId });
-    await chrome.debugger.sendCommand(target, 'Network.enable');
+    await chrome.debugger.sendCommand(target, 'Network.enable', {
+      maxTotalBufferSize: NETWORK_MAX_TOTAL_BUFFER_SIZE,
+      maxResourceBufferSize: NETWORK_MAX_RESOURCE_BUFFER_SIZE,
+    });
   } catch (error) {
     if (scanStarted) await finishCaptureScan(scanId);
     await setRuntimeState({ active: false, scanId: scanStarted ? scanId : undefined });
@@ -243,8 +248,9 @@ async function handleDebuggerEvent(
       },
       saveObservedResponse,
     );
-  } catch {
-    // Body can still be unavailable for redirects/cache races; skip only that candidate.
+    await clearObservationReadWarning(tabId, state.scanId);
+  } catch (error) {
+    await recordObservationReadWarning(tabId, state.scanId, meta.url, error);
   }
 }
 
@@ -258,6 +264,46 @@ async function saveObservedResponse(record: CapturedResponseRecord): Promise<voi
 
   await queueAccountIngest(record);
   await saveCapturedResponse(record);
+}
+
+async function recordObservationReadWarning(
+  tabId: number,
+  scanId: string,
+  url: string,
+  error: unknown,
+): Promise<void> {
+  const current = await getRuntimeState();
+  if (!current.active || current.tabId !== tabId || current.scanId !== scanId) return;
+
+  const path = safeObservedPath(url);
+  const reason = error instanceof ResponseBodyUnavailableError
+    ? 'Edge did not expose the completed response body after three debugger reads.'
+    : 'Local processing of the observed response failed.';
+  await setRuntimeState({
+    active: true,
+    tabId,
+    scanId,
+    error: `Allowlisted response skipped (${path}): ${reason}`,
+  });
+}
+
+async function clearObservationReadWarning(tabId: number, scanId: string): Promise<void> {
+  const current = await getRuntimeState();
+  if (
+    !current.active ||
+    current.tabId !== tabId ||
+    current.scanId !== scanId ||
+    !current.error?.startsWith('Allowlisted response skipped (')
+  ) return;
+  await setRuntimeState({ active: true, tabId, scanId });
+}
+
+function safeObservedPath(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return 'verified GBF response';
+  }
 }
 
 async function handleUnexpectedDetach(tabId: number, reason: string): Promise<void> {
