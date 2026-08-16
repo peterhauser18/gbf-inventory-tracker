@@ -1,4 +1,3 @@
-import './stash-inline.css';
 import type { DashboardCard } from './model.ts';
 
 export interface InlineStashRow {
