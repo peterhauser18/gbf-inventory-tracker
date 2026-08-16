@@ -1,25 +1,41 @@
 const brandIconUrl = chrome.runtime.getURL('icons/gbf-tracker-v2-48.png');
 
-const observer = new MutationObserver(installBranding);
-observer.observe(document.documentElement, { childList: true, subtree: true });
-installBranding();
+const popupRoot = document.querySelector<HTMLElement>('#app');
+if (popupRoot) {
+  const popupObserver = new MutationObserver(() => {
+    if (installPopupBranding(popupRoot)) popupObserver.disconnect();
+  });
+  popupObserver.observe(popupRoot, { childList: true });
+  if (installPopupBranding(popupRoot)) popupObserver.disconnect();
+}
 
-function installBranding(): void {
-  const popupHeader = document.querySelector<HTMLElement>('#app header');
-  if (popupHeader && !popupHeader.querySelector('[data-gbf-brand-icon]')) {
-    popupHeader.prepend(brandImage('gbf-popup-brand-icon'));
-    observer.disconnect();
-    return;
+const dashboardRoot = document.querySelector<HTMLElement>('#dashboard-app');
+if (dashboardRoot) {
+  const dashboardObserver = new MutationObserver(() => installDashboardBranding(dashboardRoot));
+  dashboardObserver.observe(dashboardRoot, { childList: true });
+  installDashboardBranding(dashboardRoot);
+}
+
+function installPopupBranding(root: HTMLElement): boolean {
+  const header = root.querySelector<HTMLElement>('header');
+  if (!header) return false;
+  if (!header.querySelector('[data-gbf-brand-icon]')) {
+    header.prepend(brandImage('gbf-popup-brand-icon'));
+  }
+  return true;
+}
+
+function installDashboardBranding(root: HTMLElement): void {
+  const brand = root.querySelector<HTMLElement>('.sidebar .brand');
+  if (!brand) return;
+
+  if (!brand.querySelector('[data-gbf-brand-icon]')) {
+    brand.querySelector('.brand-mark')?.remove();
+    brand.prepend(brandImage('gbf-dashboard-brand-icon'));
   }
 
-  const dashboardBrand = document.querySelector<HTMLElement>('#dashboard-app .sidebar .brand');
-  if (!dashboardBrand || dashboardBrand.querySelector('[data-gbf-brand-icon]')) return;
-
-  dashboardBrand.querySelector('.brand-mark')?.remove();
-  dashboardBrand.prepend(brandImage('gbf-dashboard-brand-icon'));
-  const heading = dashboardBrand.querySelector<HTMLElement>('h1');
+  const heading = brand.querySelector<HTMLElement>('h1');
   if (heading) heading.textContent = 'GBF Tracker';
-  observer.disconnect();
 }
 
 function brandImage(className: string): HTMLImageElement {
