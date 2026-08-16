@@ -150,12 +150,12 @@ export function detectRosterCapabilities(description: string): Set<RosterCapabil
   if (/\binflict(?:s)?\b[^.\n]{0,60}\bdelay\b/.test(text) || /\breduce(?:s)?\s+(?:a\s+|the\s+)?foe['’]?s\s+filled\s+charge\s+diamonds?\s+by\b/.test(text)) result.add('delay');
   if (/\binflict(?:s)?\b[^.\n]{0,60}\bgravity\b/.test(text) || /\bmax\s+charge\s+diamonds?\s+(?:are|is)\s+increased\b/.test(text)) result.add('gravity');
   if (/\bremove(?:s)?\s+(?:1|one|a|all|\d+)\s+debuffs?\b/.test(text)) result.add('clear');
-  if (/\bveil\b/.test(text) || /\bdebuffs?\s+will\s+be\s+nullified\b/.test(text)) result.add('veil');
+  if (/\b(?:gain|gains|grant|grants|apply|applies)\b[^.\n]{0,60}\bveil\b/.test(text) || /\bdebuffs?\s+will\s+be\s+nullified\b/.test(text)) result.add('veil');
   if (/\brestore(?:s)?\b[^.\n]{0,90}\bhp\b/.test(text) || /\bheal(?:s|ing)?\b[^.\n]{0,70}\bhp\b/.test(text)) result.add('heal');
   if (/\brevive(?:s)?\b[^.\n]{0,70}\b(?:ally|allies)\b/.test(text) || /\brestore(?:s)?\b[^.\n]{0,70}\bfallen\s+(?:ally|allies)\b/.test(text)) result.add('revive');
-  if (/\bsubstitute\b/.test(text) || /\breceives?\s+foe\s+attacks?\s+in\s+place\s+of\s+an\s+ally\b/.test(text)) result.add('substitute');
-  if (/\bshield(?:\s+effect)?\b/.test(text)) result.add('shield');
-  if (/\bdamage\s+cut\b/.test(text) || /\b\d+%\s+[a-z]+\s+cut\b/.test(text)) result.add('damage-cut');
+  if (/\b(?:gain|gains|grant|grants|apply|applies)\b[^.\n]{0,60}\bsubstitute\b/.test(text) || /\breceives?\s+foe\s+attacks?\s+in\s+place\s+of\s+an\s+ally\b/.test(text)) result.add('substitute');
+  if (/\b(?:gain|gains|grant|grants|apply|applies)\b[^.\n]{0,60}\bshield(?:\s+effect)?\b/.test(text)) result.add('shield');
+  if (/\b(?:gain|gains|grant|grants|apply|applies)\b[^.\n]{0,70}\b(?:damage|dmg)\s+cut\b/.test(text) || /\b\d+%\s+[a-z]+\s+(?:damage|dmg)\s+cut\b/.test(text)) result.add('damage-cut');
 
   return result;
 }
