@@ -34,8 +34,6 @@ let refreshQueued = false;
 
 if (app) {
   app.addEventListener('click', handleClick, true);
-  const observer = new MutationObserver(scheduleSync);
-  observer.observe(app, { childList: true, subtree: true });
   void refreshLocalData();
 }
 
