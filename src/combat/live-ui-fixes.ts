@@ -23,7 +23,7 @@ export function applyCombatLiveUiFixes(root: HTMLElement, now = Date.now()): voi
   if (!liveRaid) return;
   updateDuration(root, liveRaid, now);
   updateParticipants(root, liveRaid, liveContext);
-  keepSixRosterMembersVisible(root, liveContext);
+  keepSixRosterMembersVisible(root, liveContext, liveRaid);
   improvePartyStateLabels(root);
   ensureMainCharacterFallback(root, liveContext);
   ensureBossFallback(root, liveRaid);
@@ -54,7 +54,11 @@ function updateParticipants(
   }
 }
 
-function keepSixRosterMembersVisible(root: HTMLElement, context: CombatParseContext | null): void {
+function keepSixRosterMembersVisible(
+  root: HTMLElement,
+  context: CombatParseContext | null,
+  raid: NormalizedRaidParse,
+): void {
   if (!context?.actors?.length) return;
   const representedIds = new Set<string>();
   for (const element of root.querySelectorAll<HTMLElement>('[data-character-select], [data-roster-actor-id]')) {
@@ -67,7 +71,7 @@ function keepSixRosterMembersVisible(root: HTMLElement, context: CombatParseCont
   const party = root.querySelector<HTMLElement>('.party-cards');
   if (party) {
     const room = Math.max(0, 6 - party.querySelectorAll('.party-card').length);
-    for (const member of missing.slice(0, room)) party.append(createHistoryCard(member, context));
+    for (const member of missing.slice(0, room)) party.append(createHistoryCard(member, context, raid));
     return;
   }
 
@@ -75,11 +79,15 @@ function keepSixRosterMembersVisible(root: HTMLElement, context: CombatParseCont
   if (!cockpit || cockpit.parentElement?.querySelector(':scope > .combat-roster-history')) return;
   const history = document.createElement('div');
   history.className = 'combat-roster-history';
-  for (const member of missing) history.append(createHistoryCard(member, context));
+  for (const member of missing) history.append(createHistoryCard(member, context, raid));
   cockpit.insertAdjacentElement('afterend', history);
 }
 
-function createHistoryCard(member: MissingRosterActor, context: CombatParseContext): HTMLElement {
+function createHistoryCard(
+  member: MissingRosterActor,
+  context: CombatParseContext,
+  raid: NormalizedRaidParse,
+): HTMLElement {
   const { actor, originalIndex, state } = member;
   const label = actor.id === context.mainCharacterId
     ? context.accountDisplayName ?? 'Main Character'
@@ -101,6 +109,12 @@ function createHistoryCard(member: MissingRosterActor, context: CombatParseConte
   copy.className = 'party-card-copy';
   const name = document.createElement('strong');
   name.textContent = label;
+  const damage = document.createElement('span');
+  damage.className = 'party-card-damage';
+  const attributedDamage = actor.id
+    ? raid.characterDamage.find((entry) => entry.actorId === actor.id)?.total
+    : undefined;
+  damage.textContent = attributedDamage === undefined ? 'Damage —' : `${formatNumber(attributedDamage)} dmg`;
   const hp = document.createElement('span');
   hp.className = 'actor-hp muted';
   hp.textContent = formatActorHp(actor);
@@ -110,7 +124,7 @@ function createHistoryCard(member: MissingRosterActor, context: CombatParseConte
   const note = document.createElement('span');
   note.className = 'party-card-history-note';
   note.textContent = 'Retained from verified party history';
-  copy.append(name, hp, tag, note);
+  copy.append(name, damage, hp, tag, note);
 
   const slot = document.createElement('span');
   slot.className = 'party-slot';
@@ -177,6 +191,10 @@ function formatActorHp(actor: CombatActorContext): string {
   if (actor.hp === undefined || actor.maxHp === undefined || actor.maxHp <= 0) return 'HP —';
   const percent = actor.hp / actor.maxHp * 100;
   return `${Math.round(actor.hp).toLocaleString('en-US')} (${percent.toFixed(1)}%) / ${Math.round(actor.maxHp).toLocaleString('en-US')}`;
+}
+
+function formatNumber(value: number): string {
+  return Math.round(value).toLocaleString('en-US');
 }
 
 function stateLabel(state: MissingRosterActor['state'], originalIndex: number): string {
