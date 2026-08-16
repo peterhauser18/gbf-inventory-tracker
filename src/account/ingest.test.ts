@@ -22,6 +22,19 @@ function record(path: string, body: unknown, capturedAt = 100): CapturedResponse
   };
 }
 
+function rosterPage(level: number): unknown {
+  return {
+    list: [{ param: { id: '1', level, evolution: 4 }, master: { id: '3040030000' } }],
+    first: 1,
+    last: 2,
+    prev: 0,
+    next: 2,
+    count: 2,
+    current: 1,
+    options: { number: 2 },
+  };
+}
+
 test('verified account response families can update the cumulative database', () => {
   const next = ingestAccountRecord(null, record('/user/status', { status: { level: 350 } }));
   assert.ok(next);
@@ -88,21 +101,14 @@ test('identical account status does not rewrite only because capture time change
 
 test('identical partial roster page does not rewrite while a changed value still does', () => {
   const path = '/npc/list/1';
-  const body = {
-    list: [{ param: { id: '1', level: 80, evolution: 4 }, master: { id: '3040030000' } }],
-    options: { current_page: 1, last_page: 2, result_count: 1, total_count: 1 },
-  };
-  const first = ingestAccountRecord(null, record(path, body, 100));
+  const first = ingestAccountRecord(null, record(path, rosterPage(80), 100));
   assert.ok(first);
+  assert.equal(first.snapshot.quality.characters, 'partial');
 
-  const duplicate = ingestAccountRecord(first, record(path, body, 200));
+  const duplicate = ingestAccountRecord(first, record(path, rosterPage(80), 200));
   assert.equal(duplicate, first);
 
-  const changedBody = {
-    ...body,
-    list: [{ param: { id: '1', level: 81, evolution: 4 }, master: { id: '3040030000' } }],
-  };
-  const changed = ingestAccountRecord(first, record(path, changedBody, 300));
+  const changed = ingestAccountRecord(first, record(path, rosterPage(81), 300));
   assert.ok(changed);
   assert.notEqual(changed, first);
   assert.equal(changed.snapshot.characters[0]?.level, 81);
