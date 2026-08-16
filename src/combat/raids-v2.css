@@ -1,0 +1,56 @@
+.global-pins { margin: 0 0 16px; padding: 14px; border: 1px solid #d8d9d2; border-radius: 14px; background: #fff; }
+.global-pins-head { display: flex; justify-content: space-between; gap: 14px; align-items: center; }
+.global-pins-head h3 { margin: 4px 0; }
+.global-pin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 9px; margin-top: 12px; }
+.global-pin-card { display: grid; gap: 8px; padding: 11px; border: 1px solid #e0e1da; border-radius: 10px; background: #fafaf7; }
+.global-pin-card > div:first-child { display: grid; gap: 3px; }
+.global-pin-rate { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.global-pin-rate strong { font-size: 17px; }
+.global-pin-rate span { color: #777972; font-size: 9px; }
+.pin-remove { border: 1px solid #cfd0c9; border-radius: 8px; background: #fff; padding: 7px 9px; cursor: pointer; font-size: 10px; font-weight: 750; }
+.raid-section { margin-top: 12px; border: 1px solid #dcddd6; border-radius: 10px; overflow: hidden; }
+.raid-section > summary { padding: 10px 12px; cursor: pointer; list-style: none; font-size: 11px; font-weight: 800; background: #fafaf7; }
+.raid-section > summary::-webkit-details-marker { display: none; }
+.raid-section > summary::after { content: '+'; float: right; color: #777972; }
+.raid-section[open] > summary::after { content: '−'; }
+.raid-section-body { padding: 12px; }
+.raid-combat-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.raid-combat-summary > div { min-width: 0; display: grid; gap: 4px; padding: 9px; border: 1px solid #e1e2dc; border-radius: 8px; }
+.raid-combat-summary span { color: #777972; font-size: 9px; text-transform: uppercase; font-weight: 750; }
+.raid-combat-summary strong { font-size: 13px; overflow-wrap: anywhere; }
+.raid-combat-table { margin-top: 10px; border: 1px solid #e1e2dc; border-radius: 9px; overflow: auto; }
+.raid-combat-row { min-width: 620px; display: grid; grid-template-columns: minmax(180px, 1.4fr) repeat(4, minmax(85px, .7fr)); gap: 8px; align-items: center; padding: 8px 10px; border-top: 1px solid #e5e6df; font-size: 10px; }
+.raid-combat-row:first-child { border-top: 0; }
+.raid-combat-row.head { background: #f0f0ec; color: #73756e; font-size: 9px; font-weight: 850; text-transform: uppercase; }
+.raid-log-mini { margin-top: 10px; }
+.raid-log-mini > summary { cursor: pointer; font-size: 10px; font-weight: 750; }
+.raid-log-mini > div { display: grid; gap: 4px; margin-top: 7px; }
+.raid-log-row { display: grid; grid-template-columns: 50px minmax(120px, .8fr) minmax(150px, 1.2fr) 95px; gap: 8px; padding: 7px 8px; border: 1px solid #e5e6df; border-radius: 7px; font-size: 9px; }
+.raid-drop-table { border: 1px solid #dcddd6; border-radius: 10px; overflow: auto; }
+.raid-drop-grid { min-width: 650px; display: grid; grid-template-columns: minmax(200px, 1.5fr) 70px 120px 95px 100px; gap: 10px; align-items: center; padding: 9px 10px; border-top: 1px solid #e5e6df; font-size: 10px; }
+.raid-drop-grid:first-child { border-top: 0; }
+.raid-drop-grid.head { background: #f0f0ec; color: #73756e; font-size: 9px; font-weight: 850; text-transform: uppercase; }
+.raid-drop-grid button { border: 1px solid #cfd0c9; border-radius: 8px; background: #fff; padding: 7px 8px; cursor: pointer; font-size: 10px; font-weight: 750; }
+.raid-card.favorite { box-shadow: inset 3px 0 0 #b79b46; }
+
+@media (max-width: 900px) {
+  .raid-combat-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+:root[data-theme='dark'] .global-pins,
+:root[data-theme='dark'] .global-pin-card,
+:root[data-theme='dark'] .pin-remove,
+:root[data-theme='dark'] .raid-section,
+:root[data-theme='dark'] .raid-combat-summary > div,
+:root[data-theme='dark'] .raid-combat-table,
+:root[data-theme='dark'] .raid-log-row,
+:root[data-theme='dark'] .raid-drop-table,
+:root[data-theme='dark'] .raid-drop-grid button { background: #1d1f1a; border-color: #34372f; color: #e7e8e2; }
+:root[data-theme='dark'] .raid-section > summary,
+:root[data-theme='dark'] .raid-combat-row.head,
+:root[data-theme='dark'] .raid-drop-grid.head { background: #20221d; color: #a7aaa0; }
+:root[data-theme='dark'] .raid-combat-row,
+:root[data-theme='dark'] .raid-drop-grid,
+:root[data-theme='dark'] .raid-log-row { border-color: #34372f; }
+:root[data-theme='dark'] .raid-combat-summary span,
+:root[data-theme='dark'] .global-pin-rate span { color: #a7aaa0; }
