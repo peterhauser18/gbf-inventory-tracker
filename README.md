@@ -18,15 +18,15 @@ This project is intentionally not designed to automate gameplay. It must not far
 
 GBF Tool does **not** patch `window.fetch`, `XMLHttpRequest.send`, or other request primitives in the game page. Normal GBF browsing with the extension loaded performs no GBF response capture.
 
-When the user explicitly presses **Start observation** on an active `game.granbluefantasy.jp` tab, the extension attaches Chrome's `debugger` transport, enables the DevTools Protocol Network domain, and observes responses produced by normal user activity. Chrome shows its debugging notice while this is active.
+The normal entry point is **Open Dashboard** in the extension popup. When pressed while a `game.granbluefantasy.jp` tab is active, GBF Tool first starts the existing `chrome.debugger` observation session and then opens the dashboard. Manual Start/Stop observation remains available under the popup's collapsed Developer section. Chrome shows its debugging notice while observation is active.
 
 Before a response body can be read, GBF Tool requires all of the following:
 
 - exact HTTPS origin `game.granbluefantasy.jp`;
 - XHR or Fetch resource type;
-- URL match against the existing verified read-only account/combat allowlist.
+- URL match against the existing verified account/combat endpoint families.
 
-Unknown GBF endpoints are ignored before `Network.getResponseBody`. The runtime does not replay, retry, intercept, modify, synthesize, or send GBF HTTP requests.
+The allowlist is family-based where paths legitimately vary, such as paginated character/weapon/summon lists and result instance IDs. It is **not** a blanket `game.granbluefantasy.jp/*` body-read rule. Unknown GBF endpoints are ignored before `Network.getResponseBody`. The runtime does not replay, retry, intercept, modify, synthesize, or send GBF HTTP requests.
 
 ```text
 GBF page ──normal request──► browser ──► Cygames
@@ -39,6 +39,8 @@ GBF page ──normal request──► browser ──► Cygames
 ## Local data
 
 Verified account responses are normalized into a cumulative local account database with explicit `known` / `partial` / `unknown` quality. Combat responses are normalized into local combat/raid records. Diagnostic response records remain local and can be exported only through an explicit sanitized export action.
+
+Dashboard collection views refresh from the cumulative account database when newer relevant family evidence arrives. The GBF Wiki character Collection Tracker also uses that cumulative database rather than requiring a completed diagnostic scan.
 
 Dashboard character, weapon, summon, and wiki-reference metadata may use public `https://gbf.wiki/*` requests. Those requests omit credentials/referrers and are separate from the GBF account-request boundary. Cygames/GBF asset-CDN images are not requested by the dashboard resolver.
 
@@ -62,10 +64,10 @@ Then load the generated `dist/` directory as an unpacked Chrome extension.
 To update local account/combat data:
 
 1. Open GBF in the active tab.
-2. Open the extension and press **Start observation**.
-3. Browse or play normally; only allowlisted responses are read.
-4. Press **Stop observation** when finished.
-5. Open the dashboard to inspect the accumulated local state.
+2. Open the extension and press **Open Dashboard**.
+3. The existing debugger-only observation starts, then the dashboard opens.
+4. Browse or play normally; only verified allowlisted response families are read.
+5. Stop observation from **Developer** when you are finished collecting data.
 
 ## Architecture
 
