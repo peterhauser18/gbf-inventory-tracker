@@ -50,6 +50,12 @@
 .goal-action-kind.reached { background: #213027; color: #9fbaa7; }
 .goal-meta-row { display: flex; flex-wrap: wrap; gap: 8px 15px; color: #788791; font-size: 9px; }
 .goal-meta-row strong { color: #b9c4cc; }
+.goal-requirements { display: grid; gap: 5px; padding-top: 2px; }
+.goal-requirements-label { color: #71808b; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+.goal-requirement-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 8px; border: 1px solid #252e36; border-radius: 7px; background: #11161a; }
+.goal-requirement-row > span { min-width: 0; overflow-wrap: anywhere; color: #c6d0d8; font-size: 10px; font-weight: 700; }
+.goal-requirement-row small { flex: 0 0 auto; color: #82909a; font-size: 9px; }
+.goal-requirements-more, .goal-requirement-ready { color: #788791; font-size: 9px; }
 .goal-card-actions { display: flex; flex-direction: column; gap: 7px; align-self: center; }
 .goal-deficit-panel { position: sticky; top: 18px; }
 
@@ -60,6 +66,9 @@
 :root[data-theme='light'] .goal-action-row:hover { background: #f2f6f8; border-color: #9bb9cd; }
 :root[data-theme='light'] .goal-action-row small,
 :root[data-theme='light'] .goal-card p { color: #68747c; }
+:root[data-theme='light'] .goal-requirement-row { background: #f8fafb; border-color: #e0e5e8; }
+:root[data-theme='light'] .goal-requirement-row > span { color: #35414a; }
+:root[data-theme='light'] .goal-requirement-row small { color: #68747c; }
 :root[data-theme='light'] .goal-deficit-table { border-color: #dce1e5; }
 :root[data-theme='light'] .goal-deficit-row { border-color: #e7eaed; }
 :root[data-theme='light'] .goal-deficit-row.header { background: #f4f6f7; color: #68747c; }
