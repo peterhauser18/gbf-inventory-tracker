@@ -98,11 +98,21 @@ export function parseWikiObtainRaidSources(
     if (startsDropGroup) dropGroupDepth = depth;
     const inheritedDrop = dropGroupDepth !== undefined && depth > dropGroupDepth;
 
-    for (const match of body.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g)) {
+    const linkMatches = [...body.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g)];
+    const dropFrom = /\b(?:drop|drops|dropped)\s+from\b/i.exec(body);
+    const firstAfterDropFrom = dropFrom
+      ? linkMatches.findIndex((match) => (match.index ?? -1) >= (dropFrom.index + dropFrom[0].length))
+      : -1;
+
+    for (const [linkIndex, match] of linkMatches.entries()) {
       const target = cleanWikiText(match[1] ?? '');
       const label = cleanWikiText(match[2] ?? target);
       if (!target || !label) continue;
-      if (!explicitDrop && !inheritedDrop && !looksLikeRaidLink(target, label)) continue;
+      const explicitPlainSource = firstAfterDropFrom >= 0
+        ? linkIndex === firstAfterDropFrom
+        : explicitDrop && linkIndex === 0;
+      const groupedPlainSource = (inheritedDrop || startsDropGroup) && linkIndex === 0;
+      if (!looksLikeRaidLink(target, label) && !explicitPlainSource && !groupedPlainSource) continue;
       const name = displayRaidName(target, label);
       const key = normalizeRaidName(name, false);
       if (!key || byKey.has(key)) continue;
