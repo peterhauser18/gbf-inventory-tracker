@@ -43,14 +43,8 @@ test('treasure image index resolves direct and grouped item-template image metad
       status: 200,
       json: async () => continued ? ({
         query: { pages: [
-          {
-            title: 'Satin Feather',
-            revisions: revision('{{Item\n|name=Satin Feather\n|image=Satin_Feather.jpg\n}}'),
-          },
-          {
-            title: 'Blistering Ore',
-            revisions: revision('{{Item|name=Blistering Ore|id=15}}'),
-          },
+          { title: 'Satin Feather', revisions: revision('{{Item\n|name=Satin Feather\n|image=Satin_Feather.jpg\n}}') },
+          { title: 'Blistering Ore', revisions: revision('{{Item|name=Blistering Ore|id=15}}') },
           {
             title: 'Low Orb',
             revisions: revision([
@@ -106,10 +100,7 @@ test('fresh v4 treasure metadata cache avoids a second public Wiki query', async
       status: 200,
       json: async () => ({
         query: { pages: [
-          {
-            title: 'Satin Feather',
-            revisions: revision('{{Item|name=Satin Feather|image=Satin_Feather.jpg}}'),
-          },
+          { title: 'Satin Feather', revisions: revision('{{Item|name=Satin Feather|image=Satin_Feather.jpg}}') },
         ] },
       }),
     };
