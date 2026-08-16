@@ -7,6 +7,8 @@ import {
 
 const RESTORE_SECTION_KEY = 'gbfit:dashboard-restore-section';
 const dirtyEvidence = new Set<AccountEvidenceKey>();
+const enhancementLoads = new Map<string, Promise<void>>();
+const loadedEnhancements = new Set<string>();
 let reloadTimer: number | undefined;
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -33,6 +35,8 @@ document.addEventListener('click', (event) => {
   scheduleReload(targetSection, 0);
 }, true);
 
+document.addEventListener('click', handleEnhancementIntent, true);
+
 void bootDashboard();
 
 async function bootDashboard(): Promise<void> {
@@ -44,7 +48,6 @@ async function bootDashboard(): Promise<void> {
   await initialRender;
 
   keepObservationCopyAccurate();
-  void loadDashboardEnhancements();
 
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
   if (!restoreSection) return;
@@ -66,17 +69,88 @@ function waitForInitialDashboardRender(app: HTMLElement): Promise<void> {
   });
 }
 
-async function loadDashboardEnhancements(): Promise<void> {
-  await Promise.allSettled([
-    import('./dashboard/roster-ui.ts'),
-    import('./dashboard/collection-tracker-ui.ts'),
-    import('./dashboard/theme-toggle.ts'),
-    import('./dashboard/goals-ui.ts'),
-    import('./dashboard/farming-ui.ts'),
-    import('./combat/ui.ts'),
-    import('./combat/combat-compare-ui.ts'),
-    import('./dashboard/phase5-ui.ts'),
-  ]);
+function handleEnhancementIntent(event: MouseEvent): void {
+  const target = event.target as Element | null;
+  const nav = target?.closest<HTMLButtonElement>('.nav-item[data-section]');
+  const section = nav?.dataset.section;
+
+  if (nav && section === 'goals') {
+    interceptUntilLoaded(event, nav, 'goals', () => Promise.all([
+      import('./dashboard/goals-ui.ts'),
+      import('./dashboard/farming-ui.ts'),
+    ]).then(() => undefined));
+    return;
+  }
+
+  if (nav && (section === 'combat' || section === 'raids')) {
+    interceptUntilLoaded(event, nav, 'combat', () => Promise.all([
+      import('./combat/ui.ts'),
+      import('./combat/combat-compare-ui.ts'),
+    ]).then(() => undefined));
+    return;
+  }
+
+  if (nav && section === 'roster') {
+    interceptUntilLoaded(event, nav, 'roster', async () => {
+      await import('./dashboard/roster-ui.ts');
+    });
+    return;
+  }
+
+  if (nav && section === 'characters') {
+    void ensureEnhancement('collection', async () => {
+      await import('./dashboard/collection-tracker-ui.ts');
+    });
+  }
+
+  if (nav && (section === 'eternals' || section === 'evokers')) {
+    void ensureEnhancement('goals', async () => {
+      await import('./dashboard/goals-ui.ts');
+    });
+  }
+
+  if (nav && section === 'settings') {
+    void ensureEnhancement('settings', () => Promise.all([
+      import('./dashboard/theme-toggle.ts'),
+      import('./dashboard/phase5-ui.ts'),
+    ]).then(() => undefined));
+  }
+
+  const themeToggle = target?.closest<HTMLButtonElement>('[data-theme-toggle]');
+  if (themeToggle && !loadedEnhancements.has('settings')) {
+    interceptUntilLoaded(event, themeToggle, 'settings', () => Promise.all([
+      import('./dashboard/theme-toggle.ts'),
+      import('./dashboard/phase5-ui.ts'),
+    ]).then(() => undefined));
+  }
+}
+
+function interceptUntilLoaded(
+  event: MouseEvent,
+  element: HTMLElement,
+  key: string,
+  load: () => Promise<void>,
+): void {
+  if (loadedEnhancements.has(key)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  void ensureEnhancement(key, load).then(() => element.click()).catch(() => {});
+}
+
+function ensureEnhancement(key: string, load: () => Promise<void>): Promise<void> {
+  if (loadedEnhancements.has(key)) return Promise.resolve();
+  const existing = enhancementLoads.get(key);
+  if (existing) return existing;
+
+  const pending = load()
+    .then(() => {
+      loadedEnhancements.add(key);
+    })
+    .finally(() => {
+      enhancementLoads.delete(key);
+    });
+  enhancementLoads.set(key, pending);
+  return pending;
 }
 
 function keepObservationCopyAccurate(): void {
