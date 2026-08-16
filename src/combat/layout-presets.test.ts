@@ -39,10 +39,14 @@ test('combat layouts hide unsupported Supplemental damage from both drilldown an
 
 test('raid search shell is not replaced on each input or one-second refresh', () => {
   const inputHandler = /combat-raid-search[\s\S]*?addEventListener\('input',[\s\S]*?\n  \}\);/.exec(ui)?.[0] ?? '';
+  const intervalHandler = /window\.setInterval\(\(\) => \{[\s\S]*?\n  \}, 1000\);/.exec(ui)?.[0] ?? '';
   assert.match(inputHandler, /renderSectionIfChanged\(\)/);
   assert.doesNotMatch(inputHandler, /renderSelectedShell\(/);
   assert.match(ui, /if \(!force && markup === lastSectionMarkup\) return;/);
-  assert.match(ui, /controller\.refresh\(\)\.then\(\(\) => renderSectionIfChanged\(\)\)/);
+  assert.match(intervalHandler, /controller\.refresh\(\)/);
+  assert.match(intervalHandler, /refreshCombatLiveUiState\(\)/);
+  assert.match(intervalHandler, /\.then\(\(\) => renderSectionIfChanged\(\)\)/);
+  assert.doesNotMatch(intervalHandler, /renderSelectedShell\(/);
 });
 
 test('raid drops use a five-column aligned grid and global pin area', () => {
