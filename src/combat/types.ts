@@ -82,6 +82,7 @@ export interface NormalizedRaidParse {
   observedStartedAt?: number;
   observedEndedAt?: number;
   durationMs?: number;
+  lastObservedTurn?: number;
   result: RaidResult;
   resultQuality: DataQuality;
   parserQuality: DataQuality;
@@ -135,6 +136,7 @@ export interface CombatObservation {
   raidName?: string;
   role?: RaidRole;
   observedAt: number;
+  observedTurn?: number;
   startObserved: boolean;
   result?: Exclude<RaidResult, 'active'>;
   boss?: BossState;
