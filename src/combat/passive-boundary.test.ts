@@ -22,7 +22,7 @@ test('combat ingestion remains attached only to debugger response-body capture',
 test('recognized combat responses persist only normalized combat facts', () => {
   assert.match(
     background,
-    /const route = classifyObservedResponseUrl\(record\.meta\.url\);\s*if \(route === 'combat'\) \{\s*await ingestCapturedCombatRecord\(record\);\s*return;\s*\}/s,
+    /const route = classifyObservedResponseUrl\(record\.meta\.url\);\s*if \(route === 'combat'\) \{\s*const parse = await ingestCapturedCombatRecord\(record\);\s*const context = parse \? await getCombatLiveContext\(\) : undefined;\s*if \(parse && context\?\.instanceId\) \{\s*await updateCombatLock\(tabId, context\.instanceId, parse\.result\);\s*\}\s*return;\s*\}/s,
   );
   assert.match(
     background,
