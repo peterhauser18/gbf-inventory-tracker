@@ -118,6 +118,8 @@ export class WikiTreasureImageResolver {
 let defaultResolver: WikiTreasureImageResolver | null = null;
 
 export function loadWikiTreasureImage(title: string): Promise<string | undefined> {
+  // Successful page->image mappings are cached by the resolver, so scrolling back over
+  // already-seen Treasures does not repeat the public Wiki metadata request.
   if (!defaultResolver) defaultResolver = new WikiTreasureImageResolver();
   return defaultResolver.resolve(title);
 }
