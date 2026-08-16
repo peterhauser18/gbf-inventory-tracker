@@ -94,7 +94,7 @@ function render(): void {
           <strong>Local status</strong>
           <span>Latest snapshot: ${escapeHtml(formatDate(model.capturedAt))}</span>
           <span>${escapeHtml(metadataMessage(metadataStatus))}</span>
-          <span>Passive tracking sends no gameplay or refresh requests.</span>
+          <span>Dashboard navigation and analysis send no gameplay or refresh requests.</span>
         </div>
       </aside>
 
@@ -358,7 +358,7 @@ function renderOverview(view: DashboardViewModel, freshness: Partial<Record<Acco
 }
 
 function renderSettings(view: DashboardViewModel, freshness: Partial<Record<AccountFamily, number>>): string {
-  const preference = storedThemePreference();
+  const preference = currentThemePreference();
   return `
     <section class="system-grid">
       <article class="system-card">
@@ -366,8 +366,8 @@ function renderSettings(view: DashboardViewModel, freshness: Partial<Record<Acco
         <h3>Compact Analyst</h3>
         <p class="muted">Dark is the default for new installs. A stored light/dark preference remains local to this dashboard.</p>
         <div class="settings-row">
-          <span>Stored theme preference</span>
-          <strong>${escapeHtml(preference)}</strong>
+          <span>Current theme</span>
+          <strong data-theme-preference>${escapeHtml(preference)}</strong>
         </div>
         <button class="settings-action" type="button" data-theme-toggle>Toggle theme</button>
       </article>
@@ -419,7 +419,7 @@ function renderDeveloper(view: DashboardViewModel, freshness: Partial<Record<Acc
       <article class="system-card">
         <p class="eyebrow">OBSERVATION</p>
         <h3>Manual diagnostic scan</h3>
-        <p class="muted">The observation workflow is optional developer tooling. Normal account tracking continues passively from already-received verified responses.</p>
+        <p class="muted">Observation is controlled from the extension popup and is never started by opening this dashboard. This surface only reads locally accumulated analysis state.</p>
         <span class="developer-badge">Explicit opt-in only</span>
       </article>
     </section>
@@ -663,13 +663,15 @@ function metadataStatusLabel(status: typeof metadataStatus): string {
   }
 }
 
-function storedThemePreference(): string {
+function currentThemePreference(): string {
+  const active = document.documentElement.dataset.theme;
+  if (active === 'light' || active === 'dark') return active;
   try {
-    const value = localStorage.getItem(DASHBOARD_THEME_STORAGE_KEY);
-    if (value === 'light' || value === 'dark') return value;
-    return 'not set · default dark';
+    const stored = localStorage.getItem(DASHBOARD_THEME_STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+    return 'dark';
   } catch {
-    return 'unknown · local storage unavailable';
+    return 'dark · local storage unavailable';
   }
 }
 
