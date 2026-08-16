@@ -1,7 +1,12 @@
 import './layouts.css';
 import { buildCharacterAnalyses, observedSummonNames, summarizeTurns, type CharacterCombatAnalysis } from './analytics.ts';
 import { EMPTY_ENTITY_METADATA, type EntityMetadata, type EntityMetadataIndex } from '../dashboard/wiki-metadata.ts';
-import type { CombatActorContext, CombatParseContext, CombatParticipantDisplay } from './multiraid.ts';
+import type {
+  CombatActorContext,
+  CombatParseContext,
+  CombatParticipantDisplay,
+  CombatSummonContext,
+} from './multiraid.ts';
 import type { NormalizedRaidParse } from './types.ts';
 
 export type CombatLayoutPreset =
@@ -42,6 +47,20 @@ export function renderCombatLayout(
   }
 }
 
+interface CombatSummonView extends CombatSummonContext {
+  metadata?: EntityMetadata;
+}
+
+interface PartyMemberView {
+  slot: number;
+  actor: CombatActorContext;
+  actorId?: string;
+  analysis?: CharacterCombatAnalysis;
+  metadata?: EntityMetadata;
+  label: string;
+  state: 'active' | 'dead' | 'replacement' | 'inactive';
+}
+
 interface CombatView {
   raid: NormalizedRaidParse;
   context: CombatParseContext | null;
@@ -50,27 +69,33 @@ interface CombatView {
   selected: CharacterCombatAnalysis | undefined;
   turns: ReturnType<typeof summarizeTurns>;
   participantRows: CombatParticipantDisplay[];
-  summons: EntityMetadata[];
+  summons: CombatSummonView[];
   collapsed: ReadonlySet<string>;
 }
 
 function buildView(input: CombatLayoutRenderInput): CombatView {
   const metadata = input.metadata ?? EMPTY_ENTITY_METADATA;
+  const context = input.context ?? null;
   const analyses = buildCharacterAnalyses(input.raid);
   const selected = analyses.find((entry) => entry.actorId === input.selectedActorId) ?? analyses[0];
-  const summonNames = observedSummonNames(input.raid);
+  const summons = (context?.summons ?? []).map((summon) => ({
+    ...summon,
+    metadata: summonMetadata(metadata, summon),
+  }));
+  for (const name of observedSummonNames(input.raid)) {
+    const normalized = name.trim().toLowerCase();
+    if (summons.some((summon) => summon.name?.trim().toLowerCase() === normalized)) continue;
+    summons.push({ name, used: true, metadata: findMetadataByName(metadata.summons, name) });
+  }
   return {
     raid: input.raid,
-    context: input.context ?? null,
+    context,
     metadata,
     analyses,
     selected,
     turns: summarizeTurns(input.raid),
-    participantRows: input.context?.participants ?? [],
-    summons: summonNames.flatMap((name) => {
-      const match = findMetadataByName(metadata.summons, name);
-      return match ? [match] : [];
-    }),
+    participantRows: context?.participants ?? [],
+    summons,
     collapsed: input.collapsedSections ?? new Set(),
   };
 }
@@ -134,7 +159,6 @@ function renderCompactLive(view: CombatView): string {
     ${accordion(view, 'analysis', 'Party Analysis', renderSelectedAnalysis(view, 'wide'))}
     ${accordion(view, 'participants', 'Participants', renderParticipantsTable(view))}
     ${accordion(view, 'log', 'Combat Log', renderLog(view))}
-    ${accordion(view, 'summons', 'Summons', renderSummonStrip(view))}
     ${accordion(view, 'graphs', 'Graphs', '<p class="muted">Reserved for future deterministic graph views.</p>')}
   </div>`;
 }
@@ -160,7 +184,19 @@ function renderRaidHeader(view: CombatView): string {
 
 function renderLiveStats(view: CombatView): string {
   const raid = view.raid;
-  const honors = raid.participants?.honors ?? raid.participants?.contribution;
+  const self = ownParticipant(view);
+  const exactHonors = self?.honors ?? raid.participants?.honors;
+  const honors = exactHonors !== undefined
+    ? formatNumber(exactHonors)
+    : raid.participants?.contribution !== undefined
+      ? `≈ ${formatNumber(raid.participants.contribution)} (partial)`
+      : '—';
+  const participantCount = raid.participants?.count;
+  const participants = participantCount !== undefined
+    ? `${formatNumber(participantCount)} / 30`
+    : view.participantRows.length > 0
+      ? `${formatNumber(view.participantRows.length)}+ observed`
+      : '—';
   const average = raid.coverage.startObserved && view.turns.currentTurn !== undefined && view.turns.currentTurn > 0 && raid.partyDamage !== undefined
     ? raid.partyDamage / view.turns.currentTurn
     : undefined;
@@ -169,42 +205,44 @@ function renderLiveStats(view: CombatView): string {
     ${liveStat('Previous Turn', optionalNumber(view.turns.previousTurnDamage))}
     ${liveStat('Current Turn', optionalNumber(view.turns.currentTurnDamage))}
     ${liveStat('Average / Turn', optionalNumber(average))}
-    ${liveStat('Honors', optionalNumber(honors))}
-    ${liveStat('Participants', raid.participants?.count === undefined ? '—' : `${formatNumber(raid.participants.count)} / 30`)}
+    ${liveStat('Honors', honors)}
+    ${liveStat('Participants', participants)}
   </section>`;
 }
 
 function renderPartyCards(view: CombatView, size: 'large' | 'hero' | 'stacked' | 'compact'): string {
-  if (!view.analyses.length) return '<p class="muted">No supported character damage observed yet.</p>';
-  return `<section class="party-cards party-cards-${size}">${view.analyses.map((analysis, index) => {
-    const actor = actorFor(view.context, analysis.actorId);
-    const metadata = characterMetadata(view.metadata, analysis.actorId, analysis.actorName ?? actor?.name);
-    const state = actorState(view.context, analysis.actorId);
-    const selected = view.selected?.actorId === analysis.actorId;
-    return `<button type="button" class="party-card ${selected ? 'selected' : ''} ${state}" data-character-select="${escapeAttribute(analysis.actorId)}">
-      <span class="party-card-visual">${renderImage(metadata?.imageUrl, metadata?.name ?? analysis.actorName ?? analysis.actorId)}</span>
-      <span class="party-card-copy"><strong>${escapeHtml(metadata?.name ?? analysis.actorName ?? actor?.name ?? analysis.actorId)}</strong>
-        ${renderHp(actor)}
-        <span class="party-card-damage">${formatNumber(analysis.totalDamage)} dmg</span>
-        ${state === 'dead' ? '<span class="state-tag danger">Dead</span>' : state === 'replacement' ? '<span class="state-tag">Replacement</span>' : ''}
+  const members = partyMembers(view);
+  if (!members.length) return '<p class="muted">No verified party snapshot observed yet.</p>';
+  return `<section class="party-cards party-cards-${size}">${members.map((member) => {
+    const selected = member.actorId !== undefined && view.selected?.actorId === member.actorId;
+    const select = member.actorId ? ` data-character-select="${escapeAttribute(member.actorId)}"` : '';
+    const damage = member.analysis ? `${formatNumber(member.analysis.totalDamage)} dmg` : 'Damage —';
+    const backline = member.slot >= 4;
+    return `<button type="button" class="party-card ${selected ? 'selected' : ''} ${member.state}"${select}>
+      <span class="party-card-visual">${renderImage(member.metadata?.imageUrl, member.label)}</span>
+      <span class="party-card-copy"><strong>${escapeHtml(member.label)}</strong>
+        ${renderHp(member.actor)}
+        <span class="party-card-damage">${damage}</span>
+        ${member.state === 'dead' ? '<span class="state-tag danger">Dead</span>' : member.state === 'replacement' ? '<span class="state-tag">Replacement</span>' : backline ? '<span class="state-tag">Backline</span>' : ''}
       </span>
-      <span class="party-slot">${index + 1}</span>
+      <span class="party-slot">${backline ? `B${member.slot - 3}` : member.slot + 1}</span>
     </button>`;
   }).join('')}</section>`;
 }
 
 function renderCockpitTable(view: CombatView): string {
-  if (!view.analyses.length) return '<p class="muted">No supported character damage observed yet.</p>';
+  const members = partyMembers(view);
+  if (!members.length) return '<p class="muted">No verified party snapshot observed yet.</p>';
   return `<section class="cockpit-table">
     <div class="cockpit-row cockpit-head"><span>Character</span><span>Total</span><span>Normal</span><span>Skill</span><span>Ougi</span><span>Echo</span><span>Supp.</span><span>Crit</span></div>
-    ${view.analyses.map((analysis) => {
-      const actor = actorFor(view.context, analysis.actorId);
-      const metadata = characterMetadata(view.metadata, analysis.actorId, analysis.actorName ?? actor?.name);
-      const selected = view.selected?.actorId === analysis.actorId;
-      return `<button type="button" class="cockpit-row ${selected ? 'selected' : ''}" data-character-select="${escapeAttribute(analysis.actorId)}">
-        <span class="cockpit-character">${renderImage(metadata?.imageUrl, metadata?.name ?? analysis.actorName ?? analysis.actorId)}<span><strong>${escapeHtml(metadata?.name ?? analysis.actorName ?? actor?.name ?? analysis.actorId)}</strong>${renderHp(actor)}</span></span>
-        <strong>${formatNumber(analysis.totalDamage)}</strong><span>${optionalNumber(analysis.breakdown.normal)}</span><span>${optionalNumber(analysis.breakdown.skill)}</span><span>${optionalNumber(analysis.breakdown.ougi)}</span><span>${optionalNumber(analysis.breakdown.echo)}</span><span>${optionalNumber(analysis.breakdown.supplemental)}</span><span>${formatPercent(analysis.criticalRate)}</span>
-      </button>${selected ? `<div class="cockpit-inline-detail">${renderSelectedAnalysis(view, 'inline')}</div>` : ''}`;
+    ${members.map((member) => {
+      const analysis = member.analysis;
+      const selected = member.actorId !== undefined && view.selected?.actorId === member.actorId;
+      const select = member.actorId ? ` data-character-select="${escapeAttribute(member.actorId)}"` : '';
+      return `<button type="button" class="cockpit-row ${selected ? 'selected' : ''}"${select}>
+        <span class="cockpit-character">${renderImage(member.metadata?.imageUrl, member.label)}<span><strong>${escapeHtml(member.label)}</strong>${renderHp(member.actor)}</span></span>
+        <strong>${analysis ? formatNumber(analysis.totalDamage) : '—'}</strong><span>${optionalNumber(analysis?.breakdown.normal)}</span><span>${optionalNumber(analysis?.breakdown.skill)}</span><span>${optionalNumber(analysis?.breakdown.ougi)}</span><span>${optionalNumber(analysis?.breakdown.echo)}</span><span>${optionalNumber(analysis?.breakdown.supplemental)}</span><span>${formatPercent(analysis?.criticalRate)}</span>
+      </button>${selected && analysis ? `<div class="cockpit-inline-detail">${renderSelectedAnalysis(view, 'inline')}</div>` : ''}`;
     }).join('')}
   </section>`;
 }
@@ -214,8 +252,9 @@ function renderSelectedAnalysis(view: CombatView, mode: 'wide' | 'deep' | 'inlin
   if (!analysis) return '<section class="character-analysis"><p class="muted">Select a character after supported damage is observed.</p></section>';
   const actor = actorFor(view.context, analysis.actorId);
   const metadata = characterMetadata(view.metadata, analysis.actorId, analysis.actorName ?? actor?.name);
+  const label = actorDisplayName(view, analysis.actorId, analysis.actorName, actor, metadata);
   return `<section class="character-analysis analysis-${mode}">
-    <div class="analysis-character"><span class="analysis-portrait">${renderImage(metadata?.imageUrl, metadata?.name ?? analysis.actorName ?? analysis.actorId)}</span><div><p class="eyebrow">SELECTED CHARACTER</p><h3>${escapeHtml(metadata?.name ?? analysis.actorName ?? actor?.name ?? analysis.actorId)}</h3>${renderHp(actor)}<strong>${formatNumber(analysis.totalDamage)} total damage</strong></div></div>
+    <div class="analysis-character"><span class="analysis-portrait">${renderImage(metadata?.imageUrl, label)}</span><div><p class="eyebrow">SELECTED CHARACTER</p><h3>${escapeHtml(label)}</h3>${renderHp(actor)}<strong>${formatNumber(analysis.totalDamage)} total damage</strong></div></div>
     <div class="analysis-breakdown">
       ${analysisMetric('Normal', analysis.breakdown.normal)}${analysisMetric('Skill', analysis.breakdown.skill)}${analysisMetric('Ougi', analysis.breakdown.ougi)}${analysisMetric('Echo', analysis.breakdown.echo)}${analysisMetric('Supplemental', analysis.breakdown.supplemental)}
     </div>
@@ -234,25 +273,105 @@ function renderSkillTable(analysis: CharacterCombatAnalysis): string {
 }
 
 function renderSummonsPanel(view: CombatView, mode: 'sidebar' | 'strip'): string {
-  return `<section class="summon-panel summon-panel-${mode}"><div class="section-title"><p class="eyebrow">SUMMONS</p><h3>Observed summons</h3></div>${renderSummonStrip(view)}</section>`;
+  return `<section class="summon-panel summon-panel-${mode}"><div class="section-title"><p class="eyebrow">SUMMONS</p><h3>Party summons</h3></div>${renderSummonStrip(view)}</section>`;
 }
 
 function renderSummonStrip(view: CombatView): string {
-  if (!view.summons.length) return '<p class="muted">No summon identity has been directly observed yet.</p>';
-  return `<div class="summon-strip">${view.summons.map((summon) => `<article class="summon-card">${renderImage(summon.imageUrl, summon.name)}<strong>${escapeHtml(summon.name)}</strong><span>Observed</span></article>`).join('')}</div>`;
+  if (!view.summons.length) return '<p class="muted">Party summon roster has not been observed in a verified response yet.</p>';
+  return `<div class="summon-strip">${view.summons.map((summon, index) => {
+    const label = summon.metadata?.name ?? summon.name ?? `Summon ${index + 1}`;
+    return `<article class="summon-card">${renderImage(summon.metadata?.imageUrl, label)}<strong>${escapeHtml(label)}</strong><span>${escapeHtml(summonStatus(summon))}</span></article>`;
+  }).join('')}</div>`;
 }
 
 function renderParticipantsTable(view: CombatView): string {
   if (!view.participantRows.length) {
     const count = view.raid.participants?.count;
-    return `<p class="muted">${count === undefined ? 'No participant snapshot observed yet.' : `${formatNumber(count)} participants observed; detailed rows are not available in this session.`}</p>`;
+    return `<p class="muted">${count === undefined ? 'No participant snapshot observed yet; GBF Tracker does not request the Players list.' : `${formatNumber(count)} participants observed; detailed rows were not included in an already-received response.`}</p>`;
   }
   return `<div class="participant-grid"><div class="participant-grid-row head"><span>#</span><span>Player</span><span>Rank</span><span>Honors</span><span>HP</span><span>Status</span></div>${view.participantRows.slice(0, 30).map((participant) => `<div class="participant-grid-row"><strong>${participant.placement === undefined ? '—' : `#${participant.placement}`}</strong><span>${escapeHtml(participant.name)}</span><span>${optionalNumber(participant.level)}</span><span>${optionalNumber(participant.honors)}</span><span>${participant.hpPercent === undefined ? '—' : `${participant.hpPercent.toFixed(1)}%`}</span><span>${escapeHtml(participantStatus(participant))}</span></div>`).join('')}</div>`;
 }
 
 function renderLog(view: CombatView): string {
   if (!view.raid.log.length) return '<p class="muted">No supported actions observed.</p>';
-  return `<div class="combat-timeline">${view.raid.log.slice(-80).reverse().map((entry) => `<div class="combat-timeline-row"><span>${entry.turn === undefined ? 'T—' : `T${entry.turn}`}</span><strong>${escapeHtml(entry.actorName ?? entry.actorId ?? 'Unknown actor')}</strong><span>${escapeHtml(entry.actionName ?? entry.actionKind)}</span><span>${formatNumber(entry.damage)}</span></div>`).join('')}</div>`;
+  return `<div class="combat-timeline">${view.raid.log.slice(-80).reverse().map((entry) => {
+    const actor = entry.actorId ? actorFor(view.context, entry.actorId) : undefined;
+    const metadata = entry.actorId ? characterMetadata(view.metadata, entry.actorId, entry.actorName ?? actor?.name) : undefined;
+    const label = entry.actorId
+      ? actorDisplayName(view, entry.actorId, entry.actorName, actor, metadata)
+      : entry.actorName ?? 'Unknown actor';
+    return `<div class="combat-timeline-row"><span>${entry.turn === undefined ? 'T—' : `T${entry.turn}`}</span><strong>${escapeHtml(label)}</strong><span>${escapeHtml(entry.actionName ?? entry.actionKind)}</span><span>${formatNumber(entry.damage)}</span></div>`;
+  }).join('')}</div>`;
+}
+
+function partyMembers(view: CombatView): PartyMemberView[] {
+  const slots = view.context?.actorSlots ?? [];
+  if (slots.some((actor) => actor.id || actor.name || actor.hp !== undefined)) {
+    return slots.slice(0, 6).flatMap((actor, slot) => {
+      if (!actor.id && !actor.name && actor.hp === undefined && actor.maxHp === undefined) return [];
+      const analysis = actor.id ? view.analyses.find((entry) => entry.actorId === actor.id) : undefined;
+      const metadata = actor.id ? characterMetadata(view.metadata, actor.id, analysis?.actorName ?? actor.name) : undefined;
+      const label = actor.id
+        ? actorDisplayName(view, actor.id, analysis?.actorName, actor, metadata, slot)
+        : actor.name ?? (slot === 0 ? view.context?.accountDisplayName ?? 'Main Character' : `Party member ${slot + 1}`);
+      return [{
+        slot,
+        actor,
+        actorId: actor.id,
+        analysis,
+        metadata,
+        label,
+        state: actor.id ? actorState(view.context, actor.id) : slot < 4 ? 'active' : 'inactive',
+      }];
+    });
+  }
+
+  return view.analyses.map((analysis, slot) => {
+    const actor = actorFor(view.context, analysis.actorId) ?? {};
+    const metadata = characterMetadata(view.metadata, analysis.actorId, analysis.actorName ?? actor.name);
+    return {
+      slot,
+      actor,
+      actorId: analysis.actorId,
+      analysis,
+      metadata,
+      label: actorDisplayName(view, analysis.actorId, analysis.actorName, actor, metadata, slot),
+      state: actorState(view.context, analysis.actorId),
+    };
+  });
+}
+
+function actorDisplayName(
+  view: CombatView,
+  actorId: string,
+  observedName?: string,
+  actor?: CombatActorContext,
+  metadata?: EntityMetadata,
+  slot?: number,
+): string {
+  const mainCharacter = actorId === view.context?.mainCharacterId || slot === 0 && actorId === view.context?.actorSlots[0]?.id;
+  if (mainCharacter) return view.context?.accountDisplayName ?? 'Main Character';
+  return metadata?.name ?? observedName ?? actor?.name ?? (slot === undefined ? 'Party member' : `Party member ${slot + 1}`);
+}
+
+function ownParticipant(view: CombatView): CombatParticipantDisplay | undefined {
+  const accountName = view.context?.accountDisplayName?.trim().toLowerCase();
+  if (!accountName) return undefined;
+  const matches = view.participantRows.filter((participant) => participant.name.trim().toLowerCase() === accountName);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function summonMetadata(index: EntityMetadataIndex, summon: CombatSummonContext): EntityMetadata | undefined {
+  return (summon.id ? index.summons.get(summon.id) : undefined)
+    ?? (summon.name ? findMetadataByName(index.summons, summon.name) : undefined);
+}
+
+function summonStatus(summon: CombatSummonContext): string {
+  if (summon.cooldown !== undefined) return summon.cooldown === 0 ? 'Ready' : `Cooldown ${formatNumber(summon.cooldown)}`;
+  if (summon.available === true) return 'Ready';
+  if (summon.available === false) return 'Unavailable';
+  if (summon.used) return 'Used · cooldown not observed';
+  return 'Observed in party';
 }
 
 function accordion(view: CombatView, key: string, label: string, body: string): string {
