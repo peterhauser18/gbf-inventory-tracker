@@ -1,10 +1,17 @@
 import { classifyVerifiedNormalDamage, criticalDecision } from './damage-semantics.ts';
-import type { CombatObservation, NormalizedRaidParse, ParsedCombatAction, ParsedDamageHit } from './types.ts';
+import type { CombatSummonContext, VerifiedCombatObservation } from './multiraid.ts';
+import type { NormalizedRaidParse, ParsedCombatAction, ParsedDamageHit } from './types.ts';
 
 type Obj = Record<string, unknown>;
 
-export function enrichVerifiedScenarioSemantics(body: unknown, observation: CombatObservation): void {
-  if (!obj(body) || !Array.isArray(body.scenario)) return;
+export function enrichVerifiedScenarioSemantics(body: unknown, observation: VerifiedCombatObservation): void {
+  if (!obj(body)) return;
+  enrichVerifiedSummonContext(body, observation);
+  if (!Array.isArray(body.scenario)) return;
+
+  appendVerifiedStartNormalActions(body.scenario, observation);
+  unattributeDirectBossAbilityDamage(body.scenario, observation.actions);
+
   const rawGroups = verifiedNormalGroups(body.scenario);
   const normalActions = observation.actions.filter((action) => action.kind === 'normal');
   const count = Math.min(rawGroups.length, normalActions.length);
@@ -45,6 +52,215 @@ export function preserveVerifiedNormalFacts(
   parse.stats.criticalHits = normalEntries.length > 0 && normalEntries.every((entry) => entry.critical !== undefined)
     ? normalEntries.filter((entry) => entry.critical).length
     : undefined;
+}
+
+function appendVerifiedStartNormalActions(
+  scenario: unknown[],
+  observation: VerifiedCombatObservation,
+): void {
+  const context = observation.context;
+  if (!observation.startObserved || !context || observation.actions.length > 0) return;
+
+  const actions: ParsedCombatAction[] = [];
+  let pending: ParsedCombatAction | undefined;
+  let pendingPos: number | undefined;
+
+  const flush = () => {
+    if (pending) actions.push(pending);
+    pending = undefined;
+    pendingPos = undefined;
+  };
+
+  for (const value of scenario) {
+    if (!obj(value)) continue;
+    const cmd = str(value.cmd)?.toLowerCase();
+    if (cmd !== 'attack' || str(value.from)?.toLowerCase() !== 'player') {
+      flush();
+      continue;
+    }
+
+    const pos = num(value.pos);
+    const hits = semanticDamageHits(value.damage);
+    if (!hits.length) {
+      flush();
+      continue;
+    }
+    const actor = pos === undefined ? undefined : context.actorSlots[pos];
+    const multiattack = num(value.total_attack_num);
+
+    if (pending && pendingPos === pos) {
+      pending.hits.push(...hits);
+      if (multiattack !== undefined) pending.multiattack = Math.max(pending.multiattack ?? 1, multiattack);
+      continue;
+    }
+
+    flush();
+    pending = {
+      observedAt: observation.observedAt,
+      turn: context.turn,
+      actorId: actor?.id,
+      actorName: actor?.id === context.mainCharacterId ? undefined : actor?.name,
+      kind: 'normal',
+      hits,
+      multiattack,
+    };
+    pendingPos = pos;
+  }
+
+  flush();
+  if (!actions.length) return;
+  observation.actions.push(...actions);
+  observation.actionsFieldPresent = true;
+}
+
+function unattributeDirectBossAbilityDamage(
+  scenario: unknown[],
+  actions: ParsedCombatAction[],
+): void {
+  const signatures = directBossAbilityDamageSignatures(scenario);
+  if (!signatures.size) return;
+
+  for (const action of actions) {
+    if (action.kind !== 'skill' || !action.name || !action.hits.length) continue;
+    const signature = abilityDamageSignature(action.name, action.hits);
+    const remaining = signatures.get(signature) ?? 0;
+    if (remaining <= 0) continue;
+
+    // Keep this auxiliary boss damage in the raid log/party total, but not in
+    // any character row. Sanitized live evidence showed six such 2M effects.
+    delete action.actorId;
+    delete action.actorName;
+    if (remaining === 1) signatures.delete(signature);
+    else signatures.set(signature, remaining - 1);
+  }
+}
+
+function directBossAbilityDamageSignatures(scenario: unknown[]): Map<string, number> {
+  const result = new Map<string, number>();
+
+  for (let index = 0; index < scenario.length; index += 1) {
+    const value = scenario[index];
+    if (
+      !obj(value) ||
+      str(value.cmd)?.toLowerCase() !== 'ability' ||
+      str(value.to)?.toLowerCase() !== 'boss'
+    ) continue;
+
+    const name = str(value.name);
+    if (!name) continue;
+    for (let next = index + 1; next < scenario.length; next += 1) {
+      const candidate = scenario[next];
+      if (!obj(candidate)) continue;
+      const cmd = str(candidate.cmd)?.toLowerCase();
+      if (cmd === 'ability' || cmd === 'attack' || cmd === 'special' || cmd === 'summon') break;
+      if (
+        (cmd === 'damage' || cmd === 'loop_damage') &&
+        str(candidate.to)?.toLowerCase() === 'boss'
+      ) {
+        const hits = semanticDamageHits(candidate.list);
+        if (!hits.length) break;
+        const signature = abilityDamageSignature(name, hits);
+        result.set(signature, (result.get(signature) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+
+  return result;
+}
+
+function abilityDamageSignature(name: string, hits: readonly ParsedDamageHit[]): string {
+  return `${name}\u0000${hits.reduce((sum, hit) => sum + hit.amount, 0)}`;
+}
+
+function enrichVerifiedSummonContext(body: Obj, observation: VerifiedCombatObservation): void {
+  const context = observation.context;
+  if (!context) return;
+
+  const startSummons = verifiedSummonRoster(body.summon, body.supporter);
+  if (startSummons.length > 0) context.summons = startSummons;
+
+  const status = obj(body.status) ? body.status : undefined;
+  if (status && context.summons?.length) {
+    const statusSummons = Array.isArray(status.summon) ? status.summon : undefined;
+    if (statusSummons) {
+      context.summons = context.summons.map((summon, index) => {
+        if (index >= 5) return summon;
+        const value = statusSummons[index];
+        if (!obj(value)) return summon;
+        const cooldown = num(value.recast);
+        return cooldown === undefined ? summon : { ...summon, cooldown };
+      });
+    }
+
+    const supporter = obj(status.supporter) ? status.supporter : undefined;
+    const supporterCooldown = supporter ? num(supporter.recast) : undefined;
+    if (supporterCooldown !== undefined && context.summons[5]) {
+      context.summons[5] = { ...context.summons[5], cooldown: supporterCooldown };
+    }
+  }
+
+  markObservedSummonUse(body.scenario, context.summons);
+  attributeObservedSummonDamage(observation);
+}
+
+function attributeObservedSummonDamage(observation: VerifiedCombatObservation): void {
+  const mainCharacterId = observation.context?.mainCharacterId;
+  if (!mainCharacterId) return;
+  for (const action of observation.actions) {
+    if (action.kind !== 'summon' || action.actorId) continue;
+    action.actorId = mainCharacterId;
+  }
+}
+
+function verifiedSummonRoster(value: unknown, supporterValue: unknown): CombatSummonContext[] {
+  const hasOwnRoster = Array.isArray(value) && value.length > 0;
+  const hasSupporter = obj(supporterValue);
+  if (!hasOwnRoster && !hasSupporter) return [];
+
+  const summons: CombatSummonContext[] = [];
+  if (Array.isArray(value)) {
+    for (let index = 0; index < 5; index += 1) {
+      const entry = value[index];
+      if (!obj(entry)) {
+        summons.push({});
+        continue;
+      }
+      const id = str(entry.id);
+      const name = str(entry.name);
+      const cooldown = num(entry.recast);
+      summons.push(id || name || cooldown !== undefined ? { id, name, cooldown, used: false } : {});
+    }
+  }
+  while (summons.length < 5) summons.push({});
+
+  if (hasSupporter) {
+    const id = str(supporterValue.id);
+    const name = str(supporterValue.name);
+    const cooldown = num(supporterValue.recast);
+    summons.push(id || name || cooldown !== undefined ? { id, name, cooldown, used: false } : {});
+  }
+  return summons;
+}
+
+function markObservedSummonUse(scenario: unknown, summons: CombatSummonContext[] | undefined): void {
+  if (!Array.isArray(scenario) || !summons?.length) return;
+  for (const raw of scenario) {
+    if (!obj(raw) || str(raw.cmd)?.toLowerCase() !== 'summon') continue;
+    const name = str(raw.name);
+    if (!name) continue;
+    const normalizedName = name.toLowerCase();
+    let index = summons.findIndex((summon) => summon.name?.trim().toLowerCase() === normalizedName);
+    if (
+      index < 0 &&
+      summons.length === 6 &&
+      !summons[5]?.name &&
+      summons.slice(0, 5).every((summon) => Boolean(summon.name))
+    ) {
+      index = 5;
+    }
+    if (index >= 0) summons[index] = { ...summons[index], name: summons[index]?.name ?? name, used: true };
+  }
 }
 
 function verifiedNormalGroups(scenario: unknown[]): ParsedDamageHit[][] {

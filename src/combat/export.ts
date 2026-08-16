@@ -1,4 +1,4 @@
-import type { DamageBreakdown, NormalizedRaidParse, RaidHistoryRecord } from './types.ts';
+import type { DamageBreakdown, DamageKind, NormalizedRaidParse, ParsedDamageHit, RaidHistoryRecord } from './types.ts';
 
 export interface RaidParseExport {
   format: 'gbf-tool-raid-parse';
@@ -72,7 +72,9 @@ function sanitizeRaidParse(value: NormalizedRaidParse | RaidHistoryRecord): Norm
       actionName: cleanString(entry.actionName), damage: finiteNumber(entry.damage) ?? 0,
       breakdown: sanitizeBreakdown(entry.breakdown),
       targetIds: Array.isArray(entry.targetIds) ? entry.targetIds.map(cleanString).filter((entry): entry is string => Boolean(entry)) : undefined,
+      critical: typeof entry.critical === 'boolean' ? entry.critical : undefined,
       criticalHits: finiteNumber(entry.criticalHits), multiattack: finiteNumber(entry.multiattack),
+      damageInstances: sanitizeDamageInstances(entry.damageInstances),
     })) : [],
     drops: Array.isArray(value.drops) ? value.drops.flatMap((drop) => {
       const itemId = cleanString(drop.itemId);
@@ -100,6 +102,33 @@ function sanitizeBreakdown(value: DamageBreakdown | undefined): DamageBreakdown 
   }
   return result;
 }
+
+function sanitizeDamageInstances(value: unknown): ParsedDamageHit[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result = value.flatMap((entry): ParsedDamageHit[] => {
+    if (!isObject(entry)) return [];
+    const amount = finiteNumber(entry.amount);
+    const kind = damageKind(entry.kind);
+    if (amount === undefined || !kind) return [];
+    return [{
+      amount,
+      kind,
+      targetId: cleanString(entry.targetId),
+      critical: typeof entry.critical === 'boolean' ? entry.critical : undefined,
+      attackCount: finiteNumber(entry.attackCount),
+      concurrentAttackCount: finiteNumber(entry.concurrentAttackCount),
+      isRandomAttack: typeof entry.isRandomAttack === 'boolean' ? entry.isRandomAttack : undefined,
+    }];
+  });
+  return result.length > 0 ? result : undefined;
+}
+
+function damageKind(value: unknown): DamageKind | undefined {
+  return value === 'normal' || value === 'skill' || value === 'ougi' || value === 'echo' || value === 'supplemental' || value === 'other'
+    ? value
+    : undefined;
+}
+
 function cleanString(value: unknown): string | undefined { return typeof value === 'string' && value.trim() ? value.trim() : undefined; }
 function finiteNumber(value: unknown): number | undefined { return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined; }
 function quality(value: unknown): 'known' | 'partial' | 'unknown' { return value === 'known' || value === 'partial' ? value : 'unknown'; }

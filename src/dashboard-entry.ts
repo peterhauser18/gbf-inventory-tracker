@@ -1,10 +1,13 @@
 import './dashboard/theme.css';
+import { ACCOUNT_DATABASE_VERSION } from './account/database.ts';
 import { ACCOUNT_DATABASE_STORAGE_KEY } from './account/storage.ts';
 import {
   changedAccountEvidence,
   sectionUsesAccountEvidence,
   type AccountEvidenceKey,
 } from './dashboard/live-refresh.ts';
+import { groupPlannerSteps } from './dashboard/planner-step-groups.ts';
+import './dashboard/planner-reached.css';
 import { DASHBOARD_THEME_STORAGE_KEY, parseDashboardTheme } from './dashboard/theme.ts';
 
 const RESTORE_SECTION_KEY = 'gbfit:dashboard-restore-section';
@@ -12,6 +15,8 @@ const dirtyEvidence = new Set<AccountEvidenceKey>();
 const enhancementLoads = new Map<string, Promise<void>>();
 const loadedEnhancements = new Set<string>();
 let reloadTimer: number | undefined;
+let firstAccountSnapshotPending = false;
+let openReachedEternal: string | undefined;
 
 applyStoredTheme();
 
@@ -19,6 +24,13 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
   const change = changes[ACCOUNT_DATABASE_STORAGE_KEY];
   if (!change) return;
+
+  const firstSnapshotAvailable = !hasStoredAccountSnapshot(change.oldValue) && hasStoredAccountSnapshot(change.newValue);
+  if (firstSnapshotAvailable && !activeSection()) {
+    firstAccountSnapshotPending = true;
+    if (document.visibilityState === 'visible') scheduleFirstSnapshotReload();
+    return;
+  }
 
   const changed = changedAccountEvidence(change.oldValue, change.newValue);
   if (changed.length === 0) return;
@@ -43,6 +55,11 @@ document.addEventListener('click', (event) => {
   event.preventDefault();
   event.stopImmediatePropagation();
   scheduleReload(targetSection, 0);
+}, true);
+
+document.addEventListener('click', (event) => {
+  const target = event.target as Element | null;
+  if (target?.closest('[data-detail], [data-close-detail], .nav-item[data-section]')) openReachedEternal = undefined;
 }, true);
 
 document.addEventListener('click', handleEnhancementIntent, true);
@@ -87,6 +104,7 @@ function handleEnhancementIntent(event: MouseEvent): void {
   if (nav && section === 'goals') {
     interceptUntilLoaded(event, nav, 'goals-page', async () => {
       await import('./dashboard/goals-ui.ts');
+      await import('./dashboard/farming-ui.ts');
     });
     return;
   }
@@ -178,6 +196,8 @@ function keepObservationCopyAccurate(): void {
     for (const heading of app.querySelectorAll<HTMLElement>('.system-card h3')) {
       if (heading.textContent === 'Observation control') heading.closest<HTMLElement>('.system-card')?.remove();
     }
+    polishPlannerDetail();
+    collapseReachedEternalStages();
   };
 
   update();
@@ -185,11 +205,119 @@ function keepObservationCopyAccurate(): void {
   observer.observe(app, { childList: true, subtree: true });
 }
 
+function polishPlannerDetail(): void {
+  const panel = document.querySelector<HTMLElement>('.detail-panel');
+  if (!panel || panel.dataset.plannerFactsPolished === 'true') return;
+
+  const kind = panel.querySelector<HTMLElement>('.detail-title .eyebrow')?.textContent?.trim();
+  if (kind !== 'ETERNAL' && kind !== 'EVOKER') return;
+
+  const factsSection = [...panel.querySelectorAll<HTMLElement>('.detail-section')].find(
+    (section) => section.querySelector<HTMLElement>('h4')?.textContent?.trim() === 'Observed facts',
+  );
+  if (!factsSection) return;
+
+  const factValue = (label: string): string | undefined => {
+    for (const row of factsSection.querySelectorAll<HTMLElement>('.facts > div')) {
+      if (row.querySelector<HTMLElement>('dt')?.textContent?.trim() !== label) continue;
+      const value = row.querySelector<HTMLElement>('dd')?.childNodes[0]?.textContent?.trim();
+      return value && value !== 'unknown' ? value : undefined;
+    }
+    return undefined;
+  };
+
+  const level = factValue('Level');
+  const uncap = factValue('Uncap');
+  const awakening = factValue('Awakening');
+  const compact = [
+    level ? `Lv ${level}` : undefined,
+    uncap ? `Uncap ${uncap}★` : undefined,
+    awakening ? `Awakening ${awakening}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+
+  const subtitle = panel.querySelector<HTMLElement>('.detail-title .muted');
+  if (subtitle && compact.length > 0) subtitle.textContent = compact.join(' · ');
+  factsSection.remove();
+  panel.dataset.plannerFactsPolished = 'true';
+}
+
+function collapseReachedEternalStages(): void {
+  const panel = document.querySelector<HTMLElement>('.detail-panel');
+  const planner = panel?.querySelector<HTMLElement>('.planner-section');
+  if (!panel || !planner || planner.dataset.reachedGrouped === 'true') return;
+
+  const kind = panel.querySelector<HTMLElement>('.detail-title .eyebrow')?.textContent?.trim();
+  if (kind !== 'ETERNAL') return;
+
+  const stepsContainer = planner.querySelector<HTMLElement>(':scope > .planner-steps');
+  if (!stepsContainer) return;
+
+  const stepDescriptors = [...stepsContainer.querySelectorAll<HTMLElement>(':scope > .planner-step')].map((element) => ({
+    element,
+    targetReached: element.querySelector<HTMLElement>('.step-copy > span')?.textContent?.trim() === 'reached',
+    targetDisplay: element.querySelector<HTMLElement>('.step-target')?.textContent?.trim() ?? '',
+  }));
+  const groups = groupPlannerSteps('eternal', stepDescriptors);
+  planner.dataset.reachedGrouped = 'true';
+  if (groups.reached.length === 0 || !groups.highestReached) return;
+
+  const eternalName = panel.querySelector<HTMLElement>('.detail-title h3')?.textContent?.trim() ?? 'Eternal';
+  const reached = document.createElement('details');
+  reached.className = 'planner-reached';
+  reached.open = openReachedEternal === eternalName;
+
+  const summary = document.createElement('summary');
+  summary.className = 'planner-reached-summary';
+  const label = document.createElement('strong');
+  label.textContent = `Already uncapped to ${groups.highestReached.targetDisplay}`;
+  const count = document.createElement('span');
+  count.className = 'step-count';
+  count.textContent = `${groups.reached.length} reached`;
+  const chevron = document.createElement('span');
+  chevron.className = 'chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = reached.open ? '−' : '+';
+  summary.append(label, count, chevron);
+  reached.append(summary);
+
+  const reachedSteps = document.createElement('div');
+  reachedSteps.className = 'planner-steps planner-reached-steps';
+  for (const step of groups.reached) reachedSteps.append(step.element);
+  reached.append(reachedSteps);
+  stepsContainer.insertAdjacentElement('afterend', reached);
+  stepsContainer.hidden = groups.visible.length === 0;
+
+  reached.addEventListener('toggle', () => {
+    chevron.textContent = reached.open ? '−' : '+';
+    if (reached.open) openReachedEternal = eternalName;
+    else if (openReachedEternal === eternalName) openReachedEternal = undefined;
+  });
+}
+
 function flushDirtyEvidence(): void {
-  if (dirtyEvidence.size === 0 || document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') return;
+  if (firstAccountSnapshotPending && !activeSection()) {
+    scheduleFirstSnapshotReload();
+    return;
+  }
+  if (dirtyEvidence.size === 0) return;
   const section = activeSection();
   if (!section || !sectionUsesAccountEvidence(section, [...dirtyEvidence])) return;
   scheduleReload(section, 0);
+}
+
+function scheduleFirstSnapshotReload(): void {
+  firstAccountSnapshotPending = false;
+  scheduleReload(undefined, 0);
+}
+
+function hasStoredAccountSnapshot(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as { version?: unknown; snapshot?: unknown };
+  return record.version === ACCOUNT_DATABASE_VERSION
+    && Boolean(record.snapshot)
+    && typeof record.snapshot === 'object'
+    && !Array.isArray(record.snapshot);
 }
 
 function restoreSectionWhenReady(section: string): void {
