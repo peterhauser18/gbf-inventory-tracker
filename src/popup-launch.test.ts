@@ -30,7 +30,7 @@ test('diagnostic capture storage is not imported during popup startup', () => {
   assert.match(popup, /await import\('\.\/capture\/storage\.ts'\)/);
 });
 
-test('clean installs expose the GBF Tracker user-facing name without renaming internal storage identifiers', () => {
+test('clean installs expose the GBF Tracker user-facing name without renaming the internal message namespace', () => {
   assert.equal(manifest.name, 'GBF Tracker');
   assert.equal(manifest.action?.default_title, 'GBF Tracker');
   assert.match(popupHtml, /<title>GBF Tracker<\/title>/);
