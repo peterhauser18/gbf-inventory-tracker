@@ -132,7 +132,7 @@ export class WikiImageLoader {
 
     let response: Response;
     try {
-      response = await this.fetchImpl(key, {
+      response = await this.fetchImpl.call(globalThis, key, {
         credentials: 'omit',
         referrerPolicy: 'no-referrer',
       });
