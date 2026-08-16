@@ -56,6 +56,7 @@ test('deferred Wiki image URLs use a transparent sentinel and carry only an appr
   const deferred = deferWikiImageUrl('https://gbf.wiki/images/a.png?x=1#fragment');
   assert.ok(deferred?.startsWith('data:image/gif;base64,'));
   const [dataUrl] = deferred.split('#gbfit-wiki=');
+  assert.ok(dataUrl);
   const bytes = Buffer.from(dataUrl.slice('data:image/gif;base64,'.length), 'base64');
   const graphicsControlExtension = bytes.indexOf(Buffer.from([0x21, 0xf9, 0x04]));
   assert.ok(graphicsControlExtension >= 0);
