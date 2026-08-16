@@ -12,6 +12,11 @@ import {
   saveCapturedResponse,
   startCaptureScan,
 } from './capture/storage.ts';
+import {
+  combatTargetAfterResult,
+  isTerminalResult,
+  shouldRetargetObservation,
+} from './capture/target-policy.ts';
 import { clearCombatParseContext, clearCombatStorage, ingestCapturedCombatRecord } from './combat/storage.ts';
 import type {
   CaptureMessage,
@@ -33,13 +38,16 @@ const CAPTURE_NETWORK_METHODS = new Set([
   'Network.loadingFailed',
 ]);
 const pendingResponses = new CaptureEventBuffer();
+const expectedDetachTabIds = new Set<number>();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
+let targetQueue: Promise<void> = Promise.resolve();
 
 type RuntimeState = {
   active: boolean;
   tabId?: number;
   scanId?: string;
+  combatTabId?: number;
   error?: string;
 };
 
@@ -80,7 +88,28 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 
 chrome.debugger.onDetach.addListener((source, reason) => {
   if (source.tabId === undefined) return;
+  if (expectedDetachTabIds.delete(source.tabId)) return;
   void handleUnexpectedDetach(source.tabId, reason);
+});
+
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  void queueObservationRetarget(tabId);
+});
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  void chrome.tabs.query({ active: true, windowId })
+    .then(([tab]) => tab?.id === undefined ? undefined : queueObservationRetarget(tab.id))
+    .catch(() => {});
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status !== 'complete') return;
+  void releaseTargetIfNoLongerGbf(tabId);
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void releaseUnavailableTarget(tabId, 'observed GBF tab closed');
 });
 
 async function handleMessage(message: CaptureMessage): Promise<CaptureStatusResponse> {
@@ -134,7 +163,10 @@ async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
 
 async function startObservation(explicitTabId?: number): Promise<CaptureStatusResponse> {
   const existing = await getRuntimeState();
-  if (existing.active) return await getStatus();
+  if (existing.active) {
+    if (explicitTabId !== undefined) await queueObservationRetarget(explicitTabId);
+    return await getStatus();
+  }
 
   const tab = await resolveObservationTab(explicitTabId);
   const target = { tabId: tab.id as number };
@@ -147,10 +179,7 @@ async function startObservation(explicitTabId?: number): Promise<CaptureStatusRe
     await startCaptureScan(scanId);
     scanStarted = true;
     await setRuntimeState({ active: true, tabId: target.tabId, scanId });
-    await chrome.debugger.sendCommand(target, 'Network.enable', {
-      maxTotalBufferSize: NETWORK_MAX_TOTAL_BUFFER_SIZE,
-      maxResourceBufferSize: NETWORK_MAX_RESOURCE_BUFFER_SIZE,
-    });
+    await enableNetworkObservation(target.tabId);
   } catch (error) {
     if (scanStarted) await finishCaptureScan(scanId);
     await setRuntimeState({ active: false, scanId: scanStarted ? scanId : undefined });
@@ -189,18 +218,161 @@ async function resolveObservationTab(explicitTabId?: number): Promise<chrome.tab
 
 async function stopObservation(): Promise<CaptureStatusResponse> {
   const state = await getRuntimeState();
-  if (!state.active || state.tabId === undefined || !state.scanId) return await getStatus();
+  if (!state.active || !state.scanId) return await getStatus();
 
   await setRuntimeState({ active: false, scanId: state.scanId });
   pendingResponses.clear();
   await finishCaptureScan(state.scanId);
   await clearCombatParseContext();
-  try {
-    await chrome.debugger.detach({ tabId: state.tabId });
-  } catch {
-    // Already detached or tab closed; the scan has still been finalized locally.
+  if (state.tabId !== undefined) {
+    try {
+      await chrome.debugger.detach({ tabId: state.tabId });
+    } catch {
+      // Already detached or tab closed; the scan has still been finalized locally.
+    }
   }
   return await getStatus();
+}
+
+function queueObservationRetarget(candidateTabId: number): Promise<void> {
+  targetQueue = targetQueue
+    .catch(() => {})
+    .then(() => retargetObservation(candidateTabId));
+  return targetQueue.catch(() => {});
+}
+
+async function retargetObservation(candidateTabId: number): Promise<void> {
+  let state = await getRuntimeState();
+  if (!state.scanId || !shouldRetargetObservation(state, candidateTabId)) return;
+  if (!await isVerifiedGbfTab(candidateTabId)) return;
+
+  state = await getRuntimeState();
+  if (!state.scanId || !shouldRetargetObservation(state, candidateTabId)) return;
+  await switchObservationTarget(state, candidateTabId);
+}
+
+async function switchObservationTarget(state: RuntimeState, candidateTabId: number): Promise<void> {
+  if (!state.scanId) return;
+  const previousTabId = state.tabId;
+  const preserveCombatLock = state.combatTabId === candidateTabId;
+
+  pendingResponses.clear();
+  if (!preserveCombatLock) await clearCombatParseContext();
+  await setRuntimeState({
+    active: true,
+    scanId: state.scanId,
+    combatTabId: preserveCombatLock ? candidateTabId : undefined,
+  });
+
+  if (previousTabId !== undefined) {
+    expectedDetachTabIds.add(previousTabId);
+    try {
+      await chrome.debugger.detach({ tabId: previousTabId });
+    } catch (error) {
+      expectedDetachTabIds.delete(previousTabId);
+      await setRuntimeState({
+        active: true,
+        tabId: previousTabId,
+        scanId: state.scanId,
+        combatTabId: state.combatTabId,
+        error: `Could not switch observation target: ${error instanceof Error ? error.message : String(error)}`,
+      });
+      return;
+    }
+  }
+
+  if (!await isVerifiedGbfTab(candidateTabId)) {
+    await setRuntimeState({
+      active: true,
+      scanId: state.scanId,
+      error: 'Observation is waiting for an active verified GBF tab.',
+    });
+    return;
+  }
+
+  try {
+    await chrome.debugger.attach({ tabId: candidateTabId }, DEBUGGER_PROTOCOL_VERSION);
+    await enableNetworkObservation(candidateTabId);
+    await setRuntimeState({
+      active: true,
+      tabId: candidateTabId,
+      scanId: state.scanId,
+      combatTabId: preserveCombatLock ? candidateTabId : undefined,
+    });
+  } catch (error) {
+    await setRuntimeState({
+      active: true,
+      scanId: state.scanId,
+      error: `Could not switch observation target: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+}
+
+async function enableNetworkObservation(tabId: number): Promise<void> {
+  await chrome.debugger.sendCommand({ tabId }, 'Network.enable', {
+    maxTotalBufferSize: NETWORK_MAX_TOTAL_BUFFER_SIZE,
+    maxResourceBufferSize: NETWORK_MAX_RESOURCE_BUFFER_SIZE,
+  });
+}
+
+async function isVerifiedGbfTab(tabId: number): Promise<boolean> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (isGbfPageUrl(tab.url)) return true;
+  } catch {
+    return false;
+  }
+
+  try {
+    const targets = await chrome.debugger.getTargets();
+    const target = targets.find((candidate) => candidate.tabId === tabId);
+    return isGbfPageUrl(target?.url);
+  } catch {
+    return false;
+  }
+}
+
+async function retargetToFocusedGbfTab(): Promise<void> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tab?.id !== undefined) await queueObservationRetarget(tab.id);
+  } catch {
+    // Observation stays logically active until another verified GBF tab becomes active.
+  }
+}
+
+async function releaseTargetIfNoLongerGbf(tabId: number): Promise<void> {
+  const state = await getRuntimeState();
+  if (!state.active || state.tabId !== tabId || !state.scanId) return;
+  if (await isVerifiedGbfTab(tabId)) return;
+  await releaseUnavailableTarget(tabId, 'observed tab navigated away from GBF');
+}
+
+async function releaseUnavailableTarget(tabId: number, reason: string): Promise<void> {
+  const state = await getRuntimeState();
+  if (
+    !state.active ||
+    !state.scanId ||
+    (state.tabId !== tabId && state.combatTabId !== tabId)
+  ) return;
+
+  pendingResponses.clear();
+  await clearCombatParseContext();
+  await setRuntimeState({
+    active: true,
+    scanId: state.scanId,
+    error: `Observation target released: ${reason}.`,
+  });
+
+  if (state.tabId === tabId) {
+    expectedDetachTabIds.add(tabId);
+    try {
+      await chrome.debugger.detach({ tabId });
+    } catch {
+      expectedDetachTabIds.delete(tabId);
+    }
+  }
+  void retargetToFocusedGbfTab();
 }
 
 async function handleDebuggerEvent(
@@ -258,7 +430,7 @@ async function captureObservedResponse(tabId: number, scanId: string, meta: Obse
             { requestId: id },
           )) as DebuggerResponseBody,
       },
-      saveObservedResponse,
+      async (record) => saveObservedResponse(tabId, record),
     );
     await clearObservationReadWarning(tabId, scanId);
   } catch (error) {
@@ -266,16 +438,30 @@ async function captureObservedResponse(tabId: number, scanId: string, meta: Obse
   }
 }
 
-async function saveObservedResponse(record: CapturedResponseRecord): Promise<void> {
+async function saveObservedResponse(tabId: number, record: CapturedResponseRecord): Promise<void> {
   const route = classifyObservedResponseUrl(record.meta.url);
   if (route === 'combat') {
-    await ingestCapturedCombatRecord(record);
+    const parse = await ingestCapturedCombatRecord(record);
+    if (parse) await updateCombatTarget(tabId, parse.result);
     return;
   }
   if (route !== 'account') return;
 
   await queueAccountIngest(record);
   await saveCapturedResponse(record);
+}
+
+async function updateCombatTarget(tabId: number, result: 'active' | 'victory' | 'failure' | 'left' | 'unknown'): Promise<void> {
+  const current = await getRuntimeState();
+  if (!current.active || current.tabId !== tabId || !current.scanId) return;
+
+  const nextCombatTabId = combatTargetAfterResult(current.combatTabId, tabId, result);
+  if (nextCombatTabId === current.combatTabId) return;
+  await setRuntimeState({ ...current, combatTabId: nextCombatTabId });
+
+  if (nextCombatTabId === undefined && isTerminalResult(result)) {
+    void retargetToFocusedGbfTab();
+  }
 }
 
 async function recordObservationReadWarning(
@@ -292,9 +478,7 @@ async function recordObservationReadWarning(
     ? 'Edge did not expose the completed response body after three debugger reads.'
     : 'Local processing of the observed response failed.';
   await setRuntimeState({
-    active: true,
-    tabId,
-    scanId,
+    ...current,
     error: `Allowlisted response skipped (${path}): ${reason}`,
   });
 }
@@ -307,7 +491,9 @@ async function clearObservationReadWarning(tabId: number, scanId: string): Promi
     current.scanId !== scanId ||
     !current.error?.startsWith('Allowlisted response skipped (')
   ) return;
-  await setRuntimeState({ active: true, tabId, scanId });
+  const next = { ...current };
+  delete next.error;
+  await setRuntimeState(next);
 }
 
 function safeObservedPath(url: string): string {
@@ -323,13 +509,23 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   if (!state.active || state.tabId !== tabId || !state.scanId) return;
 
   pendingResponses.clear();
-  await finishCaptureScan(state.scanId);
   await clearCombatParseContext();
+  if (reason === 'canceled_by_user') {
+    await finishCaptureScan(state.scanId);
+    await setRuntimeState({
+      active: false,
+      scanId: state.scanId,
+      error: `Observation stopped: ${reason}`,
+    });
+    return;
+  }
+
   await setRuntimeState({
-    active: false,
+    active: true,
     scanId: state.scanId,
-    error: `Observation stopped: ${reason}`,
+    error: `Observation target detached: ${reason}.`,
   });
+  void retargetToFocusedGbfTab();
 }
 
 function normalizeResourceType(type: string | undefined): CaptureResourceType {
@@ -349,7 +545,9 @@ async function getStatus(): Promise<CaptureStatusResponse> {
     captureReady: true,
     active: state.active,
     message: state.active
-      ? 'Debugger observation is active. Only allowlisted GBF responses are read.'
+      ? state.tabId !== undefined
+        ? 'Debugger observation is active. Only allowlisted GBF responses are read.'
+        : 'Observation is active and waiting for an active verified GBF tab.'
       : scan
         ? 'Observation is stopped. Start it again to update account or combat data.'
         : 'Account tracking is inactive. Start observation to collect allowlisted responses.',
