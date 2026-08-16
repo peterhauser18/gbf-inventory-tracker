@@ -225,7 +225,7 @@ function polishPlannerDetail(): void {
     for (const row of factsSection.querySelectorAll<HTMLElement>('.facts > div')) {
       if (row.querySelector<HTMLElement>('dt')?.textContent?.trim() !== label) continue;
       const value = row.querySelector<HTMLElement>('dd')?.childNodes[0]?.textContent?.trim();
-      return value && value !== 'unknown' ? value : undefined;
+      return value && value !== 'unknown' && value !== 'unavailable' ? value : undefined;
     }
     return undefined;
   };
