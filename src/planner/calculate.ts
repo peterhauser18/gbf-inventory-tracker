@@ -1,6 +1,13 @@
 import type { AccountSnapshot, ConsumableCount, TicketCount, TreasureCount } from '../types/account.ts';
 import type { GoalCalculation, MaterialDeficit, MaterialRequirement, UpgradeGoal } from './types.ts';
 
+interface TreasureLookup {
+  byId: Map<string, TreasureCount>;
+  uniqueByName: Map<string, TreasureCount | null>;
+}
+
+const TREASURE_LOOKUP_CACHE = new WeakMap<AccountSnapshot, TreasureLookup>();
+
 export function calculateGoal(goal: UpgradeGoal, snapshot: AccountSnapshot): GoalCalculation {
   const materials = goal.requirements.map((requirement) => calculateRequirement(requirement, snapshot));
   const knownCount = materials.filter((material) => material.state === 'known').length;
@@ -49,9 +56,10 @@ function findInventoryItem(
 ): TreasureCount | ConsumableCount | TicketCount | undefined {
   switch (requirement.source) {
     case 'treasures': {
-      if (requirement.itemId) return snapshot.treasures.find((item) => item.itemId === requirement.itemId);
-      const matches = snapshot.treasures.filter((item) => item.name === requirement.name);
-      return matches.length === 1 ? matches[0] : undefined;
+      const lookup = treasureLookup(snapshot);
+      if (requirement.itemId) return lookup.byId.get(requirement.itemId);
+      const match = lookup.uniqueByName.get(requirement.name);
+      return match ?? undefined;
     }
     case 'consumables':
       return snapshot.consumables.find((item) =>
@@ -68,6 +76,24 @@ function findInventoryItem(
     case 'untracked':
       return undefined;
   }
+}
+
+function treasureLookup(snapshot: AccountSnapshot): TreasureLookup {
+  const cached = TREASURE_LOOKUP_CACHE.get(snapshot);
+  if (cached) return cached;
+
+  const byId = new Map<string, TreasureCount>();
+  const uniqueByName = new Map<string, TreasureCount | null>();
+  for (const item of snapshot.treasures) {
+    byId.set(item.itemId, item);
+    if (!item.name) continue;
+    if (!uniqueByName.has(item.name)) uniqueByName.set(item.name, item);
+    else uniqueByName.set(item.name, null);
+  }
+
+  const lookup = { byId, uniqueByName };
+  TREASURE_LOOKUP_CACHE.set(snapshot, lookup);
+  return lookup;
 }
 
 function requirementFamilyQuality(requirement: MaterialRequirement, snapshot: AccountSnapshot): 'known' | 'partial' | 'unknown' {
