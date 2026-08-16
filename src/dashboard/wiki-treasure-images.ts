@@ -9,18 +9,8 @@ type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Pick<Respo
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 type JsonObject = Record<string, unknown>;
 
-interface CachedTreasureImagePayload {
-  version: 4;
-  cachedAt: number;
-  entries: Record<string, string>;
-}
-
-export interface WikiTreasureImageLoadOptions {
-  fetchImpl?: FetchLike;
-  storage?: StorageLike;
-  now?: number;
-}
-
+interface CachedTreasureImagePayload { version: 4; cachedAt: number; entries: Record<string, string>; }
+export interface WikiTreasureImageLoadOptions { fetchImpl?: FetchLike; storage?: StorageLike; now?: number; }
 let defaultPromise: Promise<ReadonlyMap<string, string>> | null = null;
 
 export async function loadWikiTreasureImageIndex(options: WikiTreasureImageLoadOptions = {}): Promise<ReadonlyMap<string, string>> {
@@ -52,9 +42,7 @@ export function buildWikiTreasureImageIndexUrl(continueToken?: string): string {
   return url.toString();
 }
 
-export function normalizeWikiTreasureTitle(value: string): string {
-  return value.trim().replace(/_/g, ' ').replace(/\s+/g, ' ').toLowerCase();
-}
+export function normalizeWikiTreasureTitle(value: string): string { return value.trim().replace(/_/g, ' ').replace(/\s+/g, ' ').toLowerCase(); }
 
 async function loadCached(storage: StorageLike | undefined, fetchImpl: FetchLike, now: number): Promise<ReadonlyMap<string, string>> {
   const cached = readCache(storage);
@@ -90,9 +78,7 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
 function addPageTreasureImages(result: Map<string, string>, page: JsonObject): void {
   const pageTitle = typeof page.title === 'string' ? page.title : undefined;
   if (!pageTitle) return;
-  const thumbnail = isObject(page.thumbnail) && typeof page.thumbnail.source === 'string'
-    ? resolveSafeExternalImageUrl(page.thumbnail.source) ?? undefined
-    : undefined;
+  const thumbnail = isObject(page.thumbnail) && typeof page.thumbnail.source === 'string' ? resolveSafeExternalImageUrl(page.thumbnail.source) ?? undefined : undefined;
   const directFallback = thumbnail ? undefined : wikiTreasurePageImage(page);
   const sourceEntries = wikiTreasureSourceEntries(pageTitle, wikiPageSource(page));
   const direct = thumbnail ?? directFallback ?? sourceEntries.get(normalizeWikiTreasureTitle(pageTitle));
@@ -130,9 +116,7 @@ function wikiTreasureSourceEntries(pageTitle: string, source: string | undefined
   for (const block of wikiTemplateBlocks(source)) {
     const names = templateFieldValues(block, /^(?:name|item|title)$/i).map(cleanWikiText).filter((value): value is string => Boolean(value));
     if (names.length !== 1) continue;
-    const imageValues = templateFieldValues(block, /^(?:image|icon|img)$/i)
-      .map((value) => value.replace(/^File:/i, '').trim())
-      .filter((value) => /\.(?:jpe?g|png|webp)$/i.test(value));
+    const imageValues = templateFieldValues(block, /^(?:image|icon|img)$/i).map((value) => value.replace(/^File:/i, '').trim()).filter((value) => /\.(?:jpe?g|png|webp)$/i.test(value));
     const ids = templateFieldValues(block, /^(?:id|itemid|item_id|item id)$/i).map((value) => value.trim()).filter((value) => /^\d+$/.test(value));
     let imageUrl: string | undefined;
     if (imageValues.length === 1) imageUrl = safeWikiFileRedirect(imageValues[0]!);
@@ -164,7 +148,6 @@ function wikiTemplateBlocks(source: string): string[] {
 }
 
 function templateFieldValues(block: string, keyPattern: RegExp): string[] { return sourceFieldValues(block, keyPattern); }
-
 function sourceFieldValues(source: string, keyPattern: RegExp): string[] {
   const values: string[] = [];
   const pattern = /\|\s*([^=|{}\n]+?)\s*=\s*([^|{}\n]+)/g;
@@ -176,19 +159,12 @@ function sourceFieldValues(source: string, keyPattern: RegExp): string[] {
   }
   return values;
 }
-
-function sourceImageValues(source: string): string[] {
-  return sourceFieldValues(source, /^(?:image|icon|img)$/i)
-    .map((value) => value.replace(/^File:/i, '').trim())
-    .filter((value) => /\.(?:jpe?g|png|webp)$/i.test(value));
-}
-
+function sourceImageValues(source: string): string[] { return sourceFieldValues(source, /^(?:image|icon|img)$/i).map((value) => value.replace(/^File:/i, '').trim()).filter((value) => /\.(?:jpe?g|png|webp)$/i.test(value)); }
 function cleanWikiText(value: string): string | undefined {
   const link = value.match(/^\[\[(?:[^|\]]+\|)?([^\]]+)\]\]$/);
   const cleaned = (link?.[1] ?? value).replace(/''+/g, '').replace(/<[^>]*>/g, '').trim();
   return cleaned || undefined;
 }
-
 function wikiPageSource(page: JsonObject): string | undefined {
   if (!Array.isArray(page.revisions)) return undefined;
   for (const candidate of page.revisions) {
@@ -201,28 +177,20 @@ function wikiPageSource(page: JsonObject): string | undefined {
   }
   return undefined;
 }
-
 function safeWikiFileRedirect(filename: string): string | undefined {
   if (!/\.(?:jpe?g|png|webp)$/i.test(filename)) return undefined;
   return resolveSafeExternalImageUrl(`https://gbf.wiki/Special:Redirect/file/${encodeURIComponent(filename)}`) ?? undefined;
 }
-
 function technicalTreasureImageUrl(itemId: string): string | undefined { return safeWikiFileRedirect(`Item_article_s_${itemId}.jpg`); }
-
 function wikiTreasureNamedImageMatches(pageTitle: string, filename: string): boolean {
   const stem = filename.replace(/\.(?:jpe?g|png|webp)$/i, '');
   return normalizeWikiTreasureTitle(stem) === normalizeWikiTreasureTitle(pageTitle);
 }
-
 function wikiTreasureItemId(imageUrl: string): string | undefined {
   try { return wikiTreasureItemIdFromFilename(decodeURIComponent(new URL(imageUrl).pathname)); }
   catch { return undefined; }
 }
-
-function wikiTreasureItemIdFromFilename(value: string): string | undefined {
-  return value.match(/Item_article_s_(\d+)\.(?:jpe?g|png|webp)(?:$|[/?#])/i)?.[1];
-}
-
+function wikiTreasureItemIdFromFilename(value: string): string | undefined { return value.match(/Item_article_s_(\d+)\.(?:jpe?g|png|webp)(?:$|[/?#])/i)?.[1]; }
 function readCache(storage: StorageLike | undefined): { cachedAt: number; index: Map<string, string> } | undefined {
   if (!storage) return undefined;
   try {
@@ -239,7 +207,6 @@ function readCache(storage: StorageLike | undefined): { cachedAt: number; index:
     return { cachedAt: value.cachedAt, index };
   } catch { return undefined; }
 }
-
 function writeCache(storage: StorageLike | undefined, index: ReadonlyMap<string, string>, cachedAt: number): void {
   if (!storage) return;
   try {
@@ -247,14 +214,10 @@ function writeCache(storage: StorageLike | undefined, index: ReadonlyMap<string,
     for (const [key, url] of index) entries[key] = url;
     const payload: CachedTreasureImagePayload = { version: 4, cachedAt, entries };
     storage.setItem(CACHE_KEY, JSON.stringify(payload));
-  } catch {
-    // Public metadata caching is optional.
-  }
+  } catch {}
 }
-
 function safeLocalStorage(): StorageLike | undefined {
   try { return typeof localStorage === 'undefined' ? undefined : localStorage; }
   catch { return undefined; }
 }
-
 function isObject(value: unknown): value is JsonObject { return Boolean(value) && typeof value === 'object' && !Array.isArray(value); }
