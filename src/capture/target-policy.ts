@@ -11,7 +11,7 @@ export function shouldRetargetObservation(
   candidateTabId: number,
 ): boolean {
   if (!state.active || state.tabId === candidateTabId) return false;
-  if (state.combatTabId !== undefined) return false;
+  if (state.combatTabId !== undefined && state.combatTabId !== candidateTabId) return false;
   return true;
 }
 
