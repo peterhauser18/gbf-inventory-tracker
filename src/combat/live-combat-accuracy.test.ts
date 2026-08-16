@@ -54,7 +54,14 @@ function startBody(instanceId = 'instance-a') {
       { id: '2040004000', name: 'Synthetic Sub Summon C', recast: '0', start_recast: '0' },
       { id: '2040005000', name: 'Synthetic Sub Summon D', recast: '0', start_recast: '0' },
     ],
-    supporter: { recast: '4', start_recast: '4', available_skill: true },
+    supporter: {
+      id: '2040094000',
+      name: 'Synthetic Friend Summon',
+      recast: '4',
+      start_recast: '4',
+      friend: true,
+      available_skill: true,
+    },
     summon_enable: 1,
     is_all_unavailable: false,
   };
@@ -73,7 +80,7 @@ test('verified start makes six party slots, account name and six summon slots av
     { id: '2040003000', name: 'Synthetic Sub Summon B', cooldown: 0, used: false },
     { id: '2040004000', name: 'Synthetic Sub Summon C', cooldown: 0, used: false },
     { id: '2040005000', name: 'Synthetic Sub Summon D', cooldown: 0, used: false },
-    { cooldown: 4, used: false },
+    { id: '2040094000', name: 'Synthetic Friend Summon', cooldown: 4, used: false },
   ]);
 });
 
@@ -116,6 +123,7 @@ test('verified turn context attributes skills, summons and attacks and refreshes
   assert.equal(summon.context.summons?.[0]?.used, true);
   assert.equal(summon.context.summons?.[0]?.available, undefined);
   assert.equal(summon.context.summons?.[1]?.cooldown, 2);
+  assert.equal(summon.context.summons?.[5]?.name, 'Synthetic Friend Summon');
   assert.equal(summon.context.summons?.[5]?.cooldown, 3);
   raid = mergeVerifiedMultiraidObservation(raid, summon);
   context = summon.context;
@@ -144,7 +152,7 @@ test('verified turn context attributes skills, summons and attacks and refreshes
   });
 });
 
-test('an unmatched observed summon name is attributed to the sixth supporter slot only when five own names are known', () => {
+test('known supporter summon name is matched directly when it is used', () => {
   const start = parse(record(START, startBody(), 20));
   assert.ok(start?.context);
   const supporterUse = parse(record(SUMMON, {
@@ -160,6 +168,7 @@ test('an unmatched observed summon name is attributed to the sixth supporter slo
   }, 21), start.context);
   assert.ok(supporterUse?.context);
   assert.equal(supporterUse.context.summons?.length, 6);
+  assert.equal(supporterUse.context.summons?.[5]?.id, '2040094000');
   assert.equal(supporterUse.context.summons?.[5]?.name, 'Synthetic Friend Summon');
   assert.equal(supporterUse.context.summons?.[5]?.used, true);
   assert.equal(supporterUse.context.summons?.[5]?.cooldown, 8);
@@ -198,6 +207,8 @@ test('live Combat UI renders context-first party, account-name MC, one summon su
 
   assert.match(semantics, /verifiedSummonRoster\(body\.summon, body\.supporter\)/);
   assert.match(semantics, /value\.slice\(0, 5\)/);
+  assert.match(semantics, /str\(supporterValue\.name\)/);
+  assert.match(semantics, /str\(supporterValue\.id\)/);
   assert.match(semantics, /obj\(status\.supporter\)/);
   assert.match(semantics, /supporterCooldown/);
   assert.match(semantics, /summons\.length === 6/);
