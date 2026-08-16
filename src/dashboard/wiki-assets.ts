@@ -18,6 +18,11 @@ type ThumbnailCachePayload = {
   entries: Record<string, ThumbnailEntry>;
 };
 
+type ThumbnailBatchResult = {
+  ok: boolean;
+  thumbnails: Map<string, string | undefined>;
+};
+
 export interface WikiThumbnailLoadOptions {
   fetchImpl?: typeof fetch;
   storage?: StorageLike;
@@ -59,13 +64,14 @@ export async function loadWikiMaterialThumbnails(
 
   for (let offset = 0; offset < toFetch.length; offset += MAX_TITLES_PER_REQUEST) {
     const batch = toFetch.slice(offset, offset + MAX_TITLES_PER_REQUEST);
-    const batchPromise = fetchThumbnailBatch(batch.map((entry) => entry.title), fetchImpl)
-      .catch(() => new Map<string, string | undefined>());
+    const batchPromise: Promise<ThumbnailBatchResult> = fetchThumbnailBatch(batch.map((entry) => entry.title), fetchImpl)
+      .then((thumbnails) => ({ ok: true, thumbnails }))
+      .catch(() => ({ ok: false, thumbnails: new Map<string, string | undefined>() }));
 
     for (const entry of batch) {
-      const promise = batchPromise.then((resolved) => {
-        const url = resolved.get(entry.key);
-        writeThumbnailCacheEntry(storage, entry.key, { cachedAt: now, url: url ?? null });
+      const promise = batchPromise.then(({ ok, thumbnails }) => {
+        const url = thumbnails.get(entry.key);
+        if (ok) writeThumbnailCacheEntry(storage, entry.key, { cachedAt: now, url: url ?? null });
         return url;
       }).finally(() => {
         inFlightByTitle.delete(entry.key);
