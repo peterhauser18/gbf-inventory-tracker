@@ -21,6 +21,13 @@ test('popup keeps Dashboard as the normal action and developer controls collapse
   assert.match(popup, /launchDashboardWithObservation/);
 });
 
+test('popup uses the explicitly selected GBF tab for Dashboard and Developer observation start', () => {
+  assert.match(popup, /chrome\.tabs\.query\(\{ active: true, currentWindow: true \}\)/);
+  assert.match(popup, /isGbfPageUrl\(tab\.url\)/);
+  const explicitStarts = popup.match(/sendMessage\(\{ type: 'gbfit:start-observation', tabId/g) ?? [];
+  assert.equal(explicitStarts.length, 2);
+});
+
 test('popup launch flow adds no GBF request or page instrumentation primitive', () => {
   assert.doesNotMatch(popup, /\bfetch\s*\(/);
   assert.doesNotMatch(popup, /XMLHttpRequest/);
