@@ -21,24 +21,20 @@ if (app) {
 
 function syncToggle(): void {
   if (!app) return;
-  const sidebar = app.querySelector<HTMLElement>('.sidebar');
-  if (!sidebar) return;
-
-  let button = sidebar.querySelector<HTMLButtonElement>('[data-theme-toggle]');
-  if (!button) {
-    button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'theme-toggle';
-    button.dataset.themeToggle = 'true';
-    button.addEventListener('click', toggleTheme);
-    const note = sidebar.querySelector('.sidebar-note');
-    sidebar.insertBefore(button, note);
-  }
-
+  const buttons = app.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]');
   const label = dashboardThemeButtonLabel(theme);
-  if (button.textContent !== label) button.textContent = label;
-  button.setAttribute('aria-label', label);
-  button.setAttribute('aria-pressed', String(theme === 'dark'));
+  buttons.forEach((button) => {
+    if (button.dataset.themeToggleBound !== 'true') {
+      button.dataset.themeToggleBound = 'true';
+      button.addEventListener('click', toggleTheme);
+    }
+    if (button.textContent !== label) button.textContent = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(theme === 'dark'));
+  });
+  app.querySelectorAll<HTMLElement>('[data-theme-preference]').forEach((element) => {
+    if (element.textContent !== theme) element.textContent = theme;
+  });
 }
 
 function toggleTheme(): void {
@@ -57,7 +53,7 @@ function readStoredTheme(): DashboardTheme {
   try {
     return parseDashboardTheme(localStorage.getItem(DASHBOARD_THEME_STORAGE_KEY));
   } catch {
-    return 'light';
+    return 'dark';
   }
 }
 
