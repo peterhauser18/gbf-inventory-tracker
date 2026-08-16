@@ -119,11 +119,15 @@ export function buildCharacterAnalysis(
   };
 }
 
-export function summarizeTurns(raid: NormalizedRaidParse): TurnSummary {
+export function summarizeTurns(raid: NormalizedRaidParse, currentTurnEvidence?: number): TurnSummary {
   const logTurns = raid.log
     .map((entry) => entry.turn)
     .filter((turn): turn is number => Number.isInteger(turn) && (turn ?? 0) >= 0);
-  const candidates = raid.lastObservedTurn === undefined ? logTurns : [...logTurns, raid.lastObservedTurn];
+  const candidates = [...logTurns];
+  if (raid.lastObservedTurn !== undefined) candidates.push(raid.lastObservedTurn);
+  if (currentTurnEvidence !== undefined && Number.isInteger(currentTurnEvidence) && currentTurnEvidence >= 0) {
+    candidates.push(currentTurnEvidence);
+  }
   if (!candidates.length) return {};
   const currentTurn = Math.max(...candidates);
   const currentEntries = raid.log.filter((entry) => entry.turn === currentTurn);
