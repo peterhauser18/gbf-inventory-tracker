@@ -328,16 +328,8 @@ function syncGoalInlineFarming(goals: readonly PinnedGoalSummary[]): void {
 
 function renderGoalMaterialFarming(entry: FarmingFocusEntry): string {
   const title = entry.material.wikiTitle?.trim();
-  if (!title) {
-    return '<div class="goal-farming-state">No modeled Wiki title is available for this material.</div>';
-  }
   const wiki = entry.wiki;
-  if (!wiki) {
-    return '<div class="goal-farming-state">Loading Wiki farming sources…</div>';
-  }
-  if (wiki.state === 'unavailable') {
-    return `<div class="goal-farming-state"><strong>Wiki farming source unavailable</strong><span>${escapeHtml(wiki.limitation ?? 'No safe raid source conclusion can be made.')}</span><a href="${escapeAttribute(wiki.sourceUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Material page ↗</a></div>`;
-  }
+  if (!title || !wiki || wiki.state === 'unavailable') return '';
   return `<div class="goal-inline-farming">
     <div class="goal-inline-farming-head"><strong>Wiki farming sources</strong><a href="${escapeAttribute(wiki.sourceUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Material page ↗</a></div>
     <div class="farming-source-list">${entry.sources.map((source) => renderFarmingSource(source, entry.material)).join('')}</div>
