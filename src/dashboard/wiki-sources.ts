@@ -49,7 +49,7 @@ export async function loadWikiMaterialRaidSources(
 
   const request = loadWikiMaterialRaidSourcesFresh(title, fetchImpl)
     .then((result) => {
-      writeCachedWikiSource(storage, key, { cachedAt: now, result });
+      if (isCacheableWikiSource(result)) writeCachedWikiSource(storage, key, { cachedAt: now, result });
       return result;
     })
     .catch((error) => {
@@ -137,6 +137,12 @@ function readCachePayload(storage: StorageLike | undefined): CachedWikiSourcesPa
   } catch {
     return undefined;
   }
+}
+
+function isCacheableWikiSource(result: WikiMaterialRaidSources): boolean {
+  if (result.state === 'known') return true;
+  const limitation = result.limitation ?? '';
+  return !limitation.startsWith('GBF Wiki request failed:') && !limitation.startsWith('GBF Wiki lookup failed.');
 }
 
 function isWikiMaterialRaidSources(value: unknown): value is WikiMaterialRaidSources {
