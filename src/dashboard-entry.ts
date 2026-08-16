@@ -5,7 +5,9 @@ let accountDirty = false;
 let reloadTimer: number | undefined;
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== 'local' || !(ACCOUNT_DATABASE_STORAGE_KEY in changes)) return;
+  if (areaName !== 'local') return;
+  const change = changes[ACCOUNT_DATABASE_STORAGE_KEY];
+  if (!characterObservationChanged(change)) return;
   accountDirty = true;
 
   const section = activeSection();
@@ -32,6 +34,19 @@ async function bootDashboard(): Promise<void> {
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
   if (!restoreSection) return;
   restoreSectionWhenReady(restoreSection);
+}
+
+function characterObservationChanged(change: chrome.storage.StorageChange | undefined): boolean {
+  if (!change) return false;
+  const previous = characterObservedAt(change.oldValue);
+  const next = characterObservedAt(change.newValue);
+  return next !== undefined && next !== previous;
+}
+
+function characterObservedAt(value: unknown): number | undefined {
+  if (!isObject(value) || !isObject(value.observedAt)) return undefined;
+  const observed = value.observedAt.characters;
+  return typeof observed === 'number' && Number.isFinite(observed) ? observed : undefined;
 }
 
 function restoreSectionWhenReady(section: string): void {
@@ -62,6 +77,10 @@ function scheduleReload(section: string | undefined, delay: number): void {
   if (section) sessionStorage.setItem(RESTORE_SECTION_KEY, section);
   if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => window.location.reload(), delay);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function cssEscape(value: string): string {
