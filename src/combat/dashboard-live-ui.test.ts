@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
 const dashboard = readFileSync(new URL('./dashboard.ts', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
 
 test('live combat UI is collapsible and does not expose quality chips', () => {
   assert.match(dashboard, /data-combat-collapse/);
@@ -23,4 +24,11 @@ test('damage rows render directly observed actor HP when available', () => {
   assert.match(dashboard, /formatActorHp/);
   assert.match(dashboard, /combat-character-hp/);
   assert.match(dashboard, /actor\.hp \/ actor\.maxHp \* 100/);
+});
+
+test('combat summary gives raid and boss HP full-width rows without overflow', () => {
+  assert.match(styles, /\.combat-metrics \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/);
+  assert.match(styles, /\.combat-metrics \.metric-card:nth-child\(1\) \{ grid-column: 1 \/ -1; grid-row: 1; \}/);
+  assert.match(styles, /\.combat-metrics \.metric-card:nth-child\(3\) \{ grid-column: 1 \/ -1; grid-row: 2; \}/);
+  assert.match(styles, /\.combat-metrics \.metric-card > strong \{ overflow-wrap: anywhere;/);
 });
