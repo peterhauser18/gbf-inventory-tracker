@@ -71,9 +71,15 @@ test('stash-contained weapons reuse the same normal Weapon detail path', () => {
   assert.doesNotMatch(source, /stash-weapon:/);
 });
 
+test('detail enhancement loads only the selected gameplay family and memoizes it per session', () => {
+  assert.match(source, /const metadataPromises = new Map<WikiDetailKind/);
+  assert.match(source, /metadataPromises\.get\(kind\)/);
+  assert.match(source, /loadWikiGameplayFamily\(detailFamily\(kind\)\)/);
+  assert.match(source, /kind === 'WEAPON'[\s\S]*loadWikiEntityMetadata\(\)/);
+  assert.match(source, /Promise\.resolve\(EMPTY_ENTITY_METADATA\)/);
+});
+
 test('detail enhancement is installed once with the existing post-render Dashboard enhancement and fetches no images', () => {
   assert.match(searchBootstrap, /installWikiDetailEnhancement\(\)/);
-  assert.match(source, /let metadataPromise:/);
-  assert.match(source, /if \(!metadataPromise\)/);
   assert.doesNotMatch(source, /<img|data-entity-image|game\.granbluefantasy\.jp|chrome\.debugger/);
 });
