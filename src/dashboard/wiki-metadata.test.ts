@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { deferredWikiImageTarget } from './wiki-image-loader.ts';
 import {
   WIKI_ENTITY_METADATA_CACHE_TTL_MS,
   loadWikiEntityMetadata,
   loadWikiEntityMetadataCached,
   wikiEntityImageUrl,
+  wikiEntityRemoteImageUrl,
 } from './wiki-metadata.ts';
 
 interface RecordedCall {
@@ -69,19 +71,18 @@ test('reuses fresh locally cached Wiki entity metadata instead of refetching Car
   assert.equal(second.characters.get('3040000000')?.wikiTitle, first.characters.get('3040000000')?.wikiTitle);
   assert.equal(second.weapons.get('1040000000')?.imageUrl, first.weapons.get('1040000000')?.imageUrl);
   assert.equal(second.summons.get('2040000000')?.imageUrl, first.summons.get('2040000000')?.imageUrl);
+  assert.match(second.weapons.get('1040000000')?.imageUrl ?? '', /^data:image\/gif;base64,/);
 });
 
-test('constructs only GBF Wiki entity image redirects', () => {
-  assert.equal(
-    wikiEntityImageUrl('character', '3040000000', 'Fixture Character'),
-    'https://gbf.wiki/Special:Redirect/file/Fixture%20Character%20iconA.jpg',
-  );
-  assert.equal(
-    wikiEntityImageUrl('weapon', '1040000000'),
-    'https://gbf.wiki/Special:Redirect/file/Weapon%20ls%201040000000.jpg',
-  );
-  assert.equal(
-    wikiEntityImageUrl('summon', '2040000000'),
-    'https://gbf.wiki/Special:Redirect/file/Summon%20ls%202040000000.jpg',
-  );
+test('constructs approved Wiki redirects but exposes deferred image targets to dashboard renderers', () => {
+  const character = 'https://gbf.wiki/Special:Redirect/file/Fixture%20Character%20iconA.jpg';
+  const weapon = 'https://gbf.wiki/Special:Redirect/file/Weapon%20ls%201040000000.jpg';
+  const summon = 'https://gbf.wiki/Special:Redirect/file/Summon%20ls%202040000000.jpg';
+
+  assert.equal(wikiEntityRemoteImageUrl('character', '3040000000', 'Fixture Character'), character);
+  assert.equal(wikiEntityRemoteImageUrl('weapon', '1040000000'), weapon);
+  assert.equal(wikiEntityRemoteImageUrl('summon', '2040000000'), summon);
+  assert.equal(deferredWikiImageTarget(wikiEntityImageUrl('character', '3040000000', 'Fixture Character')), character);
+  assert.equal(deferredWikiImageTarget(wikiEntityImageUrl('weapon', '1040000000')), weapon);
+  assert.equal(deferredWikiImageTarget(wikiEntityImageUrl('summon', '2040000000')), summon);
 });
