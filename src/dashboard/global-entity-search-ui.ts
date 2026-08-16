@@ -121,6 +121,13 @@ function openEntityResult(result: DashboardEntitySearchResult): void {
   navButton.click();
 
   for (const detailKey of plan.detailKeys) {
+    const stashToggle = [...document.querySelectorAll<HTMLButtonElement>('[data-stash-toggle]')]
+      .find((button) => button.dataset.stashToggle === detailKey);
+    if (stashToggle) {
+      if (stashToggle.getAttribute('aria-expanded') !== 'true') stashToggle.click();
+      continue;
+    }
+
     const detailButton = [...document.querySelectorAll<HTMLButtonElement>('[data-detail]')]
       .find((button) => button.dataset.detail === detailKey);
     if (!detailButton) return;
