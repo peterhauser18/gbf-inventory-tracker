@@ -2,9 +2,9 @@ import { resolveSafeExternalImageUrl } from './resolver.ts';
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const WIKI_ORIGIN = 'https://gbf.wiki';
-// A single public rendered page supplies the same visible name -> image mapping shown by the Wiki.
 const TREASURE_INDEX_PAGE = 'Items';
-const CACHE_KEY = 'gbfit:wiki-treasure-images:v5';
+const TREASURE_CATEGORY = 'Category:Items';
+const CACHE_KEY = 'gbfit:wiki-treasure-images:v6';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
@@ -12,7 +12,7 @@ type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 type JsonObject = Record<string, unknown>;
 
 interface CachedTreasureImagePayload {
-  version: 5;
+  version: 6;
   cachedAt: number;
   entries: Record<string, string>;
 }
@@ -55,6 +55,23 @@ export function buildWikiTreasureImageIndexUrl(): string {
   return url.toString();
 }
 
+export function buildWikiTreasureCategoryImageUrl(continueToken?: string): string {
+  const url = new URL(WIKI_API);
+  url.searchParams.set('action', 'query');
+  url.searchParams.set('generator', 'categorymembers');
+  url.searchParams.set('gcmtitle', TREASURE_CATEGORY);
+  url.searchParams.set('gcmtype', 'page');
+  url.searchParams.set('gcmlimit', 'max');
+  url.searchParams.set('prop', 'pageimages');
+  url.searchParams.set('piprop', 'thumbnail|name');
+  url.searchParams.set('pithumbsize', '64');
+  url.searchParams.set('format', 'json');
+  url.searchParams.set('formatversion', '2');
+  url.searchParams.set('origin', '*');
+  if (continueToken) url.searchParams.set('gcmcontinue', continueToken);
+  return url.toString();
+}
+
 export function normalizeWikiTreasureTitle(value: string): string {
   return value.trim().replace(/_/g, ' ').replace(/\s+/g, ' ').toLowerCase();
 }
@@ -89,7 +106,7 @@ async function loadCached(
 }
 
 async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, string>> {
-  const response = await fetchImpl(buildWikiTreasureImageIndexUrl(), {
+  const response = await fetchImpl.call(globalThis, buildWikiTreasureImageIndexUrl(), {
     credentials: 'omit',
     referrerPolicy: 'no-referrer',
   });
@@ -99,7 +116,46 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
   const parsed = payload && isObject(payload.parse) ? payload.parse : undefined;
   const html = parsed && typeof parsed.text === 'string' ? parsed.text : undefined;
   if (!html) throw new Error('GBF Wiki Items page did not return rendered HTML');
-  return parseWikiTreasureItemsHtml(html);
+
+  const result = new Map(parseWikiTreasureItemsHtml(html));
+  const categoryImages = await loadCategoryPageImages(fetchImpl);
+  for (const [name, imageUrl] of categoryImages) {
+    if (!result.has(name)) result.set(name, imageUrl);
+  }
+  return result;
+}
+
+async function loadCategoryPageImages(fetchImpl: FetchLike): Promise<ReadonlyMap<string, string>> {
+  const result = new Map<string, string>();
+  let continueToken: string | undefined;
+  do {
+    const response = await fetchImpl.call(globalThis, buildWikiTreasureCategoryImageUrl(continueToken), {
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    });
+    if (!response.ok) throw new Error(`GBF Wiki treasure category metadata request failed (${response.status})`);
+    const body = await response.json();
+    const payload = isObject(body) ? body : undefined;
+    const query = payload && isObject(payload.query) ? payload.query : undefined;
+    if (query && Array.isArray(query.pages)) {
+      for (const page of query.pages) {
+        if (!isObject(page) || typeof page.title !== 'string') continue;
+        const thumbnail = isObject(page.thumbnail) && typeof page.thumbnail.source === 'string'
+          ? resolveSafeExternalImageUrl(page.thumbnail.source) ?? undefined
+          : undefined;
+        const pageImage = typeof page.pageimage === 'string'
+          ? safeWikiFileRedirect(page.pageimage)
+          : undefined;
+        const imageUrl = thumbnail ?? pageImage;
+        if (imageUrl) result.set(normalizeWikiTreasureTitle(page.title), imageUrl);
+      }
+    }
+    const continuation = payload && isObject(payload.continue) ? payload.continue : undefined;
+    continueToken = continuation && typeof continuation.gcmcontinue === 'string'
+      ? continuation.gcmcontinue
+      : undefined;
+  } while (continueToken);
+  return result;
 }
 
 function treasureNameFromRow(row: string): string | undefined {
@@ -146,6 +202,12 @@ function wikiArticleTitle(href: string): string | undefined {
   }
 }
 
+function safeWikiFileRedirect(filename: string): string | undefined {
+  if (!/\.(?:jpe?g|png|webp)$/i.test(filename)) return undefined;
+  const candidate = `${WIKI_ORIGIN}/Special:Redirect/file/${encodeURIComponent(filename)}`;
+  return resolveSafeExternalImageUrl(candidate) ?? undefined;
+}
+
 function htmlAttribute(attributes: string, name: string): string | undefined {
   const pattern = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
   const match = attributes.match(pattern);
@@ -175,7 +237,7 @@ function readCache(storage: StorageLike | undefined): { cachedAt: number; index:
     const raw = storage.getItem(CACHE_KEY);
     if (!raw) return undefined;
     const value = JSON.parse(raw) as unknown;
-    if (!isObject(value) || value.version !== 5 || typeof value.cachedAt !== 'number' || !Number.isFinite(value.cachedAt) || !isObject(value.entries)) return undefined;
+    if (!isObject(value) || value.version !== 6 || typeof value.cachedAt !== 'number' || !Number.isFinite(value.cachedAt) || !isObject(value.entries)) return undefined;
     const index = new Map<string, string>();
     for (const [key, candidate] of Object.entries(value.entries)) {
       if (typeof candidate !== 'string') continue;
@@ -193,7 +255,7 @@ function writeCache(storage: StorageLike | undefined, index: ReadonlyMap<string,
   try {
     const entries: Record<string, string> = {};
     for (const [key, url] of index) entries[key] = url;
-    const payload: CachedTreasureImagePayload = { version: 5, cachedAt, entries };
+    const payload: CachedTreasureImagePayload = { version: 6, cachedAt, entries };
     storage.setItem(CACHE_KEY, JSON.stringify(payload));
   } catch {
     // Public metadata caching is optional.
