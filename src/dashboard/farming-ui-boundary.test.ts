@@ -35,6 +35,17 @@ test('Goals keep Wiki assets lazy and inline instead of restoring a broad Farmin
   assert.doesNotMatch(ui, /renderFocusSurface\(goalsView/);
 });
 
+test('Goal icons hydrate before Farming planner state is required', () => {
+  const start = ui.indexOf('async function hydrateGoalRequirements');
+  const end = ui.indexOf('function goalForDetails', start);
+  assert.ok(start >= 0 && end > start);
+  const hydration = ui.slice(start, end);
+  assert.ok(hydration.indexOf('await hydrateGoalRequirementIcons(details)') >= 0);
+  assert.ok(hydration.indexOf('await hydrateGoalRequirementIcons(details)') < hydration.indexOf('const goal = goalForDetails(details)'));
+  assert.match(hydration, /querySelectorAll<HTMLImageElement>\('\[data-goal-material-icon\]'\)/);
+  assert.match(hydration, /iconHydrationInFlight/);
+});
+
 test('farming UI updates its observed containers idempotently', () => {
   assert.match(ui, /if \(container\.innerHTML !== body\) container\.innerHTML = body;/);
   assert.match(ui, /if \(target\.innerHTML !== body\) target\.innerHTML = body;/);
