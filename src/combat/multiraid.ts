@@ -134,9 +134,6 @@ function parseVerifiedStart(
   if (!raidTechnicalId) return null;
   const instanceId = str(body.raid_id);
   const parsedActors = verifiedActorSlots(body);
-  const parsedSummons = verifiedSummonSlots(body);
-  const participantDisplay = verifiedParticipantDisplay(body);
-  const participantCount = verifiedParticipantCount(body);
   const sameRaid =
     previous?.raidTechnicalId === raidTechnicalId &&
     (!instanceId || !previous.instanceId || instanceId === previous.instanceId);
@@ -146,24 +143,18 @@ function parseVerifiedStart(
       ? previous?.actorSlots ?? []
       : [];
   const turn = num(body.turn);
+  const mainCharacterId = actorSlots[0]?.id ?? (sameRaid ? previous?.mainCharacterId : undefined);
+  const accountDisplayName = actorSlots[0]?.name ?? (sameRaid ? previous?.accountDisplayName : undefined);
   const context: CombatParseContext = {
     raidTechnicalId,
     instanceId,
     actorSlots,
     actors: mergeActorHistory(sameRaid ? previous?.actors : undefined, actorSlots),
-    mainCharacterId: actorSlots[0]?.id ?? (sameRaid ? previous?.mainCharacterId : undefined),
-    accountDisplayName: verifiedAccountDisplayName(body) ?? previous?.accountDisplayName,
+    mainCharacterId,
+    accountDisplayName,
     turn: turn ?? (sameRaid ? previous?.turn : undefined),
-    summons: parsedSummons.length > 0
-      ? parsedSummons
-      : sameRaid
-        ? previous?.summons?.map((summon) => ({ ...summon }))
-        : undefined,
-    participants: participantDisplay.length > 0
-      ? participantDisplay
-      : sameRaid
-        ? previous?.participants?.map((participant) => ({ ...participant }))
-        : undefined,
+    summons: sameRaid ? previous?.summons?.map((summon) => ({ ...summon })) : undefined,
+    participants: sameRaid ? previous?.participants?.map((participant) => ({ ...participant })) : undefined,
   };
   const bossState = verifiedStartBoss(body);
   const host = bool(body.is_host);
@@ -175,7 +166,6 @@ function parseVerifiedStart(
     observedTurn: turn,
     startObserved: turn === 1,
     boss: bossState,
-    participants: participantCount === undefined ? undefined : { count: participantCount, quality: 'known' },
     actions: [],
     actionsFieldPresent: false,
     unparsedActionCount: 0,
@@ -197,7 +187,7 @@ function parseVerifiedScenario(
     ? { actions: [] as ParsedCombatAction[], gaps: 0, context: verifiedScenarioContext(scenario, context) }
     : verifiedScenarioActions(scenario, observedAt, context);
   const actionTurns = parsed.actions.flatMap((action) => action.turn === undefined ? [] : [action.turn]);
-  const observedTurn = actionTurns.length ? Math.max(...actionTurns) : context.turn;
+  const observedTurn = actionTurns.length ? Math.max(...actionTurns) : parsed.context.turn;
   if (family === 'normal-attack' && observedTurn !== undefined) parsed.context.turn = observedTurn + 1;
   const bossState = verifiedScenarioBoss(scenario);
   const contributionDelta = verifiedScenarioContribution(scenario);
@@ -232,8 +222,7 @@ function parseVerifiedMembers(
 ): VerifiedCombatObservation | null {
   const members = Array.isArray(body.multi_member_info) ? body.multi_member_info : undefined;
   const display = verifiedParticipantDisplay(body);
-  const count = verifiedParticipantCount(body);
-  if (!members && display.length === 0 && count === undefined) return null;
+  if (!members && display.length === 0) return null;
   const nextContext = cloneContext(context);
   if (display.length > 0) nextContext.participants = display;
   return {
@@ -241,7 +230,7 @@ function parseVerifiedMembers(
     observedAt,
     observedTurn: context.turn,
     startObserved: false,
-    participants: count === undefined ? undefined : { count, quality: 'known' },
+    participants: { count: members?.length ?? display.length, quality: 'known' },
     actions: [],
     actionsFieldPresent: false,
     unparsedActionCount: 0,
@@ -306,7 +295,9 @@ function verifiedScenarioActions(
     applyScenarioPartyState(nextContext, raw);
     const cmd = str(raw.cmd)?.toLowerCase();
     if (!cmd) continue;
-    const turn = num(raw.turn, raw.turn_number) ?? context.turn;
+    const directTurn = num(raw.turn, raw.turn_number);
+    if (directTurn !== undefined) nextContext.turn = directTurn;
+    const turn = nextContext.turn;
 
     if (cmd === 'attack') {
       flushAbility();
@@ -552,11 +543,6 @@ function verifiedParticipantDisplay(body: Obj): CombatParticipantDisplay[] {
   });
 }
 
-function verifiedParticipantCount(body: Obj): number | undefined {
-  if (Array.isArray(body.multi_member_info)) return body.multi_member_info.length;
-  return num(body.member_count, body.member_num, body.participant_count);
-}
-
 function uniqueByDisplayName(values: Obj[]): Map<string, Obj | null> {
   const result = new Map<string, Obj | null>();
   for (const value of values) {
@@ -567,93 +553,20 @@ function uniqueByDisplayName(values: Obj[]): Map<string, Obj | null> {
   return result;
 }
 
-function verifiedSummonSlots(body: Obj): CombatSummonContext[] {
-  const sources = [
-    at(body, 'player', 'summon'),
-    at(body, 'player', 'summons'),
-    at(body, 'summon', 'param'),
-    body.summon,
-  ];
-  for (const source of sources) {
-    const parsed = summonObjects(source).flatMap((value) => {
-      const summon = verifiedSummonContext(value);
-      return summon ? [summon] : [];
-    });
-    if (parsed.length > 0) return parsed.slice(0, 6);
-  }
-  return [];
-}
-
-function summonObjects(value: unknown): Obj[] {
-  if (Array.isArray(value)) return value.filter(obj);
-  if (!obj(value)) return [];
-  if (Array.isArray(value.param)) return value.param.filter(obj);
-  if (Array.isArray(value.list)) return value.list.filter(obj);
-  const indexed = Object.entries(value)
-    .filter(([key, child]) => /^\d+$/.test(key) && obj(child))
-    .map(([, child]) => child as Obj);
-  return indexed.length > 0 ? indexed : [value];
-}
-
-function verifiedSummonContext(value: Obj): CombatSummonContext | null {
-  const param = obj(value.param) ? value.param : value;
-  const master = obj(value.master) ? value.master : undefined;
-  const id = str(master?.id, param.master_id, param.masterId, param.summon_id, value.master_id, value.summon_id);
-  const name = localizedText(master?.name) ?? localizedText(param.name) ?? localizedText(value.name);
-  const cooldown = num(
-    param.cooldown,
-    param.cooldown_turn,
-    param.remain_turn,
-    param.remaining_turn,
-    value.cooldown,
-    value.cooldown_turn,
-    value.remain_turn,
-  );
-  const directAvailable = bool(
-    param.available,
-    param.can_use,
-    param.enable,
-    value.available,
-    value.can_use,
-    value.enable,
-  );
-  const available = directAvailable ?? (cooldown === undefined ? undefined : cooldown === 0);
-  const used = bool(param.used, value.used) ?? (cooldown === undefined ? undefined : cooldown > 0);
-  if (!id && !name) return null;
-  return { id, name, cooldown, available, used };
-}
-
 function applySummonUse(context: CombatParseContext, raw: Obj): void {
-  const observed = verifiedSummonContext(raw) ?? {
-    id: str(raw.master_id, raw.summon_id),
-    name: str(raw.name),
-  };
-  const id = observed.id;
-  const name = observed.name;
-  if (!id && !name) return;
-  const normalizedName = name?.trim().toLowerCase();
+  const name = str(raw.name);
+  if (!name) return;
+  const normalizedName = name.toLowerCase();
   const summons = context.summons ?? [];
-  const index = summons.findIndex((summon) =>
-    Boolean(id && summon.id === id) ||
-    Boolean(normalizedName && summon.name?.trim().toLowerCase() === normalizedName));
+  const index = summons.findIndex((summon) => summon.name?.trim().toLowerCase() === normalizedName);
   const next: CombatSummonContext = {
     ...(index >= 0 ? summons[index] : {}),
-    ...observed,
+    name,
     used: true,
   };
-  if (next.cooldown !== undefined && next.available === undefined) next.available = next.cooldown === 0;
   if (index >= 0) summons[index] = next;
   else summons.push(next);
   context.summons = summons.slice(0, 6);
-}
-
-function verifiedAccountDisplayName(body: Obj): string | undefined {
-  const player = obj(body.player) ? body.player : undefined;
-  return localizedText(player?.nickname)
-    ?? localizedText(player?.player_name)
-    ?? localizedText(player?.name)
-    ?? localizedText(body.nickname)
-    ?? localizedText(body.player_name);
 }
 
 function verifiedDamageHits(value: unknown, kind: DamageKind): ParsedDamageHit[] {
