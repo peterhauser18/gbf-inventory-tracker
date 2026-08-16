@@ -19,7 +19,7 @@ test('Eternal and Evoker details replace the redundant facts box with compact he
   assert.match(entry, /level \? `Lv \$\{level\}`/);
   assert.match(entry, /uncap \? `Uncap \$\{uncap\}★`/);
   assert.match(entry, /awakening \? `Awakening \$\{awakening\}`/);
-  assert.match(entry, /value && value !== 'unknown' \? value : undefined/);
+  assert.match(entry, /value && value !== 'unknown' && value !== 'unavailable' \? value : undefined/);
   assert.match(entry, /factsSection\.remove\(\)/);
 });
 
