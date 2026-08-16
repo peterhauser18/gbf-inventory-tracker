@@ -29,10 +29,20 @@ test('Goals keep Wiki assets lazy and inline instead of restoring a broad Farmin
   assert.match(goals, /data-goal-material-icon data-wiki-title=/);
   assert.doesNotMatch(goals, /data-goal-material-icon[^>]+src=/);
   assert.match(goals, /data-goal-material-farming/);
-  assert.match(ui, /closest<HTMLElement>\('\.goal-requirements-summary'\)/);
+  assert.match(ui, /document\.addEventListener\('toggle', handleToggle, true\)/);
+  assert.match(ui, /details\.matches\('\[data-goal-requirements\]'\)/);
   assert.match(ui, /loadWikiMaterialThumbnails\(titles\)/);
   assert.match(ui, /syncGoalInlineFarming\(activeGoals\)/);
   assert.doesNotMatch(ui, /renderFocusSurface\(goalsView/);
+});
+
+test('Goals prefetch thumbnail metadata before the first requirements expand', () => {
+  assert.match(ui, /queueMicrotask\(\(\) => void prefetchGoalMaterialThumbnails\(\)\)/);
+  assert.match(ui, /if \(!app\?\.querySelector\('\[data-goals-view\]'\)\) return;/);
+  assert.match(ui, /goalThumbnailUrls = new Map/);
+  assert.match(ui, /goalThumbnailPrefetch/);
+  assert.match(ui, /void prefetchGoalMaterialThumbnails\(\);/);
+  assert.match(ui, /applyPrefetchedGoalIcons\(details\)/);
 });
 
 test('Goal icons hydrate before Farming planner state is required', () => {
