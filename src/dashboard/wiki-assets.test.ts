@@ -41,7 +41,42 @@ test('material thumbnails are resolved in one credential-free batch and deduplic
   assert.match(result.get("ewiyar's jewel") ?? '', /^https:\/\/gbf\.wiki\//);
 });
 
-test('shared Wiki pages resolve a technical item image by the observed item id in two additional batched reads', async () => {
+test('a known technical item id resolves its exact Wiki asset in one additional batched imageinfo read', async () => {
+  const calls: URL[] = [];
+  const fetchImpl = (async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    calls.push(url);
+    if (url.searchParams.get('prop') === 'pageimages') {
+      return new Response(JSON.stringify({
+        query: {
+          redirects: [{ from: 'Ventus Luster', to: 'Luster' }],
+          pages: [{ pageid: 1, title: 'Luster' }],
+        },
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify({
+      query: {
+        pages: [{
+          pageid: 2,
+          title: 'File:Item_article_s_25073.jpg',
+          imageinfo: [{ thumburl: 'https://gbf.wiki/images/thumb/a/a7/Item_article_s_25073.jpg/48px-Item_article_s_25073.jpg' }],
+        }],
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const result = await loadWikiMaterialThumbnails(['Ventus Luster'], {
+    fetchImpl,
+    itemIdsByTitle: new Map([['ventus luster', '25073']]),
+  });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0]?.searchParams.get('prop'), 'pageimages');
+  assert.equal(calls[1]?.searchParams.get('prop'), 'imageinfo');
+  assert.equal(calls[1]?.searchParams.get('titles'), 'File:Item_article_s_25073.jpg');
+  assert.match(result.get('ventus luster') ?? '', /Item_article_s_25073/);
+});
+
+test('a weapon page without an inventory item id selects the repeated subject weapon asset generically', async () => {
   const calls: URL[] = [];
   const fetchImpl = (async (input: string | URL | Request) => {
     const url = new URL(String(input));
@@ -49,23 +84,23 @@ test('shared Wiki pages resolve a technical item image by the observed item id i
     const prop = url.searchParams.get('prop');
     if (prop === 'pageimages') {
       return new Response(JSON.stringify({
-        query: {
-          redirects: [{ from: 'Aqua Luster', to: 'Luster' }],
-          pages: [{ pageid: 1, title: 'Luster' }],
-        },
+        query: { pages: [{ pageid: 1, title: 'Jade Harp Relic' }] },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (prop === 'images') {
       return new Response(JSON.stringify({
         query: {
-          redirects: [{ from: 'Aqua Luster', to: 'Luster' }],
           pages: [{
             pageid: 1,
-            title: 'Luster',
+            title: 'Jade Harp Relic',
             images: [
-              { title: 'File:Item_article_s_25061.jpg' },
-              { title: 'File:Item_article_s_25071.jpg' },
-              { title: 'File:Item_article_s_25081.jpg' },
+              { title: 'File:Weapon s 1030801200.jpg' },
+              { title: 'File:Weapon b 1030801500.png' },
+              { title: 'File:Weapon ls 1030801500.jpg' },
+              { title: 'File:Weapon sp 1030801500.png' },
+              { title: 'File:Weapon s 1030801500.jpg' },
+              { title: 'File:Weapon m 1030801500.jpg' },
+              { title: 'File:Weapon s 1040800700.jpg' },
             ],
           }],
         },
@@ -75,22 +110,20 @@ test('shared Wiki pages resolve a technical item image by the observed item id i
       query: {
         pages: [{
           pageid: 2,
-          title: 'File:Item_article_s_25071.jpg',
-          imageinfo: [{ thumburl: 'https://gbf.wiki/images/thumb/c/c4/Item_article_s_25071.jpg/48px-Item_article_s_25071.jpg' }],
+          title: 'File:Weapon s 1030801500.jpg',
+          imageinfo: [{ thumburl: 'https://gbf.wiki/images/thumb/f/ff/Weapon_s_1030801500.jpg/48px-Weapon_s_1030801500.jpg' }],
         }],
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }) as typeof fetch;
 
-  const result = await loadWikiMaterialThumbnails(['Aqua Luster'], {
-    fetchImpl,
-    itemIdsByTitle: new Map([['aqua luster', '25071']]),
-  });
+  const result = await loadWikiMaterialThumbnails(['Jade Harp Relic'], { fetchImpl });
   assert.equal(calls.length, 3);
   assert.equal(calls[0]?.searchParams.get('prop'), 'pageimages');
   assert.equal(calls[1]?.searchParams.get('prop'), 'images');
   assert.equal(calls[2]?.searchParams.get('prop'), 'imageinfo');
-  assert.match(result.get('aqua luster') ?? '', /Item_article_s_25071/);
+  assert.equal(calls[2]?.searchParams.get('titles'), 'File:Weapon s 1030801500.jpg');
+  assert.match(result.get('jade harp relic') ?? '', /1030801500/);
 });
 
 test('fresh thumbnail cache avoids another Wiki request', async () => {
@@ -160,8 +193,8 @@ test('a Wiki page with no matching page or embedded material image is negatively
 
 test('thumbnail and fallback API URLs are public GBF Wiki queries only', () => {
   const thumbnail = new URL(buildWikiThumbnailApiUrl(['Harp Stone', 'Gold Brick']));
-  const images = new URL(buildWikiPageImagesApiUrl(['Aqua Luster']));
-  const imageInfo = new URL(buildWikiImageInfoApiUrl(['File:Item_article_s_25071.jpg']));
+  const images = new URL(buildWikiPageImagesApiUrl(['Ventus Luster']));
+  const imageInfo = new URL(buildWikiImageInfoApiUrl(['File:Item_article_s_25073.jpg']));
 
   assert.equal(thumbnail.origin, 'https://gbf.wiki');
   assert.equal(thumbnail.searchParams.get('action'), 'query');
