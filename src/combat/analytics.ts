@@ -94,7 +94,8 @@ export function buildCharacterAnalysis(
   const single = attackMode(normal, 1);
   const double = attackMode(normal, 2);
   const triple = attackMode(normal, 3);
-  const denominatorKnown = normal.length > 0 && normal.every((entry) => entry.multiattack !== undefined);
+  const criticalEvidence = normal.some((entry) => entry.criticalHits !== undefined);
+  const denominatorKnown = criticalEvidence && normal.length > 0 && normal.every((entry) => entry.multiattack !== undefined);
   const criticalDenominator = denominatorKnown
     ? normal.reduce((sum, entry) => sum + (entry.multiattack ?? 0), 0)
     : undefined;
