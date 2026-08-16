@@ -47,7 +47,7 @@ async function load(): Promise<void> {
     if (!account) {
       app.innerHTML = emptyShell(
         'No account data observed yet',
-        'Keep playing and browsing GBF normally. Verified account responses will fill this dashboard automatically over time.',
+        'No verified account data is available locally yet. Use the extension popup’s current collection/observation workflow, then reopen this dashboard.',
       );
       return;
     }
@@ -403,7 +403,7 @@ function renderDeveloper(view: DashboardViewModel, freshness: Partial<Record<Acc
       <article class="system-card system-card-wide developer-card">
         <p class="eyebrow">DEVELOPER</p>
         <h3>Diagnostics are intentionally isolated</h3>
-        <p class="muted">Manual observation, sanitized capture export and local-storage cleanup remain under the collapsed Developer menu in the extension popup. They are not part of normal dashboard navigation and do not start automatically.</p>
+        <p class="muted">Observation controls stay in the extension popup. Developer-only sanitized capture export and local-storage cleanup remain grouped under its Developer menu and do not start automatically.</p>
         <div class="status-list">
           <div><span>Observed account families</span><strong>${escapeHtml(String(observedFamilies))} / 5</strong></div>
           <div><span>Dashboard snapshot</span><strong>${escapeHtml(formatDate(view.capturedAt))}</strong></div>
@@ -418,8 +418,8 @@ function renderDeveloper(view: DashboardViewModel, freshness: Partial<Record<Acc
       </article>
       <article class="system-card">
         <p class="eyebrow">OBSERVATION</p>
-        <h3>Manual diagnostic scan</h3>
-        <p class="muted">Observation is controlled from the extension popup and is never started by opening this dashboard. This surface only reads locally accumulated analysis state.</p>
+        <h3>Observation control</h3>
+        <p class="muted">Opening this dashboard never starts observation. Collection behavior remains controlled by the extension popup and this surface only reads locally accumulated analysis state.</p>
         <span class="developer-badge">Explicit opt-in only</span>
       </article>
     </section>
