@@ -25,6 +25,13 @@ test('keeps a conflicting crit payload unknown rather than inventing a decision'
   ]), undefined);
 });
 
+test('keeps a partially observed crit payload unknown rather than extrapolating', () => {
+  assert.equal(criticalDecision([
+    hit(100, 0, { critical: true }),
+    hit(20, 1),
+  ]), undefined);
+});
+
 test('classifies the observed flurry plus echo lane pattern conservatively', () => {
   const classified = classifyVerifiedNormalDamage([
     hit(588476, 0, { critical: false, attackCount: 0, isRandomAttack: true }),
@@ -34,6 +41,16 @@ test('classifies the observed flurry plus echo lane pattern conservatively', () 
   ]);
   assert.deepEqual(classified.map((entry) => entry.kind), ['normal', 'echo', 'normal', 'echo']);
   assert.equal(classified.reduce((sum, entry) => sum + entry.amount, 0), 1_599_992);
+});
+
+test('does not classify Flurry plus Echo when attack_count evidence is partial', () => {
+  const classified = classifyVerifiedNormalDamage([
+    hit(588476, 0, { critical: false, attackCount: 0, isRandomAttack: true }),
+    hit(211682, 1, { critical: false, isRandomAttack: true }),
+    hit(588212, 0, { critical: false, attackCount: 0, isRandomAttack: true }),
+    hit(211622, 1, { critical: false, attackCount: 0, isRandomAttack: true }),
+  ]);
+  assert.deepEqual(classified.map((entry) => entry.kind), ['normal', 'other', 'normal', 'other']);
 });
 
 test('keeps an ambiguous concurrent pair unclassified while preserving total damage', () => {
