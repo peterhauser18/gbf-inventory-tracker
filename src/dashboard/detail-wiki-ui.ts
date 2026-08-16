@@ -5,7 +5,8 @@ import {
   type WikiDetailKind,
 } from './detail-wiki.ts';
 import {
-  loadWikiGameplayMetadata,
+  loadWikiGameplayFamily,
+  type WikiGameplayFamily,
   type WikiGameplayMetadataIndex,
 } from './wiki-gameplay-metadata.ts';
 import {
@@ -15,7 +16,10 @@ import {
 } from './wiki-metadata.ts';
 
 let installed = false;
-let metadataPromise: Promise<{ gameplay: WikiGameplayMetadataIndex; entities: EntityMetadataIndex }> | null = null;
+const metadataPromises = new Map<WikiDetailKind, Promise<{
+  gameplay: WikiGameplayMetadataIndex;
+  entities: EntityMetadataIndex;
+}>>();
 
 export function installWikiDetailEnhancement(): void {
   if (installed || typeof document === 'undefined') return;
@@ -56,7 +60,7 @@ function enhanceCurrentDetail(app: HTMLElement): void {
     return;
   }
 
-  void loadDetailMetadata().then(({ gameplay, entities }) => {
+  void loadDetailMetadata(kind).then(({ gameplay, entities }) => {
     if (!gameplaySection.isConnected) return;
     gameplaySection.innerHTML = renderWikiDetailGameplay(kind, masterId, uncap, gameplay, entities);
   }).catch(() => {
@@ -111,15 +115,29 @@ function detailKind(panel: HTMLElement): WikiDetailKind | undefined {
   return kind === 'CHARACTER' || kind === 'WEAPON' || kind === 'SUMMON' ? kind : undefined;
 }
 
-function loadDetailMetadata(): Promise<{ gameplay: WikiGameplayMetadataIndex; entities: EntityMetadataIndex }> {
-  if (!metadataPromise) {
-    metadataPromise = Promise.all([
-      loadWikiGameplayMetadata(),
-      loadWikiEntityMetadata().catch(() => EMPTY_ENTITY_METADATA),
-    ]).then(([gameplay, entities]) => ({ gameplay, entities })).catch((error) => {
-      metadataPromise = null;
-      throw error;
-    });
-  }
-  return metadataPromise;
+function detailFamily(kind: WikiDetailKind): WikiGameplayFamily {
+  if (kind === 'CHARACTER') return 'characters';
+  if (kind === 'WEAPON') return 'weapons';
+  return 'summons';
+}
+
+function loadDetailMetadata(kind: WikiDetailKind): Promise<{
+  gameplay: WikiGameplayMetadataIndex;
+  entities: EntityMetadataIndex;
+}> {
+  const existing = metadataPromises.get(kind);
+  if (existing) return existing;
+
+  const entities = kind === 'WEAPON'
+    ? loadWikiEntityMetadata().catch(() => EMPTY_ENTITY_METADATA)
+    : Promise.resolve(EMPTY_ENTITY_METADATA);
+  const pending = Promise.all([
+    loadWikiGameplayFamily(detailFamily(kind)),
+    entities,
+  ]).then(([gameplay, entityMetadata]) => ({ gameplay, entities: entityMetadata })).catch((error) => {
+    metadataPromises.delete(kind);
+    throw error;
+  });
+  metadataPromises.set(kind, pending);
+  return pending;
 }
