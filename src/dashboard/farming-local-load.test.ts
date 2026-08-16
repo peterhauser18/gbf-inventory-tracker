@@ -38,8 +38,8 @@ test('Farming resolves proven deficits before reading combat IndexedDB state', (
 
 test('Farming syncs only from explicit local events instead of observing every Dashboard mutation', () => {
   assert.doesNotMatch(farming, /new MutationObserver\s*\(/);
-  assert.match(farming, /closest<HTMLButtonElement>\('\[data-goal-pin\]'\)/);
-  assert.match(farming, /\.nav-item\[data-section=\\"overview\\"\], \.nav-item\[data-section=\\"goals\\"\]/);
+  assert.ok(farming.includes("closest<HTMLButtonElement>('[data-goal-pin]')"));
+  assert.ok(farming.includes('.nav-item[data-section="overview"], .nav-item[data-section="goals"]'));
   assert.match(farming, /\.finally\(\(\) => \{[\s\S]*scheduleSync\(\)/);
   assert.doesNotMatch(farming, /setInterval\s*\(/);
 });
