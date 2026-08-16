@@ -19,9 +19,10 @@ test('Wiki image fetch runs with the global receiver required by browser fetch',
     revokeObjectUrl: () => {},
   });
 
-  assert.equal(await loader.request('https://gbf.wiki/images/receiver.png', {
+  const result = await loader.request('https://gbf.wiki/images/receiver.png', {
     generation: 1,
     nearViewport: true,
-  }), 'blob:receiver-safe');
+  });
+  assert.equal(result, 'blob:receiver-safe');
   assert.equal(observedReceiver, globalThis);
 });
