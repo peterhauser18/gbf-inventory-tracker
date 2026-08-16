@@ -24,7 +24,7 @@ export function parseObservedTreasureIconResponse(
   mimeType: string | undefined,
   status: number | undefined,
 ): ObservedTreasureIconResponse | null {
-  if (resourceType !== 'Image' || status === undefined || status < 200 || status >= 300) return null;
+  if (resourceType !== 'Image' || status !== 200) return null;
   if (mimeType?.toLowerCase() !== 'image/jpeg') return null;
   try {
     const parsed = new URL(url);
