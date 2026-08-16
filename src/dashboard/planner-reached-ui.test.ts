@@ -12,3 +12,16 @@ test('dashboard entry groups only reached Eternal stages under the requested col
   assert.match(entry, /stepsContainer\.hidden = groups\.visible\.length === 0/);
   assert.match(styles, /\.planner-reached-summary/);
 });
+
+test('Eternal and Evoker details replace the redundant facts box with compact header facts', () => {
+  assert.match(entry, /kind !== 'ETERNAL' && kind !== 'EVOKER'/);
+  assert.match(entry, /=== 'Observed facts'/);
+  assert.match(entry, /level \? `Lv \$\{level\}`/);
+  assert.match(entry, /uncap \? `Uncap \$\{uncap\}★`/);
+  assert.match(entry, /awakening \? `Awakening \$\{awakening\}`/);
+  assert.match(entry, /factsSection\.remove\(\)/);
+});
+
+ test('live refresh does not reload while the dashboard is still booting', () => {
+  assert.match(entry, /if \(section && sectionUsesAccountEvidence\(section, changed\)\)/);
+});
