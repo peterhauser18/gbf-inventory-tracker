@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const popup = readFileSync(new URL('./popup.ts', import.meta.url), 'utf8');
+const popupHtml = readFileSync(new URL('../popup.html', import.meta.url), 'utf8');
+const manifest = JSON.parse(readFileSync(new URL('../public/manifest.json', import.meta.url), 'utf8')) as {
+  name?: string;
+  action?: { default_title?: string };
+};
 
 test('dashboard opening never waits for observation startup', () => {
   const observationStart = popup.indexOf('const observationPromise');
@@ -23,4 +28,12 @@ test('automatic observation still targets only an explicitly selected GBF tab', 
 test('diagnostic capture storage is not imported during popup startup', () => {
   assert.doesNotMatch(popup, /import \{ getCapturedResponsesForScan \} from '\.\/capture\/storage\.ts'/);
   assert.match(popup, /await import\('\.\/capture\/storage\.ts'\)/);
+});
+
+test('clean installs expose the GBF Tracker user-facing name without renaming the internal message namespace', () => {
+  assert.equal(manifest.name, 'GBF Tracker');
+  assert.equal(manifest.action?.default_title, 'GBF Tracker');
+  assert.match(popupHtml, /<title>GBF Tracker<\/title>/);
+  assert.match(popup, /<h1>GBF Tracker<\/h1>/);
+  assert.match(popup, /gbfit:/, 'internal message namespace remains unchanged');
 });

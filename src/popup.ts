@@ -14,7 +14,7 @@ app.innerHTML = `
   <section class="shell">
     <header>
       <p class="eyebrow">LOCAL-FIRST GBF COMPANION</p>
-      <h1>GBF Inventory Tracker</h1>
+      <h1>GBF Tracker</h1>
       <p class="muted">Open the dashboard anytime. If an active GBF tab is available, live read-only debugger observation starts automatically.</p>
     </header>
 
