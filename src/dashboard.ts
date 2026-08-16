@@ -9,21 +9,35 @@ import {
   type PlannerCard,
   type PlannerStep,
 } from './dashboard/model.ts';
+import {
+  DASHBOARD_NAV_GROUPS,
+  dashboardDestination,
+  searchDashboardDestinations,
+  type DashboardDestinationKey,
+} from './dashboard/navigation.ts';
+import { DASHBOARD_THEME_STORAGE_KEY } from './dashboard/theme.ts';
 import { resolveWikiUrl } from './dashboard/resolver.ts';
 import { loadWikiEntityMetadata } from './dashboard/wiki-metadata.ts';
 import type { AccountSnapshot } from './types/account.ts';
 
 const app = requiredApp();
 
+type DashboardOwnedSection = DashboardSection | 'settings' | 'developer';
+
 let snapshot: AccountSnapshot | null = null;
 let model: DashboardViewModel | null = null;
-let section: DashboardSection = 'overview';
+let section: DashboardOwnedSection = 'overview';
 let query = '';
 let detailKey: string | null = null;
 let metadataStatus: 'loading' | 'ready' | 'fallback' = 'loading';
 let observedAt: Partial<Record<AccountFamily, number>> = {};
+let paletteOpen = false;
+let paletteQuery = '';
 const expandedPlannerSteps = new Set<string>();
 
+window.addEventListener('keydown', handleGlobalKeydown);
+app.addEventListener('click', handleShellClick);
+app.addEventListener('input', handleShellInput);
 void load();
 
 async function load(): Promise<void> {
@@ -33,7 +47,7 @@ async function load(): Promise<void> {
     if (!account) {
       app.innerHTML = emptyShell(
         'No account data observed yet',
-        'Keep playing and browsing GBF normally. Verified account responses will fill this dashboard automatically over time.',
+        'No verified account data is available locally yet. Use the extension popup’s current collection/observation workflow, then reopen this dashboard.',
       );
       return;
     }
@@ -59,46 +73,55 @@ async function load(): Promise<void> {
 
 function render(): void {
   if (!model) return;
-  const cards = cardsForSection(model, section);
-  const filtered = filterCards(cards, query);
+  const cards = isEntitySection(section) ? cardsForSection(model, section) : [];
+  const filtered = isEntitySection(section) ? filterCards(cards, query) : [];
 
   app.innerHTML = `
     <div class="dashboard-shell">
       <aside class="sidebar">
         <div class="brand">
-          <p class="eyebrow">LOCAL-FIRST GBF COMPANION</p>
-          <h1>GBF Tool</h1>
-          <p class="muted">Read-only account snapshot</p>
+          <span class="brand-mark" aria-hidden="true">◇</span>
+          <div>
+            <p class="eyebrow">COMPACT ANALYST</p>
+            <h1>GBF Tool</h1>
+            <p class="muted">Local read-only analysis</p>
+          </div>
         </div>
         <nav class="nav" aria-label="Dashboard sections">
-          ${NAV_ITEMS.map(([key, label]) => `
-            <button class="nav-item ${section === key ? 'active' : ''}" type="button" data-section="${key}">${escapeHtml(label)}</button>
-          `).join('')}
+          ${renderNavigation()}
         </nav>
         <div class="sidebar-note">
-          <strong>Tracked locally</strong>
-          <span>Latest observation: ${escapeHtml(formatDate(model.capturedAt))}</span>
+          <strong>Local status</strong>
+          <span>Latest snapshot: ${escapeHtml(formatDate(model.capturedAt))}</span>
           <span>${escapeHtml(metadataMessage(metadataStatus))}</span>
-          <span>Passive tracking sends no gameplay or refresh requests.</span>
+          <span>Dashboard navigation and analysis send no gameplay or refresh requests.</span>
         </div>
       </aside>
 
       <main class="content">
+        <div class="command-bar">
+          <button class="command-trigger" type="button" data-command-trigger aria-haspopup="dialog">
+            <span class="command-icon" aria-hidden="true">⌕</span>
+            <span>Search or jump to a dashboard area…</span>
+            <kbd>Ctrl K</kbd>
+          </button>
+          <span class="read-only-pill">Read-only</span>
+        </div>
         <header class="content-header">
           <div>
             <p class="eyebrow">${escapeHtml(sectionLabel(section).toUpperCase())}</p>
             <h2>${escapeHtml(sectionLabel(section))}</h2>
             <p class="muted">${escapeHtml(sectionDescription(section))}</p>
           </div>
-          ${section === 'overview' ? '' : `
+          ${isEntitySection(section) ? `
             <label class="search">
-              <span>Search</span>
+              <span>Filter this view</span>
               <input id="search" type="search" value="${escapeAttribute(query)}" placeholder="Name or technical ID" autocomplete="off" />
             </label>
-          `}
+          ` : ''}
         </header>
 
-        ${section === 'overview' ? renderOverview(model, observedAt) : renderCardCollection(filtered, cards.length)}
+        ${renderSectionContent(model, filtered, cards.length)}
       </main>
 
       ${detailKey ? renderDetail(model, detailKey) : ''}
@@ -106,18 +129,51 @@ function render(): void {
   `;
 
   bindEvents();
+  syncCommandPalette();
+}
+
+function renderNavigation(): string {
+  return DASHBOARD_NAV_GROUPS.map((group) => `
+    <div class="nav-group" data-nav-group="${group.key}">
+      <span class="nav-group-label">${escapeHtml(group.label)}</span>
+      ${group.destinations.map((key) => {
+        const destination = dashboardDestination(key);
+        const isExternal = destination.owner === 'combat';
+        return `
+          <button
+            class="nav-item ${section === key ? 'active' : ''}"
+            type="button"
+            data-section="${key}"
+            ${isExternal ? 'data-external-section="true"' : ''}
+          >
+            <span class="nav-marker" aria-hidden="true"></span>
+            <span>${escapeHtml(destination.label)}</span>
+          </button>
+        `;
+      }).join('')}
+    </div>
+  `).join('');
+}
+
+function renderSectionContent(view: DashboardViewModel, filtered: DashboardCard[], total: number): string {
+  if (section === 'overview') return renderOverview(view, observedAt);
+  if (section === 'settings') return renderSettings(view, observedAt);
+  if (section === 'developer') return renderDeveloper(view, observedAt);
+  return renderCardCollection(filtered, total);
 }
 
 function bindEvents(): void {
-  app.querySelectorAll<HTMLButtonElement>('[data-section]').forEach((button) => {
+  app.querySelectorAll<HTMLButtonElement>('.nav-item[data-section]:not([data-external-section])').forEach((button) => {
     button.addEventListener('click', () => {
-      section = button.dataset.section as DashboardSection;
-      query = '';
-      detailKey = null;
-      expandedPlannerSteps.clear();
-      render();
+      const target = button.dataset.section as DashboardOwnedSection | undefined;
+      if (!target) return;
+      navigateToOwnedSection(target);
     });
   });
+
+
+
+
 
   app.querySelector<HTMLInputElement>('#search')?.addEventListener('input', (event) => {
     query = (event.currentTarget as HTMLInputElement).value;
@@ -158,6 +214,119 @@ function bindEvents(): void {
   });
 }
 
+function handleGlobalKeydown(event: KeyboardEvent): void {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    openCommandPalette();
+    return;
+  }
+  if (event.key === 'Escape' && paletteOpen) {
+    event.preventDefault();
+    closeCommandPalette();
+  }
+}
+
+function handleShellClick(event: Event): void {
+  const target = event.target as Element | null;
+  if (target?.closest('[data-command-trigger]')) {
+    openCommandPalette();
+    return;
+  }
+  const destinationButton = target?.closest<HTMLButtonElement>('[data-command-destination]');
+  if (destinationButton) {
+    const key = destinationButton.dataset.commandDestination as DashboardDestinationKey | undefined;
+    if (key) navigateToDestination(key);
+    return;
+  }
+  if (target?.closest('[data-command-close]')) closeCommandPalette();
+}
+
+function handleShellInput(event: Event): void {
+  const input = (event.target as Element | null)?.closest<HTMLInputElement>('[data-command-search]');
+  if (!input) return;
+  paletteQuery = input.value;
+  syncCommandPalette();
+  focusPaletteSearch();
+}
+
+function openCommandPalette(): void {
+  paletteOpen = true;
+  paletteQuery = '';
+  syncCommandPalette();
+  focusPaletteSearch();
+}
+
+function closeCommandPalette(): void {
+  paletteOpen = false;
+  paletteQuery = '';
+  syncCommandPalette();
+}
+
+function syncCommandPalette(): void {
+  app.querySelector('[data-command-layer]')?.remove();
+  if (!paletteOpen) return;
+  const shell = app.querySelector<HTMLElement>('.dashboard-shell');
+  if (!shell) return;
+  shell.insertAdjacentHTML('beforeend', renderCommandPalette());
+}
+
+function navigateToDestination(key: DashboardDestinationKey): void {
+  const destination = dashboardDestination(key);
+  closeCommandPalette();
+  const navButton = app.querySelector<HTMLButtonElement>(`.nav-item[data-section="${key}"]`);
+  if (navButton) {
+    navButton.click();
+    return;
+  }
+  if (destination.owner === 'dashboard') navigateToOwnedSection(key as DashboardOwnedSection);
+}
+
+function navigateToOwnedSection(target: DashboardOwnedSection): void {
+  section = target;
+  query = '';
+  detailKey = null;
+  expandedPlannerSteps.clear();
+  paletteOpen = false;
+  paletteQuery = '';
+  render();
+}
+
+function focusPaletteSearch(): void {
+  queueMicrotask(() => {
+    const input = app.querySelector<HTMLInputElement>('[data-command-search]');
+    input?.focus();
+    input?.setSelectionRange(paletteQuery.length, paletteQuery.length);
+  });
+}
+
+function renderCommandPalette(): string {
+  const results = searchDashboardDestinations(paletteQuery);
+  return `
+    <div data-command-layer>
+      <div class="command-backdrop" data-command-close></div>
+      <section class="command-palette" role="dialog" aria-modal="true" aria-label="Dashboard command palette">
+      <div class="command-search-wrap">
+        <span aria-hidden="true">⌕</span>
+        <input data-command-search type="search" value="${escapeAttribute(paletteQuery)}" placeholder="Search dashboard areas and local tools…" autocomplete="off" />
+        <kbd>Esc</kbd>
+      </div>
+      <div class="command-results">
+        ${results.length ? results.map((destination) => `
+          <button type="button" class="command-result" data-command-destination="${destination.key}">
+            <span>
+              <strong>${escapeHtml(destination.label)}</strong>
+              <small>${escapeHtml(destination.description)}</small>
+            </span>
+            <span class="command-group">${escapeHtml(destination.group)}</span>
+          </button>
+        `).join('') : '<div class="command-empty"><strong>No local destination found</strong><span>Try a section name such as Combat, Inventory, Settings or Developer.</span></div>'}
+      </div>
+        <footer class="command-footer">Local navigation only · no GBF request is triggered by this palette.</footer>
+      </section>
+    </div>
+  `;
+}
+
 function renderOverview(view: DashboardViewModel, freshness: Partial<Record<AccountFamily, number>>): string {
   return `
     <section class="overview-grid">
@@ -184,6 +353,75 @@ function renderOverview(view: DashboardViewModel, freshness: Partial<Record<Acco
         ${qualityFreshnessRow('Treasures', view.quality.treasures, freshness.treasures)}
         ${qualityFreshnessRow('Progression evidence', view.quality.progression, freshness.progression)}
       </div>
+    </section>
+  `;
+}
+
+function renderSettings(view: DashboardViewModel, freshness: Partial<Record<AccountFamily, number>>): string {
+  const preference = currentThemePreference();
+  return `
+    <section class="system-grid">
+      <article class="system-card">
+        <p class="eyebrow">APPEARANCE</p>
+        <h3>Compact Analyst</h3>
+        <p class="muted">Dark is the default for new installs. A stored light/dark preference remains local to this dashboard.</p>
+        <div class="settings-row">
+          <span>Current theme</span>
+          <strong data-theme-preference>${escapeHtml(preference)}</strong>
+        </div>
+        <button class="settings-action" type="button" data-theme-toggle>Toggle theme</button>
+      </article>
+      <article class="system-card">
+        <p class="eyebrow">LOCAL STATUS</p>
+        <h3>Observed data</h3>
+        <p class="muted">Missing observations stay unknown; this page never substitutes zero or false for unavailable local evidence.</p>
+        <div class="quality-list settings-quality-list">
+          ${qualityFreshnessRow('Characters', view.quality.characters, freshness.characters)}
+          ${qualityFreshnessRow('Weapons', view.quality.weapons, freshness.weapons)}
+          ${qualityFreshnessRow('Summons', view.quality.summons, freshness.summons)}
+          ${qualityFreshnessRow('Treasures', view.quality.treasures, freshness.treasures)}
+          ${qualityFreshnessRow('Progression evidence', view.quality.progression, freshness.progression)}
+        </div>
+      </article>
+      <article class="system-card system-card-wide">
+        <p class="eyebrow">READ-ONLY BOUNDARY</p>
+        <h3>Account behavior unchanged</h3>
+        <div class="status-list">
+          <div><span>Latest normalized snapshot</span><strong>${escapeHtml(formatDate(view.capturedAt))}</strong></div>
+          <div><span>Public metadata</span><strong>${escapeHtml(metadataStatusLabel(metadataStatus))}</strong></div>
+          <div><span>Gameplay requests from dashboard</span><strong>None</strong></div>
+        </div>
+      </article>
+    </section>
+  `;
+}
+
+function renderDeveloper(view: DashboardViewModel, freshness: Partial<Record<AccountFamily, number>>): string {
+  const observedFamilies = Object.values(freshness).filter((value) => value !== undefined).length;
+  return `
+    <section class="system-grid">
+      <article class="system-card system-card-wide developer-card">
+        <p class="eyebrow">DEVELOPER</p>
+        <h3>Diagnostics are intentionally isolated</h3>
+        <p class="muted">Observation controls stay in the extension popup. Developer-only sanitized capture export and local-storage cleanup remain grouped under its Developer menu and do not start automatically.</p>
+        <div class="status-list">
+          <div><span>Observed account families</span><strong>${escapeHtml(String(observedFamilies))} / 5</strong></div>
+          <div><span>Dashboard snapshot</span><strong>${escapeHtml(formatDate(view.capturedAt))}</strong></div>
+          <div><span>Wiki metadata state</span><strong>${escapeHtml(metadataStatusLabel(metadataStatus))}</strong></div>
+        </div>
+      </article>
+      <article class="system-card">
+        <p class="eyebrow">LOCAL STORAGE</p>
+        <h3>Cleanup controls</h3>
+        <p class="muted">Open the extension popup → Developer to clear diagnostic scans or optional local histories. Account and UI preference retention follows the labels shown there.</p>
+        <span class="developer-badge">Local-only tooling</span>
+      </article>
+      <article class="system-card">
+        <p class="eyebrow">OBSERVATION</p>
+        <h3>Observation control</h3>
+        <p class="muted">Opening this dashboard never starts observation. Collection behavior remains controlled by the extension popup and this surface only reads locally accumulated analysis state.</p>
+        <span class="developer-badge">Explicit opt-in only</span>
+      </article>
     </section>
   `;
 }
@@ -353,6 +591,10 @@ function cardsForSection(view: DashboardViewModel, selected: DashboardSection): 
   }
 }
 
+function isEntitySection(value: DashboardOwnedSection): value is Exclude<DashboardSection, 'overview'> {
+  return value !== 'overview' && value !== 'settings' && value !== 'developer';
+}
+
 function findCard(view: DashboardViewModel, key: string): DashboardCard | undefined {
   const topLevel = [
     ...view.eternals,
@@ -397,22 +639,12 @@ function isPlannerCard(card: DashboardCard): card is PlannerCard {
   return card.kind === 'eternal' || card.kind === 'evoker';
 }
 
-function sectionLabel(value: DashboardSection): string {
-  return NAV_ITEMS.find(([key]) => key === value)?.[1] ?? value;
+function sectionLabel(value: DashboardOwnedSection): string {
+  return dashboardDestination(value).label;
 }
 
-function sectionDescription(value: DashboardSection): string {
-  switch (value) {
-    case 'overview': return 'Accumulated account coverage and planner readiness at a glance.';
-    case 'eternals': return 'Observed Eternal state with each verified uncap/transcendence step available as an expandable material plan.';
-    case 'evokers': return 'Observed Evoker state with each currently verified uncap/transcendence step and explicit unknown prerequisites.';
-    case 'characters': return 'Character instances accumulated from verified responses during normal GBF use, enriched with public GBF Wiki metadata when available.';
-    case 'weapons': return 'Primary weapon inventory. Incomplete observations remain marked partial.';
-    case 'summons': return 'Summon instances accumulated from verified passive responses.';
-    case 'treasures': return 'Treasure and material quantities explicitly observed from GBF responses.';
-    case 'consumables': return 'Consumables, tickets and other item groups kept separate by technical context.';
-    case 'stashes': return 'Observed weapon containers kept separate from the primary weapon inventory.';
-  }
+function sectionDescription(value: DashboardOwnedSection): string {
+  return dashboardDestination(value).description;
 }
 
 function metadataMessage(status: typeof metadataStatus): string {
@@ -420,6 +652,26 @@ function metadataMessage(status: typeof metadataStatus): string {
     case 'loading': return 'Resolving public names/images from GBF Wiki…';
     case 'ready': return 'Public names/images resolved from GBF Wiki.';
     case 'fallback': return 'GBF Wiki metadata unavailable; technical-ID fallback active.';
+  }
+}
+
+function metadataStatusLabel(status: typeof metadataStatus): string {
+  switch (status) {
+    case 'loading': return 'loading';
+    case 'ready': return 'available';
+    case 'fallback': return 'unavailable · technical fallback';
+  }
+}
+
+function currentThemePreference(): string {
+  const active = document.documentElement.dataset.theme;
+  if (active === 'light' || active === 'dark') return active;
+  try {
+    const stored = localStorage.getItem(DASHBOARD_THEME_STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+    return 'dark';
+  } catch {
+    return 'dark · local storage unavailable';
   }
 }
 
@@ -459,15 +711,3 @@ function requiredApp(): HTMLElement {
   if (!element) throw new Error('Missing #dashboard-app root');
   return element;
 }
-
-const NAV_ITEMS: ReadonlyArray<readonly [DashboardSection, string]> = [
-  ['overview', 'Overview'],
-  ['eternals', 'Eternals'],
-  ['evokers', 'Evokers'],
-  ['characters', 'Characters'],
-  ['weapons', 'Weapons'],
-  ['summons', 'Summons'],
-  ['treasures', 'Treasures'],
-  ['consumables', 'Consumables / Tickets'],
-  ['stashes', 'Weapon Stashes'],
-];
