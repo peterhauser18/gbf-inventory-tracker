@@ -4,10 +4,13 @@ import {
   sectionUsesAccountEvidence,
   type AccountEvidenceKey,
 } from './dashboard/live-refresh.ts';
+import { groupPlannerSteps } from './dashboard/planner-step-groups.ts';
+import './dashboard/planner-reached.css';
 
 const RESTORE_SECTION_KEY = 'gbfit:dashboard-restore-section';
 const dirtyEvidence = new Set<AccountEvidenceKey>();
 let reloadTimer: number | undefined;
+let openReachedEternal: string | undefined;
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
@@ -31,6 +34,11 @@ document.addEventListener('click', (event) => {
   event.preventDefault();
   event.stopImmediatePropagation();
   scheduleReload(targetSection, 0);
+}, true);
+
+document.addEventListener('click', (event) => {
+  const target = event.target as Element | null;
+  if (target?.closest('[data-detail], [data-close-detail]')) openReachedEternal = undefined;
 }, true);
 
 void bootDashboard();
@@ -57,11 +65,65 @@ function keepObservationCopyAccurate(): void {
         element.textContent = 'Open the extension Dashboard from an active GBF tab to start observation, then browse or play normally.';
       }
     }
+    collapseReachedEternalStages();
   };
 
   update();
   const observer = new MutationObserver(update);
   observer.observe(app, { childList: true, subtree: true });
+}
+
+function collapseReachedEternalStages(): void {
+  const panel = document.querySelector<HTMLElement>('.detail-panel');
+  const planner = panel?.querySelector<HTMLElement>('.planner-section');
+  if (!panel || !planner || planner.dataset.reachedGrouped === 'true') return;
+
+  const kind = panel.querySelector<HTMLElement>('.detail-title .eyebrow')?.textContent?.trim();
+  if (kind !== 'ETERNAL') return;
+
+  const stepsContainer = planner.querySelector<HTMLElement>(':scope > .planner-steps');
+  if (!stepsContainer) return;
+
+  const stepDescriptors = [...stepsContainer.querySelectorAll<HTMLElement>(':scope > .planner-step')].map((element) => ({
+    element,
+    targetReached: element.querySelector<HTMLElement>('.step-copy > span')?.textContent?.trim() === 'reached',
+    targetDisplay: element.querySelector<HTMLElement>('.step-target')?.textContent?.trim() ?? '',
+  }));
+  const groups = groupPlannerSteps('eternal', stepDescriptors);
+  planner.dataset.reachedGrouped = 'true';
+  if (groups.reached.length === 0 || !groups.highestReached) return;
+
+  const eternalName = panel.querySelector<HTMLElement>('.detail-title h3')?.textContent?.trim() ?? 'Eternal';
+  const reached = document.createElement('details');
+  reached.className = 'planner-reached';
+  reached.open = openReachedEternal === eternalName;
+
+  const summary = document.createElement('summary');
+  summary.className = 'planner-reached-summary';
+  const label = document.createElement('strong');
+  label.textContent = `Already uncapped to ${groups.highestReached.targetDisplay}`;
+  const count = document.createElement('span');
+  count.className = 'step-count';
+  count.textContent = `${groups.reached.length} reached`;
+  const chevron = document.createElement('span');
+  chevron.className = 'chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.textContent = reached.open ? '−' : '+';
+  summary.append(label, count, chevron);
+  reached.append(summary);
+
+  const reachedSteps = document.createElement('div');
+  reachedSteps.className = 'planner-steps planner-reached-steps';
+  for (const step of groups.reached) reachedSteps.append(step.element);
+  reached.append(reachedSteps);
+  stepsContainer.insertAdjacentElement('afterend', reached);
+  stepsContainer.hidden = groups.visible.length === 0;
+
+  reached.addEventListener('toggle', () => {
+    chevron.textContent = reached.open ? '−' : '+';
+    if (reached.open) openReachedEternal = eternalName;
+    else if (openReachedEternal === eternalName) openReachedEternal = undefined;
+  });
 }
 
 function restoreSectionWhenReady(section: string): void {
