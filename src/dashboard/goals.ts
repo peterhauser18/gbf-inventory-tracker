@@ -240,7 +240,7 @@ function nextActionForGoal(
     return {
       kind: 'ready',
       title: `${currentStep.targetDisplay} materials ready`,
-      detail: `All modeled material and prerequisite evidence for the current step is known and satisfied.`,
+      detail: `All modeled material and prerequisite evidence for the current step is available and satisfied.`,
       quality: 'known',
     };
   }

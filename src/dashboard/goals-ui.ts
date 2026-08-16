@@ -254,8 +254,8 @@ function renderGoalCard(goal: PinnedGoalSummary): string {
         <p>${escapeHtml(goal.nextAction.detail)}</p>
         <div class="goal-meta-row">
           <span>Current stage <strong>${escapeHtml(stage)}</strong></span>
-          <span>Known deficits <strong>${knownMissing}</strong></span>
-          <span>Unknown materials <strong>${unknown}</strong></span>
+          <span>Missing <strong>${knownMissing}</strong></span>
+          <span>Needs data <strong>${unknown}</strong></span>
         </div>
         ${renderGoalRequirements(goal.materials)}
       </div>
@@ -275,7 +275,7 @@ function renderGoalRequirements(materials: readonly GoalMaterialDeficit[]): stri
     <details class="goal-requirements" data-goal-requirements>
       <summary class="goal-requirements-summary">
         <span>Requirements</span>
-        <small>${knownMissing} missing · ${unknown} unknown · ${materials.length} modeled</small>
+        <small>${knownMissing} missing · ${unknown} need data · ${materials.length} modeled</small>
       </summary>
       <div class="goal-requirement-list">
         ${materials.map(renderGoalRequirement).join('')}
@@ -380,7 +380,9 @@ function goalSummaryQuality(goals: readonly PinnedGoalSummary[]): 'known' | 'par
 }
 
 function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
-  return `<span class="quality ${quality}">${quality}</span>`;
+  if (quality === 'known') return '';
+  const label = quality === 'partial' ? 'Incomplete' : 'Unavailable';
+  return `<span class="quality ${quality}">${label}</span>`;
 }
 
 function actionRank(kind: PinnedGoalSummary['nextAction']['kind']): number {

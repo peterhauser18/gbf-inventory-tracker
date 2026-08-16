@@ -171,10 +171,6 @@ function bindEvents(): void {
     });
   });
 
-
-
-
-
   app.querySelector<HTMLInputElement>('#search')?.addEventListener('input', (event) => {
     query = (event.currentTarget as HTMLInputElement).value;
     render();
@@ -344,7 +340,7 @@ function renderOverview(view: DashboardViewModel, freshness: Partial<Record<Acco
       <div>
         <p class="eyebrow">PLANNER</p>
         <h3>Eternals & Evokers</h3>
-        <p class="muted">Open an Eternal or Evoker to inspect each verified upgrade stage separately. Material rows use proven local quantities only; unsupported prerequisites stay unknown instead of becoming zero.</p>
+        <p class="muted">Open an Eternal or Evoker to inspect each verified upgrade stage separately. Material rows use proven local quantities only; unsupported prerequisites stay unresolved instead of becoming zero.</p>
       </div>
       <div class="quality-list">
         ${qualityFreshnessRow('Characters', view.quality.characters, freshness.characters)}
@@ -374,7 +370,7 @@ function renderSettings(view: DashboardViewModel, freshness: Partial<Record<Acco
       <article class="system-card">
         <p class="eyebrow">LOCAL STATUS</p>
         <h3>Observed data</h3>
-        <p class="muted">Missing observations stay unknown; this page never substitutes zero or false for unavailable local evidence.</p>
+        <p class="muted">Missing observations remain unavailable; this page never substitutes zero or false for unavailable local evidence.</p>
         <div class="quality-list settings-quality-list">
           ${qualityFreshnessRow('Characters', view.quality.characters, freshness.characters)}
           ${qualityFreshnessRow('Weapons', view.quality.weapons, freshness.weapons)}
@@ -440,7 +436,7 @@ function renderCardCollection(cards: DashboardCard[], total: number): string {
 
 function renderCard(card: DashboardCard): string {
   const target = isPlannerCard(card)
-    ? `<span class="target ${card.targetReached === true ? 'done' : ''}">${card.targetReached === true ? `${escapeHtml(card.targetDisplay)} reached` : card.targetReached === false ? `${escapeHtml(card.targetDisplay)} next` : `${escapeHtml(card.targetDisplay)} · state unknown`}</span>`
+    ? `<span class="target ${card.targetReached === true ? 'done' : ''}">${card.targetReached === true ? `${escapeHtml(card.targetDisplay)} reached` : card.targetReached === false ? `${escapeHtml(card.targetDisplay)} next` : `${escapeHtml(card.targetDisplay)} · status unavailable`}</span>`
     : '';
   return `
     <article class="entity-card">
@@ -511,7 +507,7 @@ function renderPlannerDetail(card: PlannerCard): string {
 function renderPlannerStep(card: PlannerCard, step: PlannerStep): string {
   const key = plannerStepKey(card, step);
   const expanded = expandedPlannerSteps.has(key);
-  const state = step.targetReached === true ? 'reached' : step.targetReached === false ? 'not reached' : 'state unknown';
+  const state = step.targetReached === true ? 'reached' : step.targetReached === false ? 'not reached' : 'status unavailable';
   return `
     <article class="planner-step ${expanded ? 'expanded' : ''}">
       <button class="planner-step-toggle" type="button" data-planner-step="${escapeAttribute(key)}" aria-expanded="${expanded}">
@@ -528,7 +524,7 @@ function renderPlannerStep(card: PlannerCard, step: PlannerStep): string {
 function renderPlannerStepBody(step: PlannerStep): string {
   return `
     <div class="planner-step-body">
-      <p class="muted">Have / Required / Missing uses only quantities explicitly present in the local account database. Untracked currencies and unsupported prerequisites stay unknown.</p>
+      <p class="muted">Have / Required / Missing uses only quantities explicitly present in the local account database. Untracked currencies and unsupported prerequisites remain unavailable.</p>
       <div class="material-table" role="table" aria-label="${escapeAttribute(step.targetLabel)} material requirements">
         <div class="material-row header" role="row"><span>Material</span><span>Have</span><span>Required</span><span>Missing</span></div>
         ${step.materialPlan.materials.map((material) => {
@@ -546,7 +542,7 @@ function renderPlannerStepBody(step: PlannerStep): string {
         ${step.prerequisiteEvidence.map((evidence) => `
           <div class="evidence-row">
             <span>${escapeHtml(evidence.label)}</span>
-            <strong class="${evidence.state === 'unknown' ? 'unknown' : evidence.satisfied ? 'enough' : 'missing'}">${evidence.state === 'unknown' ? 'unknown' : evidence.satisfied ? 'yes' : 'no'}${evidence.value ? ` · ${escapeHtml(evidence.value)}` : ''}</strong>
+            <strong class="${evidence.state === 'unknown' ? 'unknown' : evidence.satisfied ? 'enough' : 'missing'}">${evidence.state === 'unknown' ? '?' : evidence.satisfied ? 'yes' : 'no'}${evidence.value ? ` · ${escapeHtml(evidence.value)}` : ''}</strong>
           </div>
         `).join('')}
       </div>
@@ -623,7 +619,9 @@ function filterCards(cards: DashboardCard[], value: string): DashboardCard[] {
 }
 
 function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
-  return `<span class="quality ${quality}">${quality}</span>`;
+  if (quality === 'known') return '';
+  const label = quality === 'partial' ? 'Incomplete' : 'Unavailable';
+  return `<span class="quality ${quality}">${label}</span>`;
 }
 
 function qualityFreshnessRow(
@@ -693,7 +691,7 @@ function formatNumber(value: number): string {
 }
 
 function formatDate(timestamp: number): string {
-  return timestamp > 0 ? new Date(timestamp).toLocaleString() : 'unknown time';
+  return timestamp > 0 ? new Date(timestamp).toLocaleString() : 'time unavailable';
 }
 
 function escapeHtml(value: string): string {
