@@ -213,9 +213,11 @@ export function deferWikiImageUrl(candidate: string | undefined): string | undef
 }
 
 export function deferredWikiImageTarget(candidate: string | null | undefined): string | undefined {
-  if (!candidate?.startsWith(`${TRANSPARENT_PIXEL}${DEFERRED_MARKER}`)) return undefined;
+  if (!candidate?.startsWith('data:image/')) return undefined;
+  const markerIndex = candidate.indexOf(DEFERRED_MARKER);
+  if (markerIndex < 0) return undefined;
   try {
-    return normalizeWikiImageUrl(decodeURIComponent(candidate.slice(`${TRANSPARENT_PIXEL}${DEFERRED_MARKER}`.length)));
+    return normalizeWikiImageUrl(decodeURIComponent(candidate.slice(markerIndex + DEFERRED_MARKER.length)));
   } catch {
     return undefined;
   }
@@ -310,11 +312,13 @@ function scanDom(): void {
 
   for (const candidate of candidates) {
     const sentinel = candidate.image.getAttribute('src');
+    candidate.image.style.opacity = '0';
     void domLoader.request(candidate.target, {
       generation: scopeGeneration,
       nearViewport: candidate.nearViewport,
     }).then((objectUrl) => {
       if (!objectUrl || !candidate.image.isConnected || candidate.image.getAttribute('src') !== sentinel) return;
+      candidate.image.style.removeProperty('opacity');
       candidate.image.src = objectUrl;
     });
   }
