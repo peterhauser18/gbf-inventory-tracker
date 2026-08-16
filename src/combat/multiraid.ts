@@ -138,18 +138,24 @@ function parseVerifiedStart(
     previous?.raidTechnicalId === raidTechnicalId &&
     (!instanceId || !previous.instanceId || instanceId === previous.instanceId);
   const actorSlots = parsedActors.length > 0
-    ? parsedActors
+    ? sameRaid && previous?.actorSlots.length
+      ? refreshActiveActorSlots(previous.actorSlots, parsedActors)
+      : parsedActors
     : sameRaid
       ? previous?.actorSlots ?? []
       : [];
   const turn = num(body.turn);
-  const mainCharacterId = actorSlots[0]?.id ?? (sameRaid ? previous?.mainCharacterId : undefined);
-  const accountDisplayName = actorSlots[0]?.name ?? (sameRaid ? previous?.accountDisplayName : undefined);
+  const mainCharacterId = sameRaid
+    ? previous?.mainCharacterId ?? parsedActors[0]?.id
+    : actorSlots[0]?.id;
+  const accountDisplayName = sameRaid
+    ? previous?.accountDisplayName ?? parsedActors[0]?.name
+    : actorSlots[0]?.name;
   const context: CombatParseContext = {
     raidTechnicalId,
     instanceId,
     actorSlots,
-    actors: mergeActorHistory(sameRaid ? previous?.actors : undefined, actorSlots),
+    actors: mergeActorHistory(sameRaid ? previous?.actors : undefined, parsedActors.length > 0 ? parsedActors : actorSlots),
     mainCharacterId,
     accountDisplayName,
     turn: turn ?? (sameRaid ? previous?.turn : undefined),
@@ -174,6 +180,18 @@ function parseVerifiedStart(
     context,
     forceNewRaid: Boolean(previous && !sameRaid),
   };
+}
+
+function refreshActiveActorSlots(
+  activeSlots: readonly CombatActorContext[],
+  snapshot: readonly CombatActorContext[],
+): CombatActorContext[] {
+  const byId = new Map(snapshot.flatMap((actor) => actor.id ? [[actor.id, actor] as const] : []));
+  return activeSlots.map((actor) => {
+    if (!actor.id) return { ...actor };
+    const observed = byId.get(actor.id);
+    return observed ? { ...actor, ...observed } : { ...actor };
+  });
 }
 
 function parseVerifiedScenario(
