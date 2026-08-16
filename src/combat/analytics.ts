@@ -122,16 +122,19 @@ export function buildCharacterAnalysis(
 }
 
 export function summarizeTurns(raid: NormalizedRaidParse): TurnSummary {
-  const turns = raid.log
+  const logTurns = raid.log
     .map((entry) => entry.turn)
     .filter((turn): turn is number => Number.isInteger(turn) && (turn ?? 0) >= 0);
-  if (!turns.length) return {};
-  const currentTurn = Math.max(...turns);
+  const candidates = raid.lastObservedTurn === undefined ? logTurns : [...logTurns, raid.lastObservedTurn];
+  if (!candidates.length) return {};
+  const currentTurn = Math.max(...candidates);
   const currentEntries = raid.log.filter((entry) => entry.turn === currentTurn);
   const previousEntries = raid.log.filter((entry) => entry.turn === currentTurn - 1);
   return {
     currentTurn,
-    currentTurnDamage: currentEntries.reduce((sum, entry) => sum + entry.damage, 0),
+    currentTurnDamage: currentEntries.length
+      ? currentEntries.reduce((sum, entry) => sum + entry.damage, 0)
+      : undefined,
     previousTurnDamage: previousEntries.length
       ? previousEntries.reduce((sum, entry) => sum + entry.damage, 0)
       : undefined,
