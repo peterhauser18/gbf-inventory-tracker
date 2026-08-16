@@ -33,7 +33,7 @@ let syncQueued = false;
 let refreshQueued = false;
 
 if (app) {
-  app.addEventListener('click', handleClick, true);
+  document.addEventListener('click', handleClick, true);
   void refreshLocalData();
 }
 
