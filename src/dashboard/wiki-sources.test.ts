@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildWikiMaterialApiUrl, loadWikiMaterialRaidSources } from './wiki-sources.ts';
+import {
+  WIKI_SOURCE_CACHE_TTL_MS,
+  buildWikiMaterialApiUrl,
+  loadWikiMaterialRaidSources,
+} from './wiki-sources.ts';
+
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => void values.set(key, value),
+  };
+}
 
 test('Wiki material source lookup is credential-free and parses the Obtain section', async () => {
   let requested = '';
@@ -23,6 +35,30 @@ test('Wiki material source lookup is credential-free and parses the Obtain secti
   assert.equal(result.state, 'known');
   assert.equal(result.raids[0]?.name, 'Lucilius (Hard)');
   assert.equal(result.freshness, 'revision 99');
+});
+
+test('fresh local Wiki material source cache prevents repeated API lookup', async () => {
+  const storage = memoryStorage();
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls += 1;
+    return new Response(JSON.stringify({
+      parse: {
+        revid: 101,
+        wikitext: { '*': '== Obtain ==\n* [[Beelzebub (Raid)]]' },
+      },
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  const first = await loadWikiMaterialRaidSources('Abyssal Wing', { fetchImpl, storage, now: 1_000 });
+  const second = await loadWikiMaterialRaidSources('Abyssal Wing', {
+    fetchImpl,
+    storage,
+    now: 1_000 + WIKI_SOURCE_CACHE_TTL_MS - 1,
+  });
+
+  assert.equal(calls, 1);
+  assert.deepEqual(second, first);
 });
 
 test('Wiki request or parse failure stays unavailable rather than proving no source', async () => {

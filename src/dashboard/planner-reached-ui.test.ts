@@ -22,6 +22,13 @@ test('Eternal and Evoker details replace the redundant facts box with compact he
   assert.match(entry, /factsSection\.remove\(\)/);
 });
 
- test('live refresh does not reload while the dashboard is still booting', () => {
-  assert.match(entry, /if \(section && sectionUsesAccountEvidence\(section, changed\)\)/);
+test('planner polish preserves current dashboard live-refresh and clean-install reload behavior', () => {
+  assert.match(entry, /if \(!section \|\| !sectionUsesAccountEvidence\(section, changed\)\) return/);
+  assert.match(entry, /scheduleReload\(undefined, 0\)/);
+  assert.match(entry, /function scheduleReload\(section: string \| undefined, delay: number\)/);
+});
+
+test('reopening or switching details starts the reached Eternal group collapsed again', () => {
+  assert.match(entry, /\[data-detail\], \[data-close-detail\], \.nav-item\[data-section\]/);
+  assert.match(entry, /openReachedEternal = undefined/);
 });

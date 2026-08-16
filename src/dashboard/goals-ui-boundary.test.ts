@@ -16,3 +16,12 @@ test('phase 2 goals stay local and do not introduce GBF request or debugger prim
   assert.match(source, /localStorage\.setItem\(GOAL_PINS_STORAGE_KEY/);
   assert.match(source, /loadAccountDatabase\(\)/);
 });
+
+test('goal requirement names link directly to their public Wiki material page', () => {
+  assert.match(ui, /import \{ resolveWikiUrl \} from '\.\/resolver\.ts'/);
+  assert.match(ui, /const wikiUrl = resolveWikiUrl\(\{/);
+  assert.match(ui, /wikiTitle,/);
+  assert.match(ui, /displayName: material\.name/);
+  assert.match(ui, /publicId: material\.itemId/);
+  assert.match(ui, /<a class="goal-requirement-name" href="\$\{escapeAttribute\(wikiUrl\)\}" target="_blank"/);
+});

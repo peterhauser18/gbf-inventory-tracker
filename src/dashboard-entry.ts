@@ -1,3 +1,5 @@
+import './dashboard/theme.css';
+import { ACCOUNT_DATABASE_VERSION } from './account/database.ts';
 import { ACCOUNT_DATABASE_STORAGE_KEY } from './account/storage.ts';
 import {
   changedAccountEvidence,
@@ -6,24 +8,43 @@ import {
 } from './dashboard/live-refresh.ts';
 import { groupPlannerSteps } from './dashboard/planner-step-groups.ts';
 import './dashboard/planner-reached.css';
+import { DASHBOARD_THEME_STORAGE_KEY, parseDashboardTheme } from './dashboard/theme.ts';
 
 const RESTORE_SECTION_KEY = 'gbfit:dashboard-restore-section';
 const dirtyEvidence = new Set<AccountEvidenceKey>();
+const enhancementLoads = new Map<string, Promise<void>>();
+const loadedEnhancements = new Set<string>();
 let reloadTimer: number | undefined;
+let firstAccountSnapshotPending = false;
 let openReachedEternal: string | undefined;
+
+applyStoredTheme();
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== 'local') return;
   const change = changes[ACCOUNT_DATABASE_STORAGE_KEY];
   if (!change) return;
 
+  const firstSnapshotAvailable = !hasStoredAccountSnapshot(change.oldValue) && hasStoredAccountSnapshot(change.newValue);
+  if (firstSnapshotAvailable && !activeSection()) {
+    firstAccountSnapshotPending = true;
+    if (document.visibilityState === 'visible') scheduleFirstSnapshotReload();
+    return;
+  }
+
   const changed = changedAccountEvidence(change.oldValue, change.newValue);
   if (changed.length === 0) return;
   for (const key of changed) dirtyEvidence.add(key);
 
   const section = activeSection();
-  if (section && sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
+  if (!section || !sectionUsesAccountEvidence(section, changed)) return;
+  if (document.visibilityState === 'visible') scheduleReload(section, 500);
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') flushDirtyEvidence();
+});
+window.addEventListener('focus', flushDirtyEvidence);
 
 document.addEventListener('click', (event) => {
   if (dirtyEvidence.size === 0) return;
@@ -38,18 +59,125 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('click', (event) => {
   const target = event.target as Element | null;
-  if (target?.closest('[data-detail], [data-close-detail]')) openReachedEternal = undefined;
+  if (target?.closest('[data-detail], [data-close-detail], .nav-item[data-section]')) openReachedEternal = undefined;
 }, true);
+
+document.addEventListener('click', handleEnhancementIntent, true);
 
 void bootDashboard();
 
 async function bootDashboard(): Promise<void> {
+  const app = document.querySelector<HTMLElement>('#dashboard-app');
+  if (!app) return;
+
+  const initialRender = waitForInitialDashboardRender(app);
   await import('./dashboard.ts');
+  await initialRender;
+
   keepObservationCopyAccurate();
 
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
   if (!restoreSection) return;
   restoreSectionWhenReady(restoreSection);
+}
+
+function waitForInitialDashboardRender(app: HTMLElement): Promise<void> {
+  const isReady = (): boolean =>
+    app.children.length > 0 && !app.textContent?.includes('Loading local account database…');
+
+  if (isReady()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const observer = new MutationObserver(() => {
+      if (!isReady()) return;
+      observer.disconnect();
+      resolve();
+    });
+    observer.observe(app, { childList: true, subtree: true });
+  });
+}
+
+function handleEnhancementIntent(event: MouseEvent): void {
+  const target = event.target as Element | null;
+  const nav = target?.closest<HTMLButtonElement>('.nav-item[data-section]');
+  const section = nav?.dataset.section;
+
+  if (nav && section === 'goals') {
+    interceptUntilLoaded(event, nav, 'goals-page', async () => {
+      await import('./dashboard/goals-ui.ts');
+      await import('./dashboard/farming-ui.ts');
+    });
+    return;
+  }
+
+  if (nav && (section === 'combat' || section === 'raids')) {
+    interceptUntilLoaded(event, nav, 'combat', () => Promise.all([
+      import('./combat/ui.ts'),
+      import('./combat/combat-compare-ui.ts'),
+    ]).then(() => undefined));
+    return;
+  }
+
+  if (nav && section === 'roster') {
+    interceptUntilLoaded(event, nav, 'roster', async () => {
+      await import('./dashboard/roster-ui.ts');
+    });
+    return;
+  }
+
+  if (nav && section === 'characters') {
+    void ensureEnhancement('collection', async () => {
+      await import('./dashboard/collection-tracker-ui.ts');
+    });
+  }
+
+  if (nav && (section === 'eternals' || section === 'evokers')) {
+    void ensureEnhancement('goals-core', async () => {
+      await import('./dashboard/goals-ui.ts');
+    });
+  }
+
+  if (nav && section === 'settings') {
+    void ensureEnhancement('settings', () => Promise.all([
+      import('./dashboard/theme-toggle.ts'),
+      import('./dashboard/phase5-ui.ts'),
+    ]).then(() => undefined));
+  }
+
+  const themeToggle = target?.closest<HTMLButtonElement>('[data-theme-toggle]');
+  if (themeToggle && !loadedEnhancements.has('settings')) {
+    interceptUntilLoaded(event, themeToggle, 'settings', () => Promise.all([
+      import('./dashboard/theme-toggle.ts'),
+      import('./dashboard/phase5-ui.ts'),
+    ]).then(() => undefined));
+  }
+}
+
+function interceptUntilLoaded(
+  event: MouseEvent,
+  element: HTMLElement,
+  key: string,
+  load: () => Promise<void>,
+): void {
+  if (loadedEnhancements.has(key)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  void ensureEnhancement(key, load).then(() => element.click()).catch(() => {});
+}
+
+function ensureEnhancement(key: string, load: () => Promise<void>): Promise<void> {
+  if (loadedEnhancements.has(key)) return Promise.resolve();
+  const existing = enhancementLoads.get(key);
+  if (existing) return existing;
+
+  const pending = load()
+    .then(() => {
+      loadedEnhancements.add(key);
+    })
+    .finally(() => {
+      enhancementLoads.delete(key);
+    });
+  enhancementLoads.set(key, pending);
+  return pending;
 }
 
 function keepObservationCopyAccurate(): void {
@@ -64,6 +192,9 @@ function keepObservationCopyAccurate(): void {
       if (element.textContent === 'Keep playing and browsing GBF normally. Verified account responses will fill this dashboard automatically over time.') {
         element.textContent = 'Open the extension Dashboard from an active GBF tab to start observation, then browse or play normally.';
       }
+    }
+    for (const heading of app.querySelectorAll<HTMLElement>('.system-card h3')) {
+      if (heading.textContent === 'Observation control') heading.closest<HTMLElement>('.system-card')?.remove();
     }
     polishPlannerDetail();
     collapseReachedEternalStages();
@@ -162,6 +293,32 @@ function collapseReachedEternalStages(): void {
   });
 }
 
+function flushDirtyEvidence(): void {
+  if (document.visibilityState !== 'visible') return;
+  if (firstAccountSnapshotPending && !activeSection()) {
+    scheduleFirstSnapshotReload();
+    return;
+  }
+  if (dirtyEvidence.size === 0) return;
+  const section = activeSection();
+  if (!section || !sectionUsesAccountEvidence(section, [...dirtyEvidence])) return;
+  scheduleReload(section, 0);
+}
+
+function scheduleFirstSnapshotReload(): void {
+  firstAccountSnapshotPending = false;
+  scheduleReload(undefined, 0);
+}
+
+function hasStoredAccountSnapshot(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const record = value as { version?: unknown; snapshot?: unknown };
+  return record.version === ACCOUNT_DATABASE_VERSION
+    && Boolean(record.snapshot)
+    && typeof record.snapshot === 'object'
+    && !Array.isArray(record.snapshot);
+}
+
 function restoreSectionWhenReady(section: string): void {
   const restore = (): boolean => {
     const button = document.querySelector<HTMLButtonElement>(`.nav-item[data-section="${cssEscape(section)}"]`);
@@ -186,10 +343,21 @@ function activeSection(): string | undefined {
   return document.querySelector<HTMLElement>('.nav-item.active[data-section]')?.dataset.section;
 }
 
-function scheduleReload(section: string, delay: number): void {
-  sessionStorage.setItem(RESTORE_SECTION_KEY, section);
+function scheduleReload(section: string | undefined, delay: number): void {
+  if (section) sessionStorage.setItem(RESTORE_SECTION_KEY, section);
   if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => window.location.reload(), delay);
+}
+
+function applyStoredTheme(): void {
+  let theme: 'light' | 'dark' = 'dark';
+  try {
+    theme = parseDashboardTheme(localStorage.getItem(DASHBOARD_THEME_STORAGE_KEY));
+  } catch {
+    // Keep the default dark first paint when localStorage is unavailable.
+  }
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
 }
 
 function cssEscape(value: string): string {

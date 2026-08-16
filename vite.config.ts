@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   build: {
     emptyOutDir: true,
+    modulePreload: false,
     rollupOptions: {
       input: {
         popup: resolve(process.cwd(), 'popup.html'),
