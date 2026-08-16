@@ -67,11 +67,11 @@ test('verified start makes six party slots, account name and five party summons 
   assert.equal(observation.context.accountDisplayName, 'Caspr');
   assert.equal(observation.context.turn, 1);
   assert.deepEqual(observation.context.summons, [
-    { id: '2040001000', name: 'Synthetic Main Summon', cooldown: 0, available: true, used: false },
-    { id: '2040002000', name: 'Synthetic Sub Summon A', cooldown: 3, available: false, used: false },
-    { id: '2040003000', name: 'Synthetic Sub Summon B', cooldown: 0, available: true, used: false },
-    { id: '2040004000', name: 'Synthetic Sub Summon C', cooldown: 0, available: true, used: false },
-    { id: '2040005000', name: 'Synthetic Sub Summon D', cooldown: 0, available: true, used: false },
+    { id: '2040001000', name: 'Synthetic Main Summon', cooldown: 0, used: false },
+    { id: '2040002000', name: 'Synthetic Sub Summon A', cooldown: 3, used: false },
+    { id: '2040003000', name: 'Synthetic Sub Summon B', cooldown: 0, used: false },
+    { id: '2040004000', name: 'Synthetic Sub Summon C', cooldown: 0, used: false },
+    { id: '2040005000', name: 'Synthetic Sub Summon D', cooldown: 0, used: false },
   ]);
 });
 
@@ -109,8 +109,8 @@ test('verified turn context attributes skills, summons and attacks and refreshes
   assert.ok(summon?.context);
   assert.equal(summon.actions[0]?.turn, 1);
   assert.equal(summon.context.summons?.[0]?.cooldown, 9);
-  assert.equal(summon.context.summons?.[0]?.available, false);
   assert.equal(summon.context.summons?.[0]?.used, true);
+  assert.equal(summon.context.summons?.[0]?.available, undefined);
   assert.equal(summon.context.summons?.[1]?.cooldown, 2);
   raid = mergeVerifiedMultiraidObservation(raid, summon);
   context = summon.context;
@@ -173,6 +173,7 @@ test('live Combat UI renders context-first party, account-name MC, one summon su
   assert.match(semantics, /verifiedSummonRoster\(body\.summon\)/);
   assert.match(semantics, /Array\.isArray\(status\.summon\)/);
   assert.match(semantics, /cooldown = num\(value\.recast\)/);
+  assert.doesNotMatch(semantics, /available:\s*cooldown/);
   assert.match(storage, /accountDisplayName: safeText\(context\.accountDisplayName, 80\)/);
   assert.match(storage, /summons: context\.summons\?\.slice\(0, 6\)\.map\(sanitizeSummonContext\)/);
   assert.doesNotMatch(layouts, /\bfetch\s*\(/);
