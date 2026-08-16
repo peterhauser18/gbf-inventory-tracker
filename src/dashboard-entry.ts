@@ -75,7 +75,7 @@ function handleEnhancementIntent(event: MouseEvent): void {
   const section = nav?.dataset.section;
 
   if (nav && section === 'goals') {
-    interceptUntilLoaded(event, nav, 'goals', () => Promise.all([
+    interceptUntilLoaded(event, nav, 'goals-page', () => Promise.all([
       import('./dashboard/goals-ui.ts'),
       import('./dashboard/farming-ui.ts'),
     ]).then(() => undefined));
@@ -104,7 +104,7 @@ function handleEnhancementIntent(event: MouseEvent): void {
   }
 
   if (nav && (section === 'eternals' || section === 'evokers')) {
-    void ensureEnhancement('goals', async () => {
+    void ensureEnhancement('goals-core', async () => {
       await import('./dashboard/goals-ui.ts');
     });
   }
