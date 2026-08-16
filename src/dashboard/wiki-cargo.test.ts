@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   CHARACTER_SKILL_CARGO_FIELDS,
   loadWikiCargoRows,
   loadWikiCharacterSkillRows,
 } from './wiki-cargo.ts';
+
+const rosterSource = readFileSync(new URL('./roster-capabilities.ts', import.meta.url), 'utf8');
+const gameplaySource = readFileSync(new URL('./wiki-gameplay-metadata.ts', import.meta.url), 'utf8');
 
 test('Cargo loader stays bulk, credential-free and paginated on the approved Wiki host', async () => {
   const calls: Array<{ url: URL; init?: RequestInit }> = [];
@@ -33,7 +37,7 @@ test('Cargo loader stays bulk, credential-free and paginated on the approved Wik
   }
 });
 
-test('Character skill consumers share one canonical bulk field set', async () => {
+test('Character skill consumers share one canonical bulk field set and loader seam', async () => {
   const calls: URL[] = [];
   const fetcher = async (input: string | URL) => {
     calls.push(new URL(input.toString()));
@@ -45,6 +49,8 @@ test('Character skill consumers share one canonical bulk field set', async () =>
   assert.equal(calls[0]?.searchParams.get('tables'), 'character_skills');
   assert.equal(calls[0]?.searchParams.get('fields'), CHARACTER_SKILL_CARGO_FIELDS);
   assert.equal(calls[0]?.searchParams.has('where'), false);
+  assert.match(rosterSource, /loadWikiCharacterSkillRows\(fetcher\)/);
+  assert.match(gameplaySource, /loadWikiCharacterSkillRows\(fetcher\)/);
 });
 
 test('malformed Cargo payloads fail closed instead of becoming an empty known table', async () => {
