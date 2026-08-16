@@ -31,7 +31,7 @@ test('Goals keep Wiki assets lazy and inline instead of restoring a broad Farmin
   assert.doesNotMatch(goals, /data-goal-material-icon[^>]+src=/);
   assert.match(goals, /data-goal-material-farming/);
   assert.match(ui, /document\.addEventListener\('toggle', handleToggle, true\)/);
-  assert.match(ui, /details\.matches\('\[data-goal-requirements\]'\)/);
+  assert.match(ui, /details\?\.matches\('\[data-goal-requirements\]'\)/);
   assert.match(ui, /loadWikiMaterialThumbnails\(titles, \{ itemIdsByTitle \}\)/);
   assert.match(ui, /syncGoalInlineFarming\(activeGoals\)/);
   assert.doesNotMatch(ui, /renderFocusSurface\(goalsView/);
