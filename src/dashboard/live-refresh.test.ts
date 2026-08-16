@@ -8,13 +8,20 @@ function database(
   weaponStashes: unknown[] = [],
   quality: Record<string, string> = {},
 ): unknown {
-  return { observedAt, snapshot: { quality, weaponStashes } };
+  return {
+    observedAt,
+    snapshot: {
+      quality,
+      weaponStashes,
+    },
+  };
 }
 
 test('live refresh targets only sections that use changed account families', () => {
   const previous = database({ characters: 10, weapons: 20 }, [], { characters: 'partial', weapons: 'partial' });
   const next = database({ characters: 11, weapons: 20 }, [], { characters: 'partial', weapons: 'partial' });
   const changed = changedAccountEvidence(previous, next);
+
   assert.deepEqual(changed, ['characters']);
   assert.equal(sectionUsesAccountEvidence('characters', changed), true);
   assert.equal(sectionUsesAccountEvidence('roster', changed), true);
@@ -24,7 +31,10 @@ test('live refresh targets only sections that use changed account families', () 
 });
 
 test('consumables view refreshes for either consumable or ticket evidence', () => {
-  const changed = changedAccountEvidence(database({ tickets: 10 }, [], { tickets: 'partial' }), database({ tickets: 11 }, [], { tickets: 'partial' }));
+  const changed = changedAccountEvidence(
+    database({ tickets: 10 }, [], { tickets: 'partial' }),
+    database({ tickets: 11 }, [], { tickets: 'partial' }),
+  );
   assert.deepEqual(changed, ['tickets']);
   assert.equal(sectionUsesAccountEvidence('consumables', changed), true);
 });
@@ -33,6 +43,7 @@ test('weapon stash updates are tracked independently from primary weapon evidenc
   const previous = database({}, [{ stashId: '1', quality: 'partial', weapons: [{ id: 'a', updatedAt: 10 }] }]);
   const next = database({}, [{ stashId: '1', quality: 'partial', weapons: [{ id: 'a', updatedAt: 11 }] }]);
   const changed = changedAccountEvidence(previous, next);
+
   assert.deepEqual(changed, ['weaponStashes']);
   assert.equal(sectionUsesAccountEvidence('stashes', changed), true);
   assert.equal(sectionUsesAccountEvidence('weapons', changed), false);
@@ -45,7 +56,21 @@ test('unchanged account evidence does not request a refresh', () => {
 });
 
 test('first account observation does not mark still-unknown families dirty', () => {
-  const next = database({ characters: 10 }, [], { characters: 'partial', weapons: 'unknown', summons: 'unknown', artifacts: 'unknown', treasures: 'unknown', consumables: 'unknown', tickets: 'unknown', accountStatus: 'unknown', progression: 'unknown' });
+  const next = database(
+    { characters: 10 },
+    [],
+    {
+      characters: 'partial',
+      weapons: 'unknown',
+      summons: 'unknown',
+      artifacts: 'unknown',
+      treasures: 'unknown',
+      consumables: 'unknown',
+      tickets: 'unknown',
+      accountStatus: 'unknown',
+      progression: 'unknown',
+    },
+  );
   assert.deepEqual(changedAccountEvidence(undefined, next), ['characters']);
 });
 
