@@ -140,10 +140,10 @@ function renderBody(filtered: readonly RosterCapabilityRow[]): string {
       <label><span>Search</span><input type="search" data-roster-search value="${escapeAttribute(query)}" placeholder="Character, ID, style, race, weapon" autocomplete="off" /></label>
       <label><span>Element</span><select data-roster-element>${elementOptions()}</select></label>
       <label><span>Capability</span><select data-roster-capability>${capabilityOptions()}</select></label>
-      <div class="roster-source-quality"><span>Wiki metadata</span><strong>${escapeHtml(catalog?.baseQuality ?? 'unknown')}</strong><span>Capability coverage</span><strong>${escapeHtml(catalog?.capabilityQuality ?? 'unknown')}</strong></div>
+      ${renderSourceQuality(catalog)}
     </section>
-    <section class="roster-summary"><strong>${formatNumber(filtered.length)}</strong><span>of ${formatNumber(rows.length)} observed characters</span><small>Roster family coverage: ${escapeHtml(snapshot.quality.characters)}</small></section>
-    ${filtered.length ? renderMatrix(filtered) : '<section class="roster-empty"><strong>No matching observed characters</strong><span>Change the local filters; unknown capability cells are not treated as matches.</span></section>'}
+    <section class="roster-summary"><strong>${formatNumber(filtered.length)}</strong><span>of ${formatNumber(rows.length)} observed characters</span></section>
+    ${filtered.length ? renderMatrix(filtered) : '<section class="roster-empty"><strong>No matching observed characters</strong><span>Change the local filters; unresolved capability cells are not treated as matches.</span></section>'}
   `;
 }
 
@@ -159,7 +159,7 @@ function renderMatrix(filtered: readonly RosterCapabilityRow[]): string {
 
 function renderRow(row: RosterCapabilityRow): string {
   return `<div class="roster-row" role="row">
-    <span class="roster-name"><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.masterId)} · ${escapeHtml(row.metadataQuality)}</small></span>
+    <span class="roster-name"><strong>${escapeHtml(row.name)}</strong><small>${escapeHtml(row.masterId)}${metadataNote(row.metadataQuality)}</small></span>
     <span>${escapeHtml(row.element ?? '?')}</span>
     <span>${escapeHtml(row.style ?? '?')}</span>
     <span>${escapeHtml(row.races.join(', ') || '?')}</span>
@@ -172,6 +172,21 @@ function capabilityCell(value: boolean | undefined, label: string): string {
   if (value === true) return `<span class="roster-cap yes" title="Wiki-described ${escapeAttribute(label)} signal">✓</span>`;
   if (value === false) return `<span class="roster-cap no" title="No supported ${escapeAttribute(label)} signal detected in complete current Wiki capability tables">—</span>`;
   return `<span class="roster-cap unknown" title="Wiki capability coverage is incomplete for this conclusion">?</span>`;
+}
+
+function renderSourceQuality(value: WikiRosterCatalog | null): string {
+  const base = value?.baseQuality ?? 'unknown';
+  const capability = value?.capabilityQuality ?? 'unknown';
+  const items = [
+    base === 'known' ? '' : `<span>Wiki metadata</span>${qualityChip(base)}`,
+    capability === 'known' ? '' : `<span>Capability coverage</span>${qualityChip(capability)}`,
+  ].filter(Boolean);
+  return items.length ? `<div class="roster-source-quality">${items.join('')}</div>` : '';
+}
+
+function metadataNote(quality: 'known' | 'partial' | 'unknown'): string {
+  if (quality === 'known') return '';
+  return quality === 'partial' ? ' · metadata incomplete' : ' · metadata unavailable';
 }
 
 function elementOptions(): string {
@@ -192,7 +207,9 @@ function parseCapabilityFilter(value: string): RosterCapabilityKey | 'all' {
 }
 
 function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
-  return `<span class="quality ${quality}">${quality}</span>`;
+  if (quality === 'known') return '';
+  const label = quality === 'partial' ? 'Incomplete' : 'Unavailable';
+  return `<span class="quality ${quality}">${label}</span>`;
 }
 
 function capitalize(value: string): string { return value.charAt(0).toUpperCase() + value.slice(1); }
