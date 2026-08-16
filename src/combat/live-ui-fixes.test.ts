@@ -88,6 +88,7 @@ test('live UI fix remains local/read-only and caps the rendered summon surface a
   assert.match(source, /getLatestCombatParse/);
   assert.match(source, /cards\.slice\(6\)/);
   assert.match(source, /supporter-slot/);
+  assert.match(source, /raid\.characterDamage\.find/);
   assert.doesNotMatch(source, /\bfetch\s*\(/);
   assert.doesNotMatch(source, /XMLHttpRequest/);
   assert.doesNotMatch(source, /chrome\.debugger/);
