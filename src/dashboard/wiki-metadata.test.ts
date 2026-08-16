@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { loadWikiEntityMetadata, wikiEntityImageUrl } from './wiki-metadata.ts';
+import {
+  WIKI_ENTITY_METADATA_CACHE_TTL_MS,
+  loadWikiEntityMetadata,
+  loadWikiEntityMetadataCached,
+  wikiEntityImageUrl,
+} from './wiki-metadata.ts';
 
 interface RecordedCall {
   url: URL;
   init?: RequestInit;
 }
 
-test('loads public wiki master tables without account-specific filters or credentials', async () => {
-  const calls: RecordedCall[] = [];
-  const fetcher = async (input: string | URL, init?: RequestInit) => {
+function fixtureFetcher(calls: RecordedCall[]) {
+  return async (input: string | URL, init?: RequestInit) => {
     const url = new URL(input.toString());
     calls.push({ url, init });
     const table = url.searchParams.get('tables');
@@ -24,8 +28,19 @@ test('loads public wiki master tables without account-specific filters or creden
       json: async () => ({ cargoquery: [{ title }] }),
     };
   };
+}
 
-  const metadata = await loadWikiEntityMetadata(fetcher);
+function memoryStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => void values.set(key, value),
+  };
+}
+
+test('loads public wiki master tables without account-specific filters or credentials', async () => {
+  const calls: RecordedCall[] = [];
+  const metadata = await loadWikiEntityMetadata(fixtureFetcher(calls));
 
   assert.equal(metadata.characters.get('3040000000')?.name, 'Fixture Character');
   assert.equal(metadata.weapons.get('1040000000')?.name, 'Fixture Weapon');
@@ -40,6 +55,20 @@ test('loads public wiki master tables without account-specific filters or creden
     assert.equal(call.init?.credentials, 'omit');
     assert.equal(call.init?.referrerPolicy, 'no-referrer');
   }
+});
+
+test('reuses fresh locally cached Wiki entity metadata instead of refetching Cargo tables', async () => {
+  const calls: RecordedCall[] = [];
+  const storage = memoryStorage();
+  const fetcher = fixtureFetcher(calls);
+
+  const first = await loadWikiEntityMetadataCached(storage, fetcher, 1_000);
+  const second = await loadWikiEntityMetadataCached(storage, fetcher, 1_000 + WIKI_ENTITY_METADATA_CACHE_TTL_MS - 1);
+
+  assert.equal(calls.length, 3);
+  assert.equal(second.characters.get('3040000000')?.wikiTitle, first.characters.get('3040000000')?.wikiTitle);
+  assert.equal(second.weapons.get('1040000000')?.imageUrl, first.weapons.get('1040000000')?.imageUrl);
+  assert.equal(second.summons.get('2040000000')?.imageUrl, first.summons.get('2040000000')?.imageUrl);
 });
 
 test('constructs only GBF Wiki entity image redirects', () => {
