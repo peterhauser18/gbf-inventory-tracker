@@ -1,14 +1,14 @@
 import { resolveSafeExternalImageUrl } from './resolver.ts';
 import { loadWikiTreasureImageIndex, normalizeWikiTreasureTitle } from './wiki-treasure-images.ts';
 
-export const MAX_WIKI_IMAGE_CONCURRENCY = 3;
+export const MAX_WIKI_IMAGE_CONCURRENCY = 5;
 export const WIKI_IMAGE_CACHE_NAME = 'gbfit:wiki-images:v1';
 export const WIKI_IMAGE_CACHE_MAX_ENTRIES = 1200;
 
 const CACHE_PRUNE_INTERVAL = 32;
 const FAILURE_COOLDOWN_MS = 60_000;
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60_000;
-const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const DEFERRED_MARKER = '#gbfit-wiki=';
 
 type CacheLike = Pick<Cache, 'match' | 'put' | 'keys' | 'delete'>;
