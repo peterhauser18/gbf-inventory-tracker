@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildWikiTreasureCategoryImageUrl,
-  buildWikiTreasureImageIndexUrl,
-  loadWikiTreasureImageIndex,
-  parseWikiTreasureItemsHtml,
+  buildWikiTreasurePageImageUrl,
+  MAX_WIKI_TREASURE_PAGE_CONCURRENCY,
+  parseWikiTreasurePageHtml,
+  WikiTreasureImageResolver,
 } from './wiki-treasure-images.ts';
 
 function memoryStorage() {
@@ -15,135 +15,115 @@ function memoryStorage() {
   };
 }
 
-const itemsHtml = `
-<table>
-  <tr><td><a href="/File:Satin_Feather.jpg"><img alt="Satin Feather" src="/images/a/aa/Satin_Feather.jpg"></a></td><td><a href="/Satin_Feather">Satin Feather</a></td><td>Port Breeze treasure.</td></tr>
-  <tr><td><a href="/File:Item_article_s_15.jpg"><img alt="Blistering Ore" src="/images/1/15/Item_article_s_15.jpg"></a></td><td><a href="/Blistering_Ore">Blistering Ore</a></td><td>Valtz treasure.</td></tr>
-  <tr><td><img alt="Fire Crystal" src="/images/thumb/c/cr/Fire_Crystal.jpg/100px-Fire_Crystal.jpg"></td><td><a href="/Elemental_Crystal">Fire Crystal</a></td></tr>
-  <tr><td><img alt="Fire Orb" src="/images/thumb/o/orb/Fire_Orb.jpg/100px-Fire_Orb.jpg"></td><td><a href="/Low_Orb">Fire Orb</a></td></tr>
-  <tr><td><img alt="Unsafe" src="https://game.granbluefantasy.jp/assets/item.png"></td><td><a href="/Unsafe_Item">Unsafe Item</a></td></tr>
-</table>`;
-
-test('treasure metadata uses fixed public Items and Category:Items queries without owned identifiers', () => {
-  const itemsUrl = new URL(buildWikiTreasureImageIndexUrl());
-  assert.equal(itemsUrl.origin, 'https://gbf.wiki');
-  assert.equal(itemsUrl.pathname, '/api.php');
-  assert.equal(itemsUrl.searchParams.get('action'), 'parse');
-  assert.equal(itemsUrl.searchParams.get('page'), 'Items');
-  assert.equal(itemsUrl.searchParams.get('prop'), 'text');
-  assert.equal(itemsUrl.searchParams.get('disableeditsection'), '1');
-  assert.equal(itemsUrl.searchParams.has('titles'), false);
-  assert.equal(itemsUrl.searchParams.has('ids'), false);
-
-  const categoryUrl = new URL(buildWikiTreasureCategoryImageUrl());
-  assert.equal(categoryUrl.origin, 'https://gbf.wiki');
-  assert.equal(categoryUrl.searchParams.get('action'), 'query');
-  assert.equal(categoryUrl.searchParams.get('generator'), 'categorymembers');
-  assert.equal(categoryUrl.searchParams.get('gcmtitle'), 'Category:Items');
-  assert.equal(categoryUrl.searchParams.get('prop'), 'pageimages');
-  assert.equal(categoryUrl.searchParams.get('piprop'), 'thumbnail|name');
-  assert.equal(categoryUrl.searchParams.has('titles'), false);
-  assert.equal(categoryUrl.searchParams.has('ids'), false);
-});
-
-test('rendered Items rows use visible item labels even when several labels target grouped pages', () => {
-  const result = parseWikiTreasureItemsHtml(itemsHtml);
-  assert.equal(result.get('satin feather'), 'https://gbf.wiki/images/a/aa/Satin_Feather.jpg');
-  assert.equal(result.get('blistering ore'), 'https://gbf.wiki/images/1/15/Item_article_s_15.jpg');
-  assert.equal(result.get('fire crystal'), 'https://gbf.wiki/images/thumb/c/cr/Fire_Crystal.jpg/100px-Fire_Crystal.jpg');
-  assert.equal(result.get('fire orb'), 'https://gbf.wiki/images/thumb/o/orb/Fire_Orb.jpg/100px-Fire_Orb.jpg');
-  assert.equal(result.has('elemental crystal'), false);
-  assert.equal(result.has('low orb'), false);
-  assert.equal(result.has('unsafe item'), false);
-});
-
-test('complete Category:Items pageimages supplement the old Items page and follow public continuation', async () => {
-  const calls: Array<{ url: URL; init?: RequestInit; receiver: unknown }> = [];
-  const fetchImpl = async function (this: unknown, input: string | URL, init?: RequestInit) {
-    const url = new URL(input.toString());
-    calls.push({ url, init, receiver: this });
-    if (url.searchParams.get('action') === 'parse') {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ parse: { text: itemsHtml } }),
-      };
-    }
-    if (url.searchParams.get('gcmcontinue')) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          query: { pages: [
-            {
-              title: 'Meditative Sutra',
-              thumbnail: { source: 'https://gbf.wiki/images/thumb/a/aa/Meditative_Sutra.jpg/64px-Meditative_Sutra.jpg' },
-            },
-            {
-              title: 'Unsafe Item',
-              thumbnail: { source: 'https://game.granbluefantasy.jp/assets/item.png' },
-            },
-          ] },
-        }),
-      };
-    }
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({
-        continue: { gcmcontinue: 'page|next', continue: '-||' },
-        query: { pages: [
-          { title: 'Gray Sandstone', pageimage: 'Item_article_s_125.jpg' },
-          { title: 'Satin Feather', pageimage: 'Wrong_Satin.jpg' },
-        ] },
-      }),
-    };
-  };
-
-  const result = await loadWikiTreasureImageIndex({ fetchImpl, now: 10 });
-  assert.equal(calls.length, 3);
-  for (const call of calls) {
-    assert.equal(call.receiver, globalThis);
-    assert.equal(call.init?.credentials, 'omit');
-    assert.equal(call.init?.referrerPolicy, 'no-referrer');
-    assert.equal(call.url.searchParams.has('titles'), false);
-    assert.equal(call.url.searchParams.has('ids'), false);
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
   }
-  assert.equal(result.get('satin feather'), 'https://gbf.wiki/images/a/aa/Satin_Feather.jpg');
-  assert.equal(
-    result.get('gray sandstone'),
-    'https://gbf.wiki/Special:Redirect/file/Item_article_s_125.jpg',
-  );
-  assert.equal(
-    result.get('meditative sutra'),
-    'https://gbf.wiki/images/thumb/a/aa/Meditative_Sutra.jpg/64px-Meditative_Sutra.jpg',
-  );
-  assert.equal(result.has('unsafe item'), false);
+  assert.fail('condition was not reached');
+}
+
+function jsonResponse(value: unknown): Response {
+  return new Response(JSON.stringify(value), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+test('Treasure metadata requests the concrete public Wiki page and follows redirects', () => {
+  const url = new URL(buildWikiTreasurePageImageUrl('Fire Crystal'));
+  assert.equal(url.origin, 'https://gbf.wiki');
+  assert.equal(url.pathname, '/api.php');
+  assert.equal(url.searchParams.get('action'), 'parse');
+  assert.equal(url.searchParams.get('page'), 'Fire_Crystal');
+  assert.equal(url.searchParams.get('redirects'), '1');
+  assert.equal(url.searchParams.get('prop'), 'text');
+  assert.equal(url.searchParams.has('ids'), false);
 });
 
-test('fresh v6 treasure metadata cache avoids repeated public Wiki queries', async () => {
+test('Treasure page HTML resolves normal and grouped-page images by the concrete item label', () => {
+  const normal = `
+    <div class="infobox">
+      <a href="/File:Item_article_s_125.jpg">
+        <img alt="Gray Sandstone" src="/images/a/aa/Item_article_s_125.jpg">
+      </a>
+    </div>`;
+  assert.equal(
+    parseWikiTreasurePageHtml(normal, 'Gray Sandstone'),
+    'https://gbf.wiki/images/a/aa/Item_article_s_125.jpg',
+  );
+
+  const grouped = `
+    <div>
+      <img alt="Fire Crystal" src="/images/f/fire/Fire_Crystal.jpg">
+      <img alt="Water Crystal" src="/images/w/water/Water_Crystal.jpg">
+      <img alt="Earth Crystal" src="/images/e/earth/Earth_Crystal.jpg">
+    </div>`;
+  assert.equal(
+    parseWikiTreasurePageHtml(grouped, 'Water Crystal'),
+    'https://gbf.wiki/images/w/water/Water_Crystal.jpg',
+  );
+
+  const unsafe = '<img alt="Gray Sandstone" src="https://game.granbluefantasy.jp/assets/item.png">';
+  assert.equal(parseWikiTreasurePageHtml(unsafe, 'Gray Sandstone'), undefined);
+});
+
+test('Treasure page resolver uses the browser fetch receiver and never exceeds five concurrent page requests', async () => {
+  assert.equal(MAX_WIKI_TREASURE_PAGE_CONCURRENCY, 5);
+  let active = 0;
+  let maxActive = 0;
+  let calls = 0;
+  const releases: Array<() => void> = [];
+
+  const fetchImpl = (async function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
+    assert.equal(this, globalThis);
+    assert.equal(init?.credentials, 'omit');
+    assert.equal(init?.referrerPolicy, 'no-referrer');
+    calls += 1;
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise<void>((resolve) => releases.push(resolve));
+    active -= 1;
+    const page = new URL(input.toString()).searchParams.get('page')?.replace(/_/g, ' ') ?? 'Treasure';
+    return jsonResponse({
+      parse: { text: `<img alt="${page}" src="https://gbf.wiki/images/${encodeURIComponent(page)}.jpg">` },
+    });
+  }) as typeof fetch;
+
+  const resolver = new WikiTreasureImageResolver({ fetchImpl, storage: memoryStorage() });
+  const promises = Array.from({ length: 8 }, (_, index) => resolver.resolve(`Treasure ${index}`));
+
+  await waitFor(() => calls === 5);
+  assert.equal(maxActive, 5);
+  while (releases.length) releases.shift()?.();
+  await waitFor(() => calls === 8);
+  while (releases.length) releases.shift()?.();
+
+  const results = await Promise.all(promises);
+  assert.equal(results.filter(Boolean).length, 8);
+  assert.equal(maxActive, 5);
+});
+
+test('successful Treasure page image mappings persist and avoid a repeated Wiki page request', async () => {
   const storage = memoryStorage();
   let calls = 0;
-  const fetchImpl = async (input: string | URL) => {
+  const fetchImpl = (async function (this: unknown) {
+    assert.equal(this, globalThis);
     calls += 1;
-    const url = new URL(input.toString());
-    if (url.searchParams.get('action') === 'parse') {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ parse: { text: itemsHtml } }),
-      };
-    }
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ query: { pages: [] } }),
-    };
-  };
+    return jsonResponse({
+      parse: {
+        text: '<img alt="Gray Sandstone" src="https://gbf.wiki/images/a/aa/Item_article_s_125.jpg">',
+      },
+    });
+  }) as typeof fetch;
 
-  const first = await loadWikiTreasureImageIndex({ fetchImpl, storage, now: 10 });
-  const second = await loadWikiTreasureImageIndex({ fetchImpl, storage, now: 20 });
-  assert.equal(calls, 2);
-  assert.equal(second.get('satin feather'), first.get('satin feather'));
-  assert.equal(second.get('fire crystal'), first.get('fire crystal'));
+  const firstResolver = new WikiTreasureImageResolver({ fetchImpl, storage, now: () => 10 });
+  const first = await firstResolver.resolve('Gray Sandstone');
+  assert.equal(first, 'https://gbf.wiki/images/a/aa/Item_article_s_125.jpg');
+  assert.equal(calls, 1);
+
+  const secondResolver = new WikiTreasureImageResolver({ fetchImpl, storage, now: () => 20 });
+  const second = await secondResolver.resolve('Gray Sandstone');
+  assert.equal(second, first);
+  assert.equal(calls, 1);
 });
