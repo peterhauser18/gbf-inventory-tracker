@@ -84,6 +84,17 @@ test('verified start makes six party slots, account name and six summon slots av
   ]);
 });
 
+test('sparse own summon evidence keeps five positional own slots plus the supporter slot', () => {
+  const body = startBody();
+  body.summon[1] = {};
+  const observation = parse(record(START, body, 10));
+  assert.ok(observation?.context);
+  assert.equal(observation.context.summons?.length, 6);
+  assert.deepEqual(observation.context.summons?.[1], {});
+  assert.equal(observation.context.summons?.[2]?.name, 'Synthetic Sub Summon B');
+  assert.equal(observation.context.summons?.[5]?.name, 'Synthetic Friend Summon');
+});
+
 test('verified turn context attributes skills, summons and attacks and refreshes own plus supporter recast', () => {
   const start = parse(record(START, startBody(), 10));
   assert.ok(start?.context);
@@ -206,7 +217,7 @@ test('live Combat UI renders context-first party, account-name MC, one summon su
   assert.match(layouts, /GBF Tracker does not request the Players list/);
 
   assert.match(semantics, /verifiedSummonRoster\(body\.summon, body\.supporter\)/);
-  assert.match(semantics, /value\.slice\(0, 5\)/);
+  assert.match(semantics, /for \(let index = 0; index < 5; index \+= 1\)/);
   assert.match(semantics, /str\(supporterValue\.name\)/);
   assert.match(semantics, /str\(supporterValue\.id\)/);
   assert.match(semantics, /obj\(status\.supporter\)/);
