@@ -95,7 +95,7 @@ test('turn-one start scenario damage is retained and a later refresh snapshot do
   assert.equal(afterRefresh.partyDamage, 33);
 });
 
-test('direct boss auxiliary damage stays in party total without character attribution', () => {
+test('six direct boss auxiliary effects stay in party total without character attribution', () => {
   const start = parse(record(START, startBody(1, [
     { cmd: 'attack', from: 'player', pos: 0, damage: [[{ value: 5 }]] },
     { cmd: 'attack', from: 'player', pos: 1, damage: [[{ value: 2 }]] },
