@@ -1,4 +1,13 @@
+import { installWikiImageCleanupControl } from './wiki-image-cleanup-ui.ts';
+import {
+  deferWikiImageUrl,
+  deferredWikiImageTarget,
+  installWikiImageDomLoader,
+} from './wiki-image-loader.ts';
 import { resolveSafeExternalImageUrl } from './resolver.ts';
+
+installWikiImageDomLoader();
+installWikiImageCleanupControl();
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const WIKI_ORIGIN = 'https://gbf.wiki';
@@ -83,7 +92,7 @@ export async function loadWikiEntityMetadataCached(
   }
 }
 
-export function wikiEntityImageUrl(
+export function wikiEntityRemoteImageUrl(
   kind: EntityMetadataKind,
   masterId: string,
   wikiTitle?: string,
@@ -103,6 +112,14 @@ export function wikiEntityImageUrl(
   if (!filename) return undefined;
   const candidate = `${WIKI_ORIGIN}/Special:Redirect/file/${encodeURIComponent(filename)}`;
   return resolveSafeExternalImageUrl(candidate) ?? undefined;
+}
+
+export function wikiEntityImageUrl(
+  kind: EntityMetadataKind,
+  masterId: string,
+  wikiTitle?: string,
+): string | undefined {
+  return deferWikiImageUrl(wikiEntityRemoteImageUrl(kind, masterId, wikiTitle));
 }
 
 async function loadWikiEntityMetadataFresh(fetcher: FetchLike): Promise<EntityMetadataIndex> {
@@ -186,15 +203,21 @@ function metadataMap(value: unknown): Map<string, EntityMetadata> | undefined {
     const name = text(candidate.name);
     const wikiTitle = text(candidate.wikiTitle);
     if (!masterId || !name || !wikiTitle) return undefined;
-    const imageUrl = text(candidate.imageUrl);
+    const imageUrl = normalizeDeferredImageUrl(text(candidate.imageUrl));
     result.set(masterId, {
       masterId,
       name,
       wikiTitle,
-      imageUrl: imageUrl ? resolveSafeExternalImageUrl(imageUrl) ?? undefined : undefined,
+      imageUrl,
     });
   }
   return result;
+}
+
+function normalizeDeferredImageUrl(candidate: string | undefined): string | undefined {
+  if (!candidate) return undefined;
+  const target = deferredWikiImageTarget(candidate) ?? resolveSafeExternalImageUrl(candidate) ?? undefined;
+  return deferWikiImageUrl(target);
 }
 
 function safeLocalStorage(): StorageLike | undefined {
