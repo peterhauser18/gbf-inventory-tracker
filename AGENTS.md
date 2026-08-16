@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This repository contains **GBF Tool**, a read-only analysis, inventory, progress, and roster tool for Granblue Fantasy.
+This repository contains **GBF Tracker**, a read-only analysis, inventory, progress, and roster tool for Granblue Fantasy.
 
 The product may read data from the user's own account and calculate inventory state, material requirements, Eternal/Evoker progress, and roster capabilities.
 
