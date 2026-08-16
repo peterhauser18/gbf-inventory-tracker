@@ -34,6 +34,7 @@ function sanitizeRaidParse(value: NormalizedRaidParse | RaidHistoryRecord): Norm
     observedStartedAt: finiteNumber(value.observedStartedAt),
     observedEndedAt: finiteNumber(value.observedEndedAt),
     durationMs: finiteNumber(value.durationMs),
+    lastObservedTurn: finiteNumber(value.lastObservedTurn),
     result: ['active', 'victory', 'failure', 'left', 'unknown'].includes(value.result) ? value.result : 'unknown',
     resultQuality: quality(value.resultQuality),
     parserQuality: quality(value.parserQuality),
