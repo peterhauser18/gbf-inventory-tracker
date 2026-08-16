@@ -8,10 +8,11 @@ test('inventory observation follows a different active GBF tab when no fight is 
   assert.equal(shouldRetargetObservation({ active: false, tabId: 10 }, 20), false);
 });
 
-test('any active combat lock keeps observation on its fight tab', () => {
-  const state = { active: true, tabId: 10, combatTabId: 10 };
-  assert.equal(shouldRetargetObservation(state, 20), false);
-  assert.equal(shouldRetargetObservation(state, 10), false);
+test('combat lock blocks other tabs but allows reattaching its own fight tab', () => {
+  assert.equal(shouldRetargetObservation({ active: true, tabId: 10, combatTabId: 10 }, 20), false);
+  assert.equal(shouldRetargetObservation({ active: true, tabId: 10, combatTabId: 10 }, 10), false);
+  assert.equal(shouldRetargetObservation({ active: true, combatTabId: 10 }, 20), false);
+  assert.equal(shouldRetargetObservation({ active: true, combatTabId: 10 }, 10), true);
 });
 
 test('terminal result classification excludes active and unknown parses', () => {
