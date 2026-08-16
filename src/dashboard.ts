@@ -1,4 +1,5 @@
 import './dashboard/styles.css';
+import './dashboard/stash-inline.css';
 import type { AccountFamily } from './account/database.ts';
 import { loadAccountDatabase } from './account/storage.ts';
 import {
@@ -15,6 +16,7 @@ import {
   searchDashboardDestinations,
   type DashboardDestinationKey,
 } from './dashboard/navigation.ts';
+import { renderInlineStashCollection } from './dashboard/stash-inline.ts';
 import { DASHBOARD_THEME_STORAGE_KEY } from './dashboard/theme.ts';
 import { resolveWikiUrl } from './dashboard/resolver.ts';
 import { loadWikiEntityMetadata } from './dashboard/wiki-metadata.ts';
@@ -34,6 +36,7 @@ let observedAt: Partial<Record<AccountFamily, number>> = {};
 let paletteOpen = false;
 let paletteQuery = '';
 const expandedPlannerSteps = new Set<string>();
+const expandedStashes = new Set<string>();
 
 window.addEventListener('keydown', handleGlobalKeydown);
 app.addEventListener('click', handleShellClick);
@@ -159,6 +162,7 @@ function renderSectionContent(view: DashboardViewModel, filtered: DashboardCard[
   if (section === 'overview') return renderOverview(view, observedAt);
   if (section === 'settings') return renderSettings(view, observedAt);
   if (section === 'developer') return renderDeveloper(view, observedAt);
+  if (section === 'stashes') return renderInlineStashCollection(view.stashes, query, expandedStashes);
   return renderCardCollection(filtered, total);
 }
 
@@ -177,6 +181,16 @@ function bindEvents(): void {
     const search = app.querySelector<HTMLInputElement>('#search');
     search?.focus();
     search?.setSelectionRange(query.length, query.length);
+  });
+
+  app.querySelectorAll<HTMLButtonElement>('[data-stash-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const key = button.dataset.stashToggle;
+      if (!key) return;
+      if (expandedStashes.has(key)) expandedStashes.delete(key);
+      else expandedStashes.add(key);
+      render();
+    });
   });
 
   app.querySelectorAll<HTMLButtonElement>('[data-detail]').forEach((button) => {
@@ -457,9 +471,6 @@ function renderDetail(view: DashboardViewModel, key: string): string {
   const card = findCard(view, key);
   if (!card) return '';
   const planner = isPlannerCard(card) ? renderPlannerDetail(card) : '';
-  const children = card.children?.length
-    ? `<section class="detail-section"><h4>Weapons in this stash</h4><div class="child-list">${card.children.map(renderCompactChild).join('')}</div></section>`
-    : '';
   return `
     <div class="detail-backdrop" data-close-detail></div>
     <aside class="detail-panel" aria-label="${escapeAttribute(card.title)} detail">
@@ -486,7 +497,6 @@ function renderDetail(view: DashboardViewModel, key: string): string {
         </dl>
       </section>
       ${planner}
-      ${children}
     </aside>
   `;
 }

@@ -29,11 +29,14 @@ test('entity palette results stay text-only and coexist with core destination re
   assert.match(source, /currentRoot\.querySelector\('\.command-empty'\)\?\.remove\(\)/);
 });
 
-test('entity selection reuses existing section and detail controls including stash parent traversal', () => {
+test('entity selection reuses section/detail controls and expands stash parents inline', () => {
   assert.match(source, /const plan = entityOpenPlan\(result\)/);
   assert.match(source, /button\.dataset\.section === plan\.section/);
   assert.match(source, /navButton\.click\(\)/);
   assert.match(source, /for \(const detailKey of plan\.detailKeys\)/);
+  assert.match(source, /button\.dataset\.stashToggle === detailKey/);
+  assert.match(source, /stashToggle\.getAttribute\('aria-expanded'\) !== 'true'/);
+  assert.match(source, /stashToggle\.click\(\)/);
   assert.match(source, /button\.dataset\.detail === detailKey/);
   assert.match(source, /detailButton\.click\(\)/);
 });
