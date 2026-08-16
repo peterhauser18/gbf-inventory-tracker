@@ -61,11 +61,11 @@ test('selects separate Summon Call and Aura text for observed uncap with downwar
 
   assert.deepEqual(selectSummonGameplay(source, 3), {
     call: { name: 'Fixture Call', description: '3-star call.' },
-    aura: { name: 'Aura', description: '3-star aura.' },
+    aura: { description: '3-star aura.' },
   });
   assert.deepEqual(selectSummonGameplay(source, 5), {
     call: { name: 'Fixture Call', description: '4-star call.' },
-    aura: { name: 'Aura', description: '3-star aura.' },
+    aura: { description: '3-star aura.' },
   });
 });
 
