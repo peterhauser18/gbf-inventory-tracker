@@ -22,7 +22,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   for (const key of changed) dirtyEvidence.add(key);
 
   const section = activeSection();
-  if (!section || sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
+  if (section && sectionUsesAccountEvidence(section, changed)) scheduleReload(section, 500);
 });
 
 document.addEventListener('click', (event) => {
@@ -65,12 +65,48 @@ function keepObservationCopyAccurate(): void {
         element.textContent = 'Open the extension Dashboard from an active GBF tab to start observation, then browse or play normally.';
       }
     }
+    polishPlannerDetail();
     collapseReachedEternalStages();
   };
 
   update();
   const observer = new MutationObserver(update);
   observer.observe(app, { childList: true, subtree: true });
+}
+
+function polishPlannerDetail(): void {
+  const panel = document.querySelector<HTMLElement>('.detail-panel');
+  if (!panel || panel.dataset.plannerFactsPolished === 'true') return;
+
+  const kind = panel.querySelector<HTMLElement>('.detail-title .eyebrow')?.textContent?.trim();
+  if (kind !== 'ETERNAL' && kind !== 'EVOKER') return;
+
+  const factsSection = [...panel.querySelectorAll<HTMLElement>('.detail-section')].find(
+    (section) => section.querySelector<HTMLElement>('h4')?.textContent?.trim() === 'Observed facts',
+  );
+  if (!factsSection) return;
+
+  const factValue = (label: string): string | undefined => {
+    for (const row of factsSection.querySelectorAll<HTMLElement>('.facts > div')) {
+      if (row.querySelector<HTMLElement>('dt')?.textContent?.trim() !== label) continue;
+      return row.querySelector<HTMLElement>('dd')?.childNodes[0]?.textContent?.trim() || undefined;
+    }
+    return undefined;
+  };
+
+  const level = factValue('Level');
+  const uncap = factValue('Uncap');
+  const awakening = factValue('Awakening');
+  const compact = [
+    level ? `Lv ${level}` : undefined,
+    uncap ? `Uncap ${uncap}★` : undefined,
+    awakening ? `Awakening ${awakening}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+
+  const subtitle = panel.querySelector<HTMLElement>('.detail-title .muted');
+  if (subtitle && compact.length > 0) subtitle.textContent = compact.join(' · ');
+  factsSection.remove();
+  panel.dataset.plannerFactsPolished = 'true';
 }
 
 function collapseReachedEternalStages(): void {
@@ -150,8 +186,8 @@ function activeSection(): string | undefined {
   return document.querySelector<HTMLElement>('.nav-item.active[data-section]')?.dataset.section;
 }
 
-function scheduleReload(section: string | undefined, delay: number): void {
-  if (section) sessionStorage.setItem(RESTORE_SECTION_KEY, section);
+function scheduleReload(section: string, delay: number): void {
+  sessionStorage.setItem(RESTORE_SECTION_KEY, section);
   if (reloadTimer !== undefined) window.clearTimeout(reloadTimer);
   reloadTimer = window.setTimeout(() => window.location.reload(), delay);
 }
