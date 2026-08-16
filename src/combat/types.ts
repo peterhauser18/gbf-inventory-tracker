@@ -32,8 +32,10 @@ export interface CombatLogEntry {
   damage: number;
   breakdown: DamageBreakdown;
   targetIds?: string[];
+  critical?: boolean;
   criticalHits?: number;
   multiattack?: number;
+  damageInstances?: ParsedDamageHit[];
 }
 
 export interface BossState {
@@ -118,6 +120,9 @@ export interface ParsedDamageHit {
   kind: DamageKind;
   targetId?: string;
   critical?: boolean;
+  attackCount?: number;
+  concurrentAttackCount?: number;
+  isRandomAttack?: boolean;
 }
 
 export interface ParsedCombatAction {
@@ -128,6 +133,7 @@ export interface ParsedCombatAction {
   kind: CombatActionKind;
   name?: string;
   hits: ParsedDamageHit[];
+  critical?: boolean;
   multiattack?: number;
 }
 

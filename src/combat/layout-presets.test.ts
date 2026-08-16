@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const layouts = readFileSync(new URL('./layouts.ts', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 const raidsCss = readFileSync(new URL('./raids-v2.css', import.meta.url), 'utf8');
+const combatCss = readFileSync(new URL('./styles.css', import.meta.url), 'utf8');
 
 test('combat exposes exactly five named presets with Cypher Modern as fallback', () => {
   const presetEntries = [...layouts.matchAll(/\['(cypher-modern|combat-cockpit|party-first|analyzer-split|compact-live)',\s*'([^']+)'\]/g)];
@@ -29,6 +30,11 @@ test('all visual presets consume the same shared view instead of duplicating cal
   assert.match(layouts, /data-character-select/);
   assert.match(layouts, /data-combat-image/);
   assert.match(layouts, /Observed summons/);
+});
+
+test('combat layouts hide unsupported Supplemental damage from both drilldown and cockpit views', () => {
+  assert.match(combatCss, /\.analysis-breakdown > :nth-child\(5\)\s*\{[^}]*display:\s*none/s);
+  assert.match(combatCss, /\.cockpit-row > :nth-child\(7\)\s*\{[^}]*display:\s*none/s);
 });
 
 test('raid search shell is not replaced on each input or one-second refresh', () => {
