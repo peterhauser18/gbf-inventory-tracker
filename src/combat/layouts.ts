@@ -93,7 +93,7 @@ function buildView(input: CombatLayoutRenderInput): CombatView {
     metadata,
     analyses,
     selected,
-    turns: summarizeTurns(input.raid),
+    turns: summarizeTurns(input.raid, context?.turn),
     participantRows: context?.participants ?? [],
     summons,
     collapsed: input.collapsedSections ?? new Set(),
