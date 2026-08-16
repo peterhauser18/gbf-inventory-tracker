@@ -67,15 +67,15 @@ function ensureQualityLegend(): void {
   legend.setAttribute('aria-label', 'Data confidence legend');
   legend.innerHTML = `
     <strong>Data confidence</strong>
-    ${legendItem('known', 'Complete enough for this conclusion')}
-    ${legendItem('partial', 'Some evidence observed; avoid full conclusions')}
-    ${legendItem('unknown', 'Insufficient evidence; never treated as zero')}
+    ${legendItem('known', 'Complete', 'Complete enough for this conclusion')}
+    ${legendItem('partial', 'Incomplete', 'Some evidence observed; avoid full conclusions')}
+    ${legendItem('unknown', 'Unavailable', 'Insufficient evidence; never treated as zero')}
   `;
   header.insertAdjacentElement('afterend', legend);
 }
 
-function legendItem(quality: 'known' | 'partial' | 'unknown', detail: string): string {
-  return `<span class="quality-legend-item"><span class="quality ${quality}">${quality}</span><span>${detail}</span></span>`;
+function legendItem(quality: 'known' | 'partial' | 'unknown', label: string, detail: string): string {
+  return `<span class="quality-legend-item"><span class="quality ${quality}">${label}</span><span>${detail}</span></span>`;
 }
 
 function isSettingsActive(): boolean {
@@ -130,7 +130,7 @@ function renderSnapshotCard(): void {
       ${importedDigest ? '<button class="phase5-action" type="button" data-phase5-clear>Clear comparison</button>' : ''}
     </div>
     ${importError ? `<div class="phase5-snapshot-error" role="status">${escapeHtml(importError)}</div>` : ''}
-    ${comparison ? renderComparison(comparison) : '<p class="muted">Import a previous GBF Tool analysis digest to compare known summary values. No imported data is persisted.</p>'}
+    ${comparison ? renderComparison(comparison) : '<p class="muted">Import a previous GBF Tool analysis digest to compare available summary values. No imported data is persisted.</p>'}
   `;
   card.dataset.phase5RenderRevision = revision;
   card.innerHTML = markup;
@@ -152,7 +152,13 @@ function renderComparison(comparison: ReturnType<typeof compareAnalysisDigests>)
 
 function renderComparisonRow(row: AnalysisDigestComparisonRow): string {
   const known = row.delta !== undefined;
-  return `<div class="phase5-compare-row" role="row"><strong>${escapeHtml(row.label)}</strong><span class="${known ? '' : 'unknown'}">${known ? formatNumber(row.previous!) : '—'}</span><span class="${known ? '' : 'unknown'}">${known ? formatNumber(row.current!) : '—'}</span><span class="${known ? '' : 'unknown'}">${known ? formatSigned(row.delta!) : `${row.quality}`}</span></div>`;
+  return `<div class="phase5-compare-row" role="row"><strong>${escapeHtml(row.label)}</strong><span class="${known ? '' : 'unknown'}">${known ? formatNumber(row.previous!) : '—'}</span><span class="${known ? '' : 'unknown'}">${known ? formatNumber(row.current!) : '—'}</span><span class="${known ? '' : 'unknown'}">${known ? formatSigned(row.delta!) : qualityLabel(row.quality)}</span></div>`;
+}
+
+function qualityLabel(quality: 'known' | 'partial' | 'unknown'): string {
+  if (quality === 'known') return 'Complete';
+  if (quality === 'partial') return 'Incomplete';
+  return 'Unavailable';
 }
 
 function handleClick(event: MouseEvent): void {
@@ -221,5 +227,5 @@ function downloadJson(filename: string, content: string): void {
 
 function formatNumber(value: number): string { return new Intl.NumberFormat('en-US').format(value); }
 function formatSigned(value: number): string { return `${value > 0 ? '+' : ''}${formatNumber(value)}`; }
-function formatDate(timestamp: number): string { return timestamp > 0 ? new Date(timestamp).toLocaleString() : 'unknown time'; }
+function formatDate(timestamp: number): string { return timestamp > 0 ? new Date(timestamp).toLocaleString() : 'time unavailable'; }
 function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] ?? character); }
