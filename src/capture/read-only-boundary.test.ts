@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const srcRoot = fileURLToPath(new URL('../', import.meta.url));
+const background = readFileSync(new URL('../background.ts', import.meta.url), 'utf8');
+const captureTypes = readFileSync(new URL('./types.ts', import.meta.url), 'utf8');
 const manifest = JSON.parse(
   readFileSync(new URL('../../public/manifest.json', import.meta.url), 'utf8'),
 ) as { content_scripts?: unknown[] };
@@ -37,4 +39,13 @@ test('runtime does not instrument or generate GBF request primitives', () => {
     assert.doesNotMatch(source, /sendBeacon\s*\(/);
     assert.doesNotMatch(source, /fetch\s*\(\s*['"`]https:\/\/game\.granbluefantasy\.jp/i);
   }
+});
+
+test('debugger observation start targets and revalidates the explicitly selected tab', () => {
+  assert.match(captureTypes, /\{ type: 'gbfit:start-observation'; tabId\?: number \}/);
+  assert.match(background, /startObservation\(message\.tabId\)/);
+  assert.match(background, /chrome\.tabs\.get\(explicitTabId\)/);
+  assert.match(background, /isGbfPageUrl\(tab\.url\)/);
+  assert.match(background, /const target = \{ tabId: tab\.id as number \}/);
+  assert.match(background, /chrome\.debugger\.attach\(target, DEBUGGER_PROTOCOL_VERSION\)/);
 });
