@@ -189,7 +189,7 @@ function renderLiveStats(view: CombatView): string {
   const honors = exactHonors !== undefined
     ? formatNumber(exactHonors)
     : raid.participants?.contribution !== undefined
-      ? `≈ ${formatNumber(raid.participants.contribution)} (partial)`
+      ? `≈ ${formatNumber(raid.participants.contribution)} (estimated)`
       : '—';
   const participantCount = raid.participants?.count;
   const participants = participantCount !== undefined
@@ -300,7 +300,7 @@ function renderLog(view: CombatView): string {
     const metadata = entry.actorId ? characterMetadata(view.metadata, entry.actorId, entry.actorName ?? actor?.name) : undefined;
     const label = entry.actorId
       ? actorDisplayName(view, entry.actorId, entry.actorName, actor, metadata)
-      : entry.actorName ?? 'Unknown actor';
+      : entry.actorName ?? 'Actor unavailable';
     return `<div class="combat-timeline-row"><span>${entry.turn === undefined ? 'T—' : `T${entry.turn}`}</span><strong>${escapeHtml(label)}</strong><span>${escapeHtml(entry.actionName ?? entry.actionKind)}</span><span>${formatNumber(entry.damage)}</span></div>`;
   }).join('')}</div>`;
 }

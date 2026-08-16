@@ -8,7 +8,7 @@ export function polishDashboardEmptyState(title: string, detail: string): Polish
   if (title === 'No matching entries' && detail === 'No data was observed for this family yet.') {
     return {
       title: 'Not observed yet',
-      detail: 'This data family has no local observation yet. Unknown evidence is not treated as an empty collection.',
+      detail: 'This data family has no local observation yet. Unavailable evidence is not treated as an empty collection.',
       kind: 'unobserved',
     };
   }
