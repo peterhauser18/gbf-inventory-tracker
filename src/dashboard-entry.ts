@@ -175,6 +175,9 @@ function keepObservationCopyAccurate(): void {
         element.textContent = 'Open the extension Dashboard from an active GBF tab to start observation, then browse or play normally.';
       }
     }
+    for (const heading of app.querySelectorAll<HTMLElement>('.system-card h3')) {
+      if (heading.textContent === 'Observation control') heading.closest<HTMLElement>('.system-card')?.remove();
+    }
   };
 
   update();
