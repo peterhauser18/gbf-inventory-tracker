@@ -41,7 +41,7 @@ test('material thumbnails are resolved in one credential-free batch and deduplic
   assert.match(result.get("ewiyar's jewel") ?? '', /^https:\/\/gbf\.wiki\//);
 });
 
-test('shared Wiki pages resolve a specifically named material image in two additional batched reads', async () => {
+test('shared Wiki pages resolve a technical item image by the observed item id in two additional batched reads', async () => {
   const calls: URL[] = [];
   const fetchImpl = (async (input: string | URL | Request) => {
     const url = new URL(String(input));
@@ -50,22 +50,22 @@ test('shared Wiki pages resolve a specifically named material image in two addit
     if (prop === 'pageimages') {
       return new Response(JSON.stringify({
         query: {
-          redirects: [{ from: 'Aqua Luster', to: 'Lusters' }],
-          pages: [{ pageid: 1, title: 'Lusters' }],
+          redirects: [{ from: 'Aqua Luster', to: 'Luster' }],
+          pages: [{ pageid: 1, title: 'Luster' }],
         },
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (prop === 'images') {
       return new Response(JSON.stringify({
         query: {
-          redirects: [{ from: 'Aqua Luster', to: 'Lusters' }],
+          redirects: [{ from: 'Aqua Luster', to: 'Luster' }],
           pages: [{
             pageid: 1,
-            title: 'Lusters',
+            title: 'Luster',
             images: [
-              { title: 'File:Terra Luster.png' },
-              { title: 'File:Aqua Luster.png' },
-              { title: 'File:Ventus Luster.png' },
+              { title: 'File:Item_article_s_25061.jpg' },
+              { title: 'File:Item_article_s_25071.jpg' },
+              { title: 'File:Item_article_s_25081.jpg' },
             ],
           }],
         },
@@ -75,19 +75,22 @@ test('shared Wiki pages resolve a specifically named material image in two addit
       query: {
         pages: [{
           pageid: 2,
-          title: 'File:Aqua Luster.png',
-          imageinfo: [{ thumburl: 'https://gbf.wiki/images/thumb/a/a1/Aqua_Luster.png/48px-Aqua_Luster.png' }],
+          title: 'File:Item_article_s_25071.jpg',
+          imageinfo: [{ thumburl: 'https://gbf.wiki/images/thumb/c/c4/Item_article_s_25071.jpg/48px-Item_article_s_25071.jpg' }],
         }],
       },
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }) as typeof fetch;
 
-  const result = await loadWikiMaterialThumbnails(['Aqua Luster'], { fetchImpl });
+  const result = await loadWikiMaterialThumbnails(['Aqua Luster'], {
+    fetchImpl,
+    itemIdsByTitle: new Map([['aqua luster', '25071']]),
+  });
   assert.equal(calls.length, 3);
   assert.equal(calls[0]?.searchParams.get('prop'), 'pageimages');
   assert.equal(calls[1]?.searchParams.get('prop'), 'images');
   assert.equal(calls[2]?.searchParams.get('prop'), 'imageinfo');
-  assert.match(result.get('aqua luster') ?? '', /Aqua_Luster/);
+  assert.match(result.get('aqua luster') ?? '', /Item_article_s_25071/);
 });
 
 test('fresh thumbnail cache avoids another Wiki request', async () => {
@@ -158,7 +161,7 @@ test('a Wiki page with no matching page or embedded material image is negatively
 test('thumbnail and fallback API URLs are public GBF Wiki queries only', () => {
   const thumbnail = new URL(buildWikiThumbnailApiUrl(['Harp Stone', 'Gold Brick']));
   const images = new URL(buildWikiPageImagesApiUrl(['Aqua Luster']));
-  const imageInfo = new URL(buildWikiImageInfoApiUrl(['File:Aqua Luster.png']));
+  const imageInfo = new URL(buildWikiImageInfoApiUrl(['File:Item_article_s_25071.jpg']));
 
   assert.equal(thumbnail.origin, 'https://gbf.wiki');
   assert.equal(thumbnail.searchParams.get('action'), 'query');
