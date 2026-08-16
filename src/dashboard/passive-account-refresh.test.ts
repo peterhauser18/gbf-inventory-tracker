@@ -5,25 +5,25 @@ import test from 'node:test';
 const source = readFileSync(new URL('../dashboard-entry.ts', import.meta.url), 'utf8');
 
 test('dashboard entry keeps live refresh for relevant rendered sections', () => {
-  assert.match(source, /ACCOUNT_DATABASE_STORAGE_KEY/);
-  assert.match(source, /chrome\.storage\.onChanged\.addListener/);
-  assert.match(source, /changedAccountEvidence/);
+  assert.match(source, /chrome\.runtime\.onMessage\.addListener/);
+  assert.match(source, /gbfit-dashboard-account-updated/);
   assert.match(source, /sectionUsesAccountEvidence/);
   assert.match(source, /dirtyEvidence/);
-  assert.match(source, /if \(section && sectionUsesAccountEvidence\(section, changed\)\) scheduleReload\(section, 500\)/);
+  assert.match(source, /if \(section && sectionUsesAccountEvidence\(section, message\.evidence\)\) scheduleReload\(section, 500\)/);
   assert.match(source, /scheduleReload\(targetSection, 0\)/);
-  assert.doesNotMatch(source, /if \(!section \|\| sectionUsesAccountEvidence/);
-  assert.doesNotMatch(source, /characterObservationChanged/);
+  assert.doesNotMatch(source, /chrome\.storage\.onChanged/);
+  assert.doesNotMatch(source, /setInterval\s*\(/);
+  assert.doesNotMatch(source, /REVISION_POLL/);
 });
 
-test('dashboard does not auto-reload from account writes while it is still booting', () => {
-  const storageListener = source.slice(
-    source.indexOf('chrome.storage.onChanged.addListener'),
+test('dashboard does not auto-reload from account updates while it is still booting', () => {
+  const messageListener = source.slice(
+    source.indexOf('chrome.runtime.onMessage.addListener'),
     source.indexOf("document.addEventListener('click'"),
   );
-  assert.match(storageListener, /const section = activeSection\(\)/);
-  assert.match(storageListener, /if \(section && sectionUsesAccountEvidence/);
-  assert.doesNotMatch(storageListener, /!section/);
+  assert.match(messageListener, /const section = activeSection\(\)/);
+  assert.match(messageListener, /if \(section && sectionUsesAccountEvidence/);
+  assert.doesNotMatch(messageListener, /!section/);
 });
 
 test('dashboard refresh preserves the selected section after asynchronous dashboard load', () => {
