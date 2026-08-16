@@ -40,7 +40,6 @@ const CAPTURE_NETWORK_METHODS = new Set([
   'Network.loadingFailed',
 ]);
 const pendingResponses = new CaptureEventBuffer();
-const expectedDetachTabIds = new Set<number>();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
 let targetQueue: Promise<void> = Promise.resolve();
@@ -91,7 +90,6 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 
 chrome.debugger.onDetach.addListener((source, reason) => {
   if (source.tabId === undefined) return;
-  if (expectedDetachTabIds.delete(source.tabId)) return;
   void handleUnexpectedDetach(source.tabId, reason);
 });
 
@@ -258,11 +256,9 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
   await setRuntimeState({ active: true, scanId: state.scanId });
 
   if (previousTabId !== undefined) {
-    expectedDetachTabIds.add(previousTabId);
     try {
       await chrome.debugger.detach({ tabId: previousTabId });
     } catch (error) {
-      expectedDetachTabIds.delete(previousTabId);
       await setRuntimeState({
         active: true,
         tabId: previousTabId,
@@ -290,11 +286,10 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
     await setRuntimeState({ active: true, tabId: candidateTabId, scanId: state.scanId });
   } catch (error) {
     if (candidateAttached) {
-      expectedDetachTabIds.add(candidateTabId);
       try {
         await chrome.debugger.detach({ tabId: candidateTabId });
       } catch {
-        expectedDetachTabIds.delete(candidateTabId);
+        // State is already targetless; a later focus can retry safely.
       }
     }
     await setRuntimeState({
@@ -355,11 +350,10 @@ async function releaseUnavailableTarget(tabId: number, reason: string): Promise<
   });
 
   if (state.tabId === tabId) {
-    expectedDetachTabIds.add(tabId);
     try {
       await chrome.debugger.detach({ tabId });
     } catch {
-      expectedDetachTabIds.delete(tabId);
+      // The closed target is already gone.
     }
   }
   void retargetToFocusedGbfTab();
