@@ -39,7 +39,7 @@ function startBody(instanceId = 'instance-a') {
     turn: 1,
     player: {
       param: [
-        { pid: 'mc-tech', name: 'Caspr', hp: 100, hpmax: 100, alive: 1 },
+        { pid: 'mc-tech', name: 'Skyfarer', hp: 100, hpmax: 100, alive: 1 },
         { pid: '3020000001', name: 'Front A', hp: 100, hpmax: 100, alive: 1 },
         { pid: '3020000002', name: 'Front B', hp: 100, hpmax: 100, alive: 1 },
         { pid: '3020000003', name: 'Front C', hp: 100, hpmax: 100, alive: 1 },
@@ -72,7 +72,7 @@ test('verified start makes six party slots, account name and six summon slots av
   assert.ok(observation?.context);
   assert.equal(observation.context.actorSlots.length, 6);
   assert.equal(observation.context.mainCharacterId, 'mc-tech');
-  assert.equal(observation.context.accountDisplayName, 'Caspr');
+  assert.equal(observation.context.accountDisplayName, 'Skyfarer');
   assert.equal(observation.context.turn, 1);
   assert.deepEqual(observation.context.summons, [
     { id: '2040001000', name: 'Synthetic Main Summon', cooldown: 0, used: false },
@@ -181,7 +181,7 @@ test('new same-type raid instance resets raid-local party auxiliaries instead of
     raid_id: 'instance-b',
     quest_id: 777001,
     turn: 4,
-    player: { param: [{ pid: 'mc-new', name: 'Caspr' }, { pid: '3020000010', name: 'New Ally' }] },
+    player: { param: [{ pid: 'mc-new', name: 'Skyfarer' }, { pid: '3020000010', name: 'New Ally' }] },
   }, 20), first.context);
   assert.ok(next?.context);
   assert.equal(next.forceNewRaid, true);
