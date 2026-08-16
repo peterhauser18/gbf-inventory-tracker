@@ -67,26 +67,17 @@ export class WikiImageLoader {
   request(candidate: string, priority: WikiImagePriority): Promise<string | undefined> {
     const key = normalizeWikiImageUrl(candidate);
     if (!key) return Promise.resolve(undefined);
-
     const loaded = this.loaded.get(key);
     if (loaded) return Promise.resolve(loaded);
     if ((this.failedUntil.get(key) ?? 0) > this.now()) return Promise.resolve(undefined);
-
     const existing = this.pending.get(key);
     if (existing) {
       if (compareWikiImagePriority(priority, existing.priority) < 0) existing.priority = priority;
       return existing.promise;
     }
-
     let resolve!: (value: string | undefined) => void;
     const promise = new Promise<string | undefined>((done) => { resolve = done; });
-    const entry: QueueEntry = {
-      key,
-      priority,
-      sequence: this.sequence++,
-      resolve,
-      promise,
-    };
+    const entry: QueueEntry = { key, priority, sequence: this.sequence++, resolve, promise };
     this.pending.set(key, entry);
     this.queue.push(entry);
     this.pump();
@@ -113,11 +104,8 @@ export class WikiImageLoader {
 
   private async resolveEntry(entry: QueueEntry): Promise<void> {
     let result: string | undefined;
-    try {
-      result = await this.load(entry.key);
-    } catch {
-      this.failedUntil.set(entry.key, this.now() + FAILURE_COOLDOWN_MS);
-    }
+    try { result = await this.load(entry.key); }
+    catch { this.failedUntil.set(entry.key, this.now() + FAILURE_COOLDOWN_MS); }
     entry.resolve(result);
   }
 
@@ -129,7 +117,6 @@ export class WikiImageLoader {
       if (objectUrl) return objectUrl;
       await safeCacheDelete(cache, key);
     }
-
     let response: Response;
     try {
       response = await this.fetchImpl.call(globalThis, key, {
@@ -140,24 +127,20 @@ export class WikiImageLoader {
       this.failedUntil.set(key, this.now() + FAILURE_COOLDOWN_MS);
       return undefined;
     }
-
     if (!response.ok) {
       this.failedUntil.set(key, this.now() + responseCooldown(response, this.now()));
       return undefined;
     }
-
     const finalUrl = response.url ? normalizeWikiImageUrl(response.url) : key;
     if (!finalUrl) {
       this.failedUntil.set(key, this.now() + FAILURE_COOLDOWN_MS);
       return undefined;
     }
-
     const contentType = response.headers.get('content-type');
     if (contentType && !contentType.toLowerCase().startsWith('image/')) {
       this.failedUntil.set(key, this.now() + FAILURE_COOLDOWN_MS);
       return undefined;
     }
-
     if (cache) {
       try {
         await cache.put(key, response.clone());
@@ -167,7 +150,6 @@ export class WikiImageLoader {
         // Persistent caching is an optimization; a successful image can still render from memory.
       }
     }
-
     return this.responseObjectUrl(response, key);
   }
 
