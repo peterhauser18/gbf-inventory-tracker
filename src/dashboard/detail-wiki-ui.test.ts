@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { renderWikiDetailGameplay } from './detail-wiki-ui.ts';
+import { renderWikiDetailGameplay } from './detail-wiki.ts';
 import type { EntityMetadataIndex } from './wiki-metadata.ts';
 import type { WikiGameplayMetadataIndex } from './wiki-gameplay-metadata.ts';
 
