@@ -33,33 +33,42 @@ function syncNavigation(): void {
   if (!app) return;
   const nav = app.querySelector<HTMLElement>('.nav');
   if (!nav) return;
-  let changed = false;
+  const detailGroup = nav.querySelector<HTMLElement>('[data-nav-group="detail"]') ?? nav;
 
-  let combatButton = nav.querySelector<HTMLButtonElement>('[data-section="combat"]');
-  if (!combatButton) {
-    combatButton = makeNavButton('combat', 'Combat');
-    const overview = nav.querySelector<HTMLElement>('[data-section="overview"]');
-    if (overview) overview.insertAdjacentElement('afterend', combatButton);
-    else nav.prepend(combatButton);
-    changed = true;
+  const combatButton = ensureNavButton(detailGroup, 'combat', 'Combat');
+  const raidsButton = ensureNavButton(detailGroup, 'raids', 'Raids');
+  bindNavButton(combatButton, 'combat');
+  bindNavButton(raidsButton, 'raids');
+
+  if (selected) {
+    nav.querySelectorAll<HTMLElement>('.nav-item').forEach((item) => {
+      item.classList.toggle('active', item.dataset.section === selected);
+    });
   }
-
-  let raidsButton = nav.querySelector<HTMLButtonElement>('[data-section="raids"]');
-  if (!raidsButton) {
-    raidsButton = makeNavButton('raids', 'Raids');
-    combatButton.insertAdjacentElement('afterend', raidsButton);
-    changed = true;
-  }
-
-  if (selected && changed) renderSelectedShell();
 }
 
-function makeNavButton(section: 'combat' | 'raids', label: string): HTMLButtonElement {
+function ensureNavButton(parent: HTMLElement, section: 'combat' | 'raids', label: string): HTMLButtonElement {
+  const existing = parent.querySelector<HTMLButtonElement>(`.nav-item[data-section="${section}"]`);
+  if (existing) return existing;
+
   const button = document.createElement('button');
   button.className = 'nav-item';
   button.type = 'button';
   button.dataset.section = section;
-  button.textContent = label;
+  button.dataset.externalSection = 'true';
+  button.innerHTML = '<span class="nav-marker" aria-hidden="true"></span><span></span>';
+  const text = button.lastElementChild;
+  if (text) text.textContent = label;
+
+  const firstDashboardDetail = parent.querySelector<HTMLElement>('.nav-item:not([data-external-section])');
+  if (firstDashboardDetail) parent.insertBefore(button, firstDashboardDetail);
+  else parent.append(button);
+  return button;
+}
+
+function bindNavButton(button: HTMLButtonElement, section: 'combat' | 'raids'): void {
+  if (button.dataset.combatBound === 'true') return;
+  button.dataset.combatBound = 'true';
   button.addEventListener('click', (event) => {
     event.stopPropagation();
     selected = section;
@@ -67,7 +76,6 @@ function makeNavButton(section: 'combat' | 'raids', label: string): HTMLButtonEl
     lastSectionMarkup = '';
     renderSelectedShell();
   });
-  return button;
 }
 
 function renderSelectedShell(): void {
@@ -89,6 +97,14 @@ function renderSelectedShell(): void {
     : `<label class="search"><span>Search</span><input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" /></label>`;
 
   content.innerHTML = `
+    <div class="command-bar">
+      <button class="command-trigger" type="button" data-command-trigger aria-haspopup="dialog">
+        <span class="command-icon" aria-hidden="true">⌕</span>
+        <span>Search or jump to a dashboard area…</span>
+        <kbd>Ctrl K</kbd>
+      </button>
+      <span class="read-only-pill">Read-only</span>
+    </div>
     <header class="content-header">
       <div><p class="eyebrow">${title.toUpperCase()}</p><h2>${title}</h2><p class="muted">${description}</p></div>
       ${controls}
