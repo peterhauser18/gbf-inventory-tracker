@@ -31,10 +31,27 @@ async function bootDashboard(): Promise<void> {
 
   const restoreSection = sessionStorage.getItem(RESTORE_SECTION_KEY);
   if (!restoreSection) return;
-  sessionStorage.removeItem(RESTORE_SECTION_KEY);
+  restoreSectionWhenReady(restoreSection);
+}
 
-  const button = document.querySelector<HTMLButtonElement>(`.nav-item[data-section="${cssEscape(restoreSection)}"]`);
-  if (button && !button.classList.contains('active')) button.click();
+function restoreSectionWhenReady(section: string): void {
+  const restore = (): boolean => {
+    const button = document.querySelector<HTMLButtonElement>(`.nav-item[data-section="${cssEscape(section)}"]`);
+    if (!button) return false;
+    sessionStorage.removeItem(RESTORE_SECTION_KEY);
+    if (!button.classList.contains('active')) button.click();
+    return true;
+  };
+
+  if (restore()) return;
+  const app = document.querySelector<HTMLElement>('#dashboard-app');
+  if (!app) return;
+
+  const observer = new MutationObserver(() => {
+    if (!restore()) return;
+    observer.disconnect();
+  });
+  observer.observe(app, { childList: true, subtree: true });
 }
 
 function activeSection(): string | undefined {
