@@ -74,9 +74,11 @@ test('first account observation does not mark still-unknown families dirty', () 
   assert.deepEqual(changedAccountEvidence(undefined, next), ['characters']);
 });
 
-test('dashboard live refresh is storage-change driven rather than periodic polling', () => {
+test('dashboard live refresh is lightweight-message driven rather than storage broadcast or polling', () => {
   const entry = readFileSync(new URL('../dashboard-entry.ts', import.meta.url), 'utf8');
-  assert.match(entry, /chrome\.storage\.onChanged\.addListener/);
-  assert.match(entry, /changedAccountEvidence/);
+  assert.match(entry, /chrome\.runtime\.onMessage\.addListener/);
+  assert.match(entry, /gbfit-dashboard-account-updated/);
+  assert.doesNotMatch(entry, /chrome\.storage\.onChanged/);
   assert.doesNotMatch(entry, /setInterval\s*\(/);
+  assert.doesNotMatch(entry, /REVISION_POLL/);
 });
