@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const rosterUi = readFileSync(new URL('./roster-ui.ts', import.meta.url), 'utf8');
 const rosterLogic = readFileSync(new URL('./roster-capabilities.ts', import.meta.url), 'utf8');
+const wikiCargo = readFileSync(new URL('./wiki-cargo.ts', import.meta.url), 'utf8');
 const compareUi = readFileSync(new URL('../combat/combat-compare-ui.ts', import.meta.url), 'utf8');
 const compareLogic = readFileSync(new URL('../combat/comparison.ts', import.meta.url), 'utf8');
 const source = `${rosterUi}\n${rosterLogic}\n${compareUi}\n${compareLogic}`;
@@ -20,12 +21,15 @@ test('phase 4 introduces no GBF request, debugger, runtime messaging, timer poll
   assert.doesNotMatch(compareUi, /put\s*\(|add\s*\(|setItem\s*\(|storage\.(?:local|session)\.set/);
 });
 
-test('roster Wiki lookup remains bulk public and credential-free', () => {
-  assert.match(rosterLogic, /https:\/\/gbf\.wiki\/api\.php/);
-  assert.match(rosterLogic, /credentials: 'omit'/);
-  assert.match(rosterLogic, /referrerPolicy: 'no-referrer'/);
-  assert.doesNotMatch(rosterLogic, /searchParams\.set\(['"]where/);
-  assert.doesNotMatch(rosterLogic, /searchParams\.set\(['"]ids/);
+test('roster Wiki lookup remains bulk public and credential-free through the shared Cargo loader', () => {
+  assert.match(rosterLogic, /from ['"]\.\/wiki-cargo\.ts['"]/);
+  assert.match(rosterLogic, /loadWikiCargoRows\(/);
+  assert.match(rosterLogic, /loadWikiCharacterSkillRows\(/);
+  assert.match(wikiCargo, /https:\/\/gbf\.wiki\/api\.php/);
+  assert.match(wikiCargo, /credentials: 'omit'/);
+  assert.match(wikiCargo, /referrerPolicy: 'no-referrer'/);
+  assert.doesNotMatch(wikiCargo, /searchParams\.set\(['"]where/);
+  assert.doesNotMatch(wikiCargo, /searchParams\.set\(['"]ids/);
 });
 
 test('combat comparison UI explicitly labels actor lists as observed contributors rather than full party', () => {
