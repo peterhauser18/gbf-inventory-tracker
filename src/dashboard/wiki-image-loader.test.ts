@@ -151,6 +151,20 @@ test('duplicate URL requests coalesce and use credential-free no-referrer fetche
   assert.equal(calls[0]?.init?.referrerPolicy, 'no-referrer');
 });
 
+test('a resolved URL is reused in memory on re-render without another network request', async () => {
+  let calls = 0;
+  const loader = new WikiImageLoader({
+    fetchImpl: (async () => { calls += 1; return imageResponse(); }) as typeof fetch,
+    cacheStorage: undefined,
+    createObjectUrl: () => 'blob:reused',
+    revokeObjectUrl: () => {},
+  });
+  const url = 'https://gbf.wiki/images/rerender.png';
+  assert.equal(await loader.request(url, priority()), 'blob:reused');
+  assert.equal(await loader.request(url, priority(2, true)), 'blob:reused');
+  assert.equal(calls, 1);
+});
+
 test('a persistent cache hit in a later loader session performs zero Wiki network calls', async () => {
   const shared = fakeCacheStorage();
   let calls = 0;
@@ -172,6 +186,7 @@ test('a persistent cache hit in a later loader session performs zero Wiki networ
   assert.equal(await second.request('https://gbf.wiki/images/cached.png', priority()), 'blob:second');
   assert.equal(calls, 1);
 });
+
 
 test('persistent Wiki image cache exposes a bounded local cleanup path', async () => {
   const shared = fakeCacheStorage();
