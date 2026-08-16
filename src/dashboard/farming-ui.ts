@@ -42,20 +42,42 @@ if (app) {
 async function refreshLocalData(): Promise<void> {
   if (refreshQueued) return;
   refreshQueued = true;
+  localState = 'loading';
+  scheduleSync();
   try {
-    const [account, raidHistory, dropPreferences] = await Promise.all([
-      loadAccountDatabase(),
-      getRaidHistory(),
-      getAllDropPreferences(),
-    ]);
-    if (account) {
-      const view = buildDashboardViewModel(account.snapshot);
-      plannerCards = [...view.eternals, ...view.evokers];
-    } else {
+    const pins = readPins();
+    if (pins.length === 0) {
       plannerCards = [];
+      raids = [];
+      preferences = [];
+      localState = 'ready';
+      return;
     }
-    raids = raidHistory;
-    preferences = dropPreferences;
+
+    const account = await loadAccountDatabase();
+    if (!account) {
+      plannerCards = [];
+      raids = [];
+      preferences = [];
+      localState = 'ready';
+      return;
+    }
+
+    const view = buildDashboardViewModel(account.snapshot);
+    plannerCards = [...view.eternals, ...view.evokers];
+    const activeGoals = resolvePinnedGoals(plannerCards, pins).goals.filter((goal) => goal.targetReached !== true);
+    const deficits = aggregatePinnedMaterialDeficits(activeGoals)
+      .filter((material) => material.state === 'known' && (material.missing ?? 0) > 0);
+
+    if (deficits.length === 0) {
+      raids = [];
+      preferences = [];
+      localState = 'ready';
+      return;
+    }
+
+    raids = await getRaidHistory();
+    preferences = await getAllDropPreferences();
     localState = 'ready';
   } catch {
     plannerCards = [];
@@ -85,6 +107,11 @@ function handleClick(event: MouseEvent): void {
     event.preventDefault();
     event.stopImmediatePropagation();
     app?.querySelector<HTMLButtonElement>('.nav-item[data-section="raids"]')?.click();
+    return;
+  }
+
+  if (target?.closest<HTMLButtonElement>('[data-goal-pin]')) {
+    queueMicrotask(() => void refreshLocalData());
     return;
   }
 
