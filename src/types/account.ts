@@ -83,7 +83,6 @@ export interface ProgressionState {
 
 export interface AccountStatus {
   rank?: number;
-  displayName?: string;
   updatedAt: number;
 }
 
