@@ -87,6 +87,7 @@ function handleEnhancementIntent(event: MouseEvent): void {
   if (nav && section === 'goals') {
     interceptUntilLoaded(event, nav, 'goals-page', async () => {
       await import('./dashboard/goals-ui.ts');
+      await import('./dashboard/farming-ui.ts');
     });
     return;
   }
