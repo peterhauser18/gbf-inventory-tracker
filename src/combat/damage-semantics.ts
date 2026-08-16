@@ -14,6 +14,9 @@ export function classifyVerifiedNormalDamage(
   }
 
   const echoPattern = isVerifiedFlurryEchoPattern(hits);
+  // Sanitized live evidence shows complete rectangular concurrent-lane grids are
+  // part of GBF's N.A./Counter result bucket. A lone/partial concurrent lane is
+  // still ambiguous, so keep it unclassified instead of guessing Normal/Echo.
   const concurrentNormalPattern = !echoPattern && isVerifiedConcurrentNormalPattern(hits);
   return hits.map((hit) => ({
     ...hit,
