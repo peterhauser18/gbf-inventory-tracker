@@ -12,6 +12,15 @@ export interface ResponseBodyReader {
 
 export type CaptureRecordSink = (record: CapturedResponseRecord) => Promise<void>;
 
+const RESPONSE_BODY_RETRY_DELAYS_MS = [25, 100] as const;
+
+export class ResponseBodyUnavailableError extends Error {
+  constructor(readonly requestId: string) {
+    super(`Debugger response body unavailable for request ${requestId}`);
+    this.name = 'ResponseBodyUnavailableError';
+  }
+}
+
 export async function processObservedResponse(
   meta: ObservedResponse,
   scanId: string,
@@ -21,7 +30,7 @@ export async function processObservedResponse(
 ): Promise<CapturedResponseRecord | null> {
   if (!shouldReadObservedResponse(meta.url, meta.resourceType)) return null;
 
-  const responseBody = await reader.getResponseBody(meta.requestId);
+  const responseBody = await readResponseBodyWithRetry(reader, meta.requestId);
   const rawBody = responseBody.base64Encoded
     ? decodeBase64Utf8(responseBody.body)
     : responseBody.body;
@@ -30,6 +39,27 @@ export async function processObservedResponse(
 
   await save(record);
   return record;
+}
+
+export async function readResponseBodyWithRetry(
+  reader: ResponseBodyReader,
+  requestId: string,
+  retryDelaysMs: readonly number[] = RESPONSE_BODY_RETRY_DELAYS_MS,
+  sleep: (delayMs: number) => Promise<void> = delay,
+): Promise<DebuggerResponseBody> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await reader.getResponseBody(requestId);
+    } catch {
+      const retryDelay = retryDelaysMs[attempt];
+      if (retryDelay === undefined) throw new ResponseBodyUnavailableError(requestId);
+      await sleep(retryDelay);
+    }
+  }
+}
+
+function delay(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
 function decodeBase64Utf8(encoded: string): string {
