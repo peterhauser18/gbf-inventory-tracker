@@ -2,52 +2,129 @@ import { resolveSafeExternalImageUrl } from './resolver.ts';
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const WIKI_ORIGIN = 'https://gbf.wiki';
-// The old Items page carries grouped entries (for example orbs/crystals); Category:Items supplies newer item pages it omits.
-const TREASURE_INDEX_PAGE = 'Items';
-const TREASURE_CATEGORY = 'Category:Items';
-const CACHE_KEY = 'gbfit:wiki-treasure-images:v6';
+const CACHE_KEY = 'gbfit:wiki-treasure-images:v7';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const FAILURE_COOLDOWN_MS = 60_000;
 
-type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
+export const MAX_WIKI_TREASURE_PAGE_CONCURRENCY = 5;
+
+type FetchLike = typeof fetch;
 type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 type JsonObject = Record<string, unknown>;
 
-interface CachedTreasureImagePayload {
-  version: 6;
+interface CachedTreasureImageEntry {
   cachedAt: number;
-  entries: Record<string, string>;
+  imageUrl: string;
 }
 
-export interface WikiTreasureImageLoadOptions {
+interface CachedTreasureImagePayload {
+  version: 7;
+  entries: Record<string, CachedTreasureImageEntry>;
+}
+
+interface QueueEntry {
+  key: string;
+  title: string;
+  resolve: (value: string | undefined) => void;
+  promise: Promise<string | undefined>;
+}
+
+export interface WikiTreasureImageResolverOptions {
   fetchImpl?: FetchLike;
   storage?: StorageLike;
-  now?: number;
+  now?: () => number;
+  maxConcurrency?: number;
 }
 
-let defaultPromise: Promise<ReadonlyMap<string, string>> | null = null;
+export class WikiTreasureImageResolver {
+  private readonly fetchImpl: FetchLike;
+  private readonly storage?: StorageLike;
+  private readonly now: () => number;
+  private readonly maxConcurrency: number;
+  private readonly cache: Map<string, CachedTreasureImageEntry>;
+  private readonly queue: QueueEntry[] = [];
+  private readonly pending = new Map<string, QueueEntry>();
+  private readonly failedUntil = new Map<string, number>();
+  private active = 0;
 
-export async function loadWikiTreasureImageIndex(
-  options: WikiTreasureImageLoadOptions = {},
-): Promise<ReadonlyMap<string, string>> {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const storage = options.storage ?? (options.fetchImpl ? undefined : safeLocalStorage());
-  const now = options.now ?? Date.now();
-  if (options.fetchImpl || options.storage || options.now !== undefined) {
-    return loadCached(storage, fetchImpl, now);
+  constructor(options: WikiTreasureImageResolverOptions = {}) {
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.storage = options.storage ?? (options.fetchImpl ? undefined : safeLocalStorage());
+    this.now = options.now ?? Date.now;
+    this.maxConcurrency = Math.max(1, Math.floor(options.maxConcurrency ?? MAX_WIKI_TREASURE_PAGE_CONCURRENCY));
+    this.cache = readCache(this.storage);
   }
-  if (!defaultPromise) {
-    defaultPromise = loadCached(storage, fetchImpl, now).catch((error) => {
-      defaultPromise = null;
-      throw error;
-    });
+
+  resolve(title: string): Promise<string | undefined> {
+    const cleanedTitle = title.trim();
+    if (!cleanedTitle) return Promise.resolve(undefined);
+    const key = normalizeWikiTreasureTitle(cleanedTitle);
+    const cached = this.cache.get(key);
+    if (cached && this.now() - cached.cachedAt < CACHE_TTL_MS) return Promise.resolve(cached.imageUrl);
+    if ((this.failedUntil.get(key) ?? 0) > this.now()) return Promise.resolve(undefined);
+    const existing = this.pending.get(key);
+    if (existing) return existing.promise;
+
+    let resolve!: (value: string | undefined) => void;
+    const promise = new Promise<string | undefined>((done) => { resolve = done; });
+    const entry: QueueEntry = { key, title: cleanedTitle, resolve, promise };
+    this.pending.set(key, entry);
+    this.queue.push(entry);
+    this.pump();
+    return promise;
   }
-  return defaultPromise;
+
+  private pump(): void {
+    while (this.active < this.maxConcurrency && this.queue.length > 0) {
+      const entry = this.queue.shift()!;
+      this.active += 1;
+      void this.load(entry).finally(() => {
+        this.active -= 1;
+        this.pending.delete(entry.key);
+        this.pump();
+      });
+    }
+  }
+
+  private async load(entry: QueueEntry): Promise<void> {
+    let imageUrl: string | undefined;
+    try {
+      const response = await this.fetchImpl.call(globalThis, buildWikiTreasurePageImageUrl(entry.title), {
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+      });
+      if (!response.ok) throw new Error(`GBF Wiki Treasure page request failed (${response.status})`);
+      const body = await response.json() as unknown;
+      const payload = isObject(body) ? body : undefined;
+      const parsed = payload && isObject(payload.parse) ? payload.parse : undefined;
+      const html = parsed && typeof parsed.text === 'string' ? parsed.text : undefined;
+      if (html) imageUrl = parseWikiTreasurePageHtml(html, entry.title);
+    } catch {
+      imageUrl = undefined;
+    }
+
+    if (imageUrl) {
+      this.cache.set(entry.key, { cachedAt: this.now(), imageUrl });
+      writeCache(this.storage, this.cache);
+    } else {
+      this.failedUntil.set(entry.key, this.now() + FAILURE_COOLDOWN_MS);
+    }
+    entry.resolve(imageUrl);
+  }
 }
 
-export function buildWikiTreasureImageIndexUrl(): string {
+let defaultResolver: WikiTreasureImageResolver | null = null;
+
+export function loadWikiTreasureImage(title: string): Promise<string | undefined> {
+  if (!defaultResolver) defaultResolver = new WikiTreasureImageResolver();
+  return defaultResolver.resolve(title);
+}
+
+export function buildWikiTreasurePageImageUrl(title: string): string {
   const url = new URL(WIKI_API);
   url.searchParams.set('action', 'parse');
-  url.searchParams.set('page', TREASURE_INDEX_PAGE);
+  url.searchParams.set('page', title.trim().replace(/\s+/g, '_'));
+  url.searchParams.set('redirects', '1');
   url.searchParams.set('prop', 'text');
   url.searchParams.set('disableeditsection', '1');
   url.searchParams.set('format', 'json');
@@ -56,157 +133,70 @@ export function buildWikiTreasureImageIndexUrl(): string {
   return url.toString();
 }
 
-export function buildWikiTreasureCategoryImageUrl(continueToken?: string): string {
-  const url = new URL(WIKI_API);
-  url.searchParams.set('action', 'query');
-  url.searchParams.set('generator', 'categorymembers');
-  url.searchParams.set('gcmtitle', TREASURE_CATEGORY);
-  url.searchParams.set('gcmtype', 'page');
-  url.searchParams.set('gcmlimit', 'max');
-  url.searchParams.set('prop', 'pageimages');
-  url.searchParams.set('piprop', 'thumbnail|name');
-  url.searchParams.set('pithumbsize', '64');
-  url.searchParams.set('format', 'json');
-  url.searchParams.set('formatversion', '2');
-  url.searchParams.set('origin', '*');
-  if (continueToken) url.searchParams.set('gcmcontinue', continueToken);
-  return url.toString();
-}
-
 export function normalizeWikiTreasureTitle(value: string): string {
   return value.trim().replace(/_/g, ' ').replace(/\s+/g, ' ').toLowerCase();
 }
 
-export function parseWikiTreasureItemsHtml(html: string): ReadonlyMap<string, string> {
-  const result = new Map<string, string>();
-  for (const match of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
-    const row = match[1];
-    if (!row) continue;
-    const name = treasureNameFromRow(row);
-    const imageUrl = treasureImageFromRow(row);
-    if (name && imageUrl) result.set(normalizeWikiTreasureTitle(name), imageUrl);
-  }
-  return result;
-}
+export function parseWikiTreasurePageHtml(html: string, title: string): string | undefined {
+  const wanted = normalizeWikiTreasureTitle(title);
+  const images = [...html.matchAll(/<img\b([^>]*)>/gi)];
 
-async function loadCached(
-  storage: StorageLike | undefined,
-  fetchImpl: FetchLike,
-  now: number,
-): Promise<ReadonlyMap<string, string>> {
-  const cached = readCache(storage);
-  if (cached && now - cached.cachedAt < CACHE_TTL_MS) return cached.index;
-  try {
-    const fresh = await loadFresh(fetchImpl);
-    writeCache(storage, fresh, now);
-    return fresh;
-  } catch (error) {
-    if (cached) return cached.index;
-    throw error;
-  }
-}
-
-async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, string>> {
-  const response = await fetchImpl.call(globalThis, buildWikiTreasureImageIndexUrl(), {
-    credentials: 'omit',
-    referrerPolicy: 'no-referrer',
-  });
-  if (!response.ok) throw new Error(`GBF Wiki treasure image metadata request failed (${response.status})`);
-  const body = await response.json();
-  const payload = isObject(body) ? body : undefined;
-  const parsed = payload && isObject(payload.parse) ? payload.parse : undefined;
-  const html = parsed && typeof parsed.text === 'string' ? parsed.text : undefined;
-  if (!html) throw new Error('GBF Wiki Items page did not return rendered HTML');
-
-  const result = new Map(parseWikiTreasureItemsHtml(html));
-  const categoryImages = await loadCategoryPageImages(fetchImpl);
-  for (const [name, imageUrl] of categoryImages) {
-    if (!result.has(name)) result.set(name, imageUrl);
-  }
-  return result;
-}
-
-async function loadCategoryPageImages(fetchImpl: FetchLike): Promise<ReadonlyMap<string, string>> {
-  const result = new Map<string, string>();
-  let continueToken: string | undefined;
-  do {
-    const response = await fetchImpl.call(globalThis, buildWikiTreasureCategoryImageUrl(continueToken), {
-      credentials: 'omit',
-      referrerPolicy: 'no-referrer',
-    });
-    if (!response.ok) throw new Error(`GBF Wiki treasure category metadata request failed (${response.status})`);
-    const body = await response.json();
-    const payload = isObject(body) ? body : undefined;
-    const query = payload && isObject(payload.query) ? payload.query : undefined;
-    if (query && Array.isArray(query.pages)) {
-      for (const page of query.pages) {
-        if (!isObject(page) || typeof page.title !== 'string') continue;
-        const thumbnail = isObject(page.thumbnail) && typeof page.thumbnail.source === 'string'
-          ? resolveSafeExternalImageUrl(page.thumbnail.source) ?? undefined
-          : undefined;
-        const pageImage = typeof page.pageimage === 'string'
-          ? safeWikiFileRedirect(page.pageimage)
-          : undefined;
-        const imageUrl = thumbnail ?? pageImage;
-        if (imageUrl) result.set(normalizeWikiTreasureTitle(page.title), imageUrl);
-      }
-    }
-    const continuation = payload && isObject(payload.continue) ? payload.continue : undefined;
-    continueToken = continuation && typeof continuation.gcmcontinue === 'string'
-      ? continuation.gcmcontinue
-      : undefined;
-  } while (continueToken);
-  return result;
-}
-
-function treasureNameFromRow(row: string): string | undefined {
-  for (const match of row.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+  for (const match of images) {
     const attributes = match[1] ?? '';
-    const href = htmlAttribute(attributes, 'href');
-    if (!href || !wikiArticleTitle(href)) continue;
-    const text = stripHtml(match[2] ?? '');
-    if (text) return text;
-  }
-  for (const match of row.matchAll(/<img\b([^>]*)>/gi)) {
-    const alt = htmlAttribute(match[1] ?? '', 'alt');
-    if (alt && normalizeWikiTreasureTitle(alt) !== 'image') return alt;
-  }
-  return undefined;
-}
-
-function treasureImageFromRow(row: string): string | undefined {
-  for (const match of row.matchAll(/<img\b([^>]*)>/gi)) {
-    const src = htmlAttribute(match[1] ?? '', 'src');
-    if (!src) continue;
-    try {
-      const absolute = new URL(src, WIKI_ORIGIN).toString();
-      const safe = resolveSafeExternalImageUrl(absolute);
-      if (safe) return safe;
-    } catch {
-      // Ignore malformed image URLs in public Wiki markup.
+    const label = imageLabel(attributes);
+    if (label && normalizeWikiTreasureTitle(label) === wanted) {
+      const imageUrl = safeImageFromAttributes(attributes);
+      if (imageUrl) return imageUrl;
     }
   }
+
+  for (const rowMatch of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const row = rowMatch[1] ?? '';
+    const text = normalizeWikiTreasureTitle(stripHtml(row));
+    if (!text.includes(wanted)) continue;
+    const imageMatch = row.match(/<img\b([^>]*)>/i);
+    if (!imageMatch) continue;
+    const imageUrl = safeImageFromAttributes(imageMatch[1] ?? '');
+    if (imageUrl) return imageUrl;
+  }
+
+  for (const match of images) {
+    const attributes = match[1] ?? '';
+    const imageUrl = safeImageFromAttributes(attributes);
+    if (!imageUrl) continue;
+    try {
+      const path = decodeURIComponent(new URL(imageUrl).pathname);
+      const filename = path.split('/').pop()?.replace(/^\d+px-/, '').replace(/\.(?:jpe?g|png|webp)$/i, '');
+      if (filename && normalizeWikiTreasureTitle(filename) === wanted) return imageUrl;
+    } catch {
+      // Ignore malformed public Wiki markup.
+    }
+  }
+
   return undefined;
 }
 
-function wikiArticleTitle(href: string): string | undefined {
+function imageLabel(attributes: string): string | undefined {
+  const alt = htmlAttribute(attributes, 'alt');
+  const title = htmlAttribute(attributes, 'title');
+  return cleanImageLabel(alt) ?? cleanImageLabel(title);
+}
+
+function cleanImageLabel(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const cleaned = value.replace(/^Image:\s*/i, '').replace(/^File:\s*/i, '').trim();
+  return cleaned || undefined;
+}
+
+function safeImageFromAttributes(attributes: string): string | undefined {
+  const candidate = htmlAttribute(attributes, 'src') ?? htmlAttribute(attributes, 'data-src');
+  if (!candidate) return undefined;
   try {
-    const url = new URL(href, WIKI_ORIGIN);
-    if (url.origin !== WIKI_ORIGIN) return undefined;
-    let title: string | undefined;
-    if (url.pathname.startsWith('/index.php')) title = url.searchParams.get('title') ?? undefined;
-    else if (url.pathname.startsWith('/')) title = decodeURIComponent(url.pathname.slice(1));
-    if (!title || title.includes(':')) return undefined;
-    return normalizeWikiTreasureTitle(title) === 'items' ? undefined : title.replace(/_/g, ' ');
+    const absolute = new URL(candidate, WIKI_ORIGIN).toString();
+    return resolveSafeExternalImageUrl(absolute) ?? undefined;
   } catch {
     return undefined;
   }
-}
-
-function safeWikiFileRedirect(filename: string): string | undefined {
-  if (!/\.(?:jpe?g|png|webp)$/i.test(filename)) return undefined;
-  const candidate = `${WIKI_ORIGIN}/Special:Redirect/file/${encodeURIComponent(filename)}`;
-  return resolveSafeExternalImageUrl(candidate) ?? undefined;
 }
 
 function htmlAttribute(attributes: string, name: string): string | undefined {
@@ -216,9 +206,8 @@ function htmlAttribute(attributes: string, name: string): string | undefined {
   return value ? decodeHtml(value) : undefined;
 }
 
-function stripHtml(value: string): string | undefined {
-  const text = decodeHtml(value.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
-  return text || undefined;
+function stripHtml(value: string): string {
+  return decodeHtml(value.replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
 }
 
 function decodeHtml(value: string): string {
@@ -232,34 +221,34 @@ function decodeHtml(value: string): string {
     .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 16)));
 }
 
-function readCache(storage: StorageLike | undefined): { cachedAt: number; index: Map<string, string> } | undefined {
-  if (!storage) return undefined;
+function readCache(storage: StorageLike | undefined): Map<string, CachedTreasureImageEntry> {
+  const result = new Map<string, CachedTreasureImageEntry>();
+  if (!storage) return result;
   try {
     const raw = storage.getItem(CACHE_KEY);
-    if (!raw) return undefined;
+    if (!raw) return result;
     const value = JSON.parse(raw) as unknown;
-    if (!isObject(value) || value.version !== 6 || typeof value.cachedAt !== 'number' || !Number.isFinite(value.cachedAt) || !isObject(value.entries)) return undefined;
-    const index = new Map<string, string>();
+    if (!isObject(value) || value.version !== 7 || !isObject(value.entries)) return result;
     for (const [key, candidate] of Object.entries(value.entries)) {
-      if (typeof candidate !== 'string') continue;
-      const safe = resolveSafeExternalImageUrl(candidate);
-      if (safe) index.set(normalizeWikiTreasureTitle(key), safe);
+      if (!isObject(candidate) || typeof candidate.cachedAt !== 'number' || !Number.isFinite(candidate.cachedAt) || typeof candidate.imageUrl !== 'string') continue;
+      const safe = resolveSafeExternalImageUrl(candidate.imageUrl);
+      if (safe) result.set(normalizeWikiTreasureTitle(key), { cachedAt: candidate.cachedAt, imageUrl: safe });
     }
-    return { cachedAt: value.cachedAt, index };
   } catch {
-    return undefined;
+    // Ignore malformed optional public metadata cache.
   }
+  return result;
 }
 
-function writeCache(storage: StorageLike | undefined, index: ReadonlyMap<string, string>, cachedAt: number): void {
+function writeCache(storage: StorageLike | undefined, cache: ReadonlyMap<string, CachedTreasureImageEntry>): void {
   if (!storage) return;
   try {
-    const entries: Record<string, string> = {};
-    for (const [key, url] of index) entries[key] = url;
-    const payload: CachedTreasureImagePayload = { version: 6, cachedAt, entries };
+    const entries: Record<string, CachedTreasureImageEntry> = {};
+    for (const [key, entry] of cache) entries[key] = entry;
+    const payload: CachedTreasureImagePayload = { version: 7, entries };
     storage.setItem(CACHE_KEY, JSON.stringify(payload));
   } catch {
-    // Public metadata caching is optional.
+    // Public Wiki metadata caching is optional.
   }
 }
 
