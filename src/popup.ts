@@ -4,7 +4,6 @@ import {
   captureExportFilename,
   serializeCaptureExport,
 } from './capture/export.ts';
-import { launchDashboardWithObservation } from './capture/dashboard-launch.ts';
 import { CAPTURE_CATEGORIES, isGbfPageUrl } from './capture/policy.ts';
 import { getCapturedResponsesForScan } from './capture/storage.ts';
 import type { CaptureControlMessage, CaptureStatusResponse } from './capture/types.ts';
@@ -17,11 +16,11 @@ app.innerHTML = `
     <header>
       <p class="eyebrow">LOCAL-FIRST GBF COMPANION</p>
       <h1>GBF Inventory Tracker</h1>
-      <p class="muted">Open the dashboard from an active GBF tab to start live read-only debugger observation.</p>
+      <p class="muted">Open the dashboard anytime. If an active GBF tab is available, live read-only debugger observation starts automatically.</p>
     </header>
 
-    <button id="dashboard" class="dashboard-button" type="button" title="Starts debugger-only read-only observation on the active GBF tab, then opens the dashboard.">Open Dashboard</button>
-    <p class="muted" id="dashboard-note">Observation starts before the dashboard opens. Chrome will show its debugging notice while tracking is active.</p>
+    <button id="dashboard" class="dashboard-button" type="button" title="Always opens the dashboard. On an active GBF tab it also starts debugger-only read-only observation.">Open Dashboard</button>
+    <p class="muted" id="dashboard-note">Dashboard always opens. With an active GBF tab, observation starts first.</p>
 
     <details class="developer">
       <summary class="card developer-summary">Developer</summary>
@@ -59,7 +58,7 @@ app.innerHTML = `
       </div>
     </details>
 
-    <footer>Dashboard starts observation only on the active GBF tab. Manual Start/Stop and cleanup controls remain available under Developer.</footer>
+    <footer>Dashboard access is always available. Observation only starts on a verified active GBF tab; manual Start/Stop and cleanup controls remain under Developer.</footer>
   </section>
 `;
 
@@ -83,23 +82,37 @@ let latestStatus: CaptureStatusResponse | null = null;
 
 dashboardButton.addEventListener('click', async () => {
   dashboardButton.disabled = true;
-  dashboardNote.textContent = 'Starting or reusing read-only observation before opening the dashboard…';
+  dashboardNote.textContent = 'Opening dashboard and checking whether read-only observation can be started…';
+
+  let observationStatus = await sendMessage({ type: 'gbfit:get-status' });
+  let observationError: string | undefined;
+
   try {
-    const response = await launchDashboardWithObservation({
-      getStatus: async () => sendMessage({ type: 'gbfit:get-status' }),
-      startObservation: async () => {
-        const tabId = await getActiveGbfTabId();
-        return await sendMessage({ type: 'gbfit:start-observation', tabId });
-      },
-      openDashboard: async () => {
-        await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
-      },
-    });
-    render(response);
-    dashboardNote.textContent = 'Dashboard opened. Read-only observation remains active until you stop it or Chrome detaches it.';
+    if (!observationStatus.active) {
+      const tabId = await findActiveGbfTabId();
+      if (tabId !== undefined) {
+        observationStatus = await sendMessage({ type: 'gbfit:start-observation', tabId });
+        if (!observationStatus.active) {
+          observationError = observationStatus.error ?? observationStatus.message;
+        }
+      }
+    }
   } catch (error) {
-    await refresh();
-    dashboardNote.textContent = error instanceof Error ? error.message : String(error);
+    observationError = error instanceof Error ? error.message : String(error);
+  }
+
+  try {
+    await openDashboardTab();
+    render(observationStatus);
+    if (observationStatus.active) {
+      dashboardNote.textContent = 'Dashboard opened. Read-only observation remains active until you stop it or Chrome detaches it.';
+    } else if (observationError) {
+      dashboardNote.textContent = `Dashboard opened without observation: ${observationError}`;
+    } else {
+      dashboardNote.textContent = 'Dashboard opened without observation. Open it again from an active GBF tab to start live tracking.';
+    }
+  } catch (error) {
+    dashboardNote.textContent = `Could not open dashboard: ${error instanceof Error ? error.message : String(error)}`;
   } finally {
     dashboardButton.disabled = false;
   }
@@ -143,7 +156,7 @@ toggle.addEventListener('click', async () => {
   try {
     const response = latestStatus?.active
       ? await sendMessage({ type: 'gbfit:stop-observation' })
-      : await sendMessage({ type: 'gbfit:start-observation', tabId: await getActiveGbfTabId() });
+      : await sendMessage({ type: 'gbfit:start-observation', tabId: await requireActiveGbfTabId() });
     render(response);
   } catch (error) {
     await refresh();
@@ -193,12 +206,21 @@ async function runStorageCleanup(
   storageNote.textContent = response.error ?? successMessage;
 }
 
-async function getActiveGbfTabId(): Promise<number> {
+async function findActiveGbfTabId(): Promise<number | undefined> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id === undefined || !isGbfPageUrl(tab.url)) {
+  return tab?.id !== undefined && isGbfPageUrl(tab.url) ? tab.id : undefined;
+}
+
+async function requireActiveGbfTabId(): Promise<number> {
+  const tabId = await findActiveGbfTabId();
+  if (tabId === undefined) {
     throw new Error('Open game.granbluefantasy.jp in the active tab, then open the extension again.');
   }
-  return tab.id;
+  return tabId;
+}
+
+async function openDashboardTab(): Promise<void> {
+  await chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
 }
 
 async function sendMessage(message: CaptureControlMessage): Promise<CaptureStatusResponse> {
@@ -224,7 +246,7 @@ function render(response: CaptureStatusResponse): void {
     : 'Observation is inactive; GBF requests are not instrumented or observed by the extension.');
   dashboardNote.textContent = response.active
     ? 'Read-only observation is active. Open Dashboard will reuse it without attaching twice.'
-    : 'Open Dashboard starts observation on the active GBF tab before opening.';
+    : 'Open Dashboard always opens; live tracking starts only when an active GBF tab is available.';
   dot.classList.toggle('active', response.active);
   toggle.disabled = false;
   toggle.textContent = response.active ? 'Stop observation' : 'Start observation';
