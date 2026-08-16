@@ -2,6 +2,7 @@ import './raids-v2.css';
 import './ui-v2.css';
 import { CombatDashboardControllerV2 } from './dashboard-v2.ts';
 import { COMBAT_LAYOUT_PRESETS, type CombatLayoutPreset } from './layouts.ts';
+import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 const LAYOUT_KEY = 'gbfit:combat-layout';
@@ -23,10 +24,17 @@ if (app) {
   const observer = new MutationObserver(syncNavigation);
   observer.observe(app, { childList: true, subtree: true });
   syncNavigation();
-  void controller.refresh().then(syncNavigation).catch(syncNavigation);
+  void Promise.all([controller.refresh(), refreshCombatLiveUiState()])
+    .then(() => {
+      syncNavigation();
+      renderSectionIfChanged();
+    })
+    .catch(syncNavigation);
   window.setInterval(() => {
     if (!selected) return;
-    void controller.refresh().then(() => renderSectionIfChanged()).catch(() => {});
+    void Promise.all([controller.refresh(), refreshCombatLiveUiState()])
+      .then(() => renderSectionIfChanged())
+      .catch(() => {});
   }, 1000);
 }
 
@@ -135,10 +143,15 @@ function renderSectionIfChanged(force = false): void {
   const section = app.querySelector<HTMLElement>('[data-combat-section]');
   if (!section) return;
   const markup = selected === 'combat' ? controller.renderCombat(layout) : controller.renderRaids(query);
+  if (!force && markup === lastSectionMarkup && selected === 'combat') {
+    applyCombatLiveUiFixes(section);
+    return;
+  }
   if (!force && markup === lastSectionMarkup) return;
   lastSectionMarkup = markup;
   section.innerHTML = markup;
   controller.bind(section);
+  if (selected === 'combat') applyCombatLiveUiFixes(section);
 }
 
 function loadLayoutPreference(): CombatLayoutPreset {
