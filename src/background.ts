@@ -78,7 +78,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
 async function handleMessage(message: CaptureMessage): Promise<CaptureStatusResponse> {
   switch (message.type) {
     case 'gbfit:start-observation':
-      return await startObservation();
+      return await startObservation(message.tabId);
     case 'gbfit:stop-observation':
       return await stopObservation();
     case 'gbfit:get-status':
@@ -124,16 +124,12 @@ async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
   await setRuntimeState({ active: false });
 }
 
-async function startObservation(): Promise<CaptureStatusResponse> {
+async function startObservation(explicitTabId?: number): Promise<CaptureStatusResponse> {
   const existing = await getRuntimeState();
   if (existing.active) return await getStatus();
 
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id === undefined || !isGbfPageUrl(tab.url)) {
-    throw new Error('Open game.granbluefantasy.jp in the active tab before starting observation.');
-  }
-
-  const target = { tabId: tab.id };
+  const tab = await resolveObservationTab(explicitTabId);
+  const target = { tabId: tab.id as number };
   const scanId = crypto.randomUUID();
   let scanStarted = false;
   try {
@@ -142,7 +138,7 @@ async function startObservation(): Promise<CaptureStatusResponse> {
     await chrome.debugger.attach(target, DEBUGGER_PROTOCOL_VERSION);
     await startCaptureScan(scanId);
     scanStarted = true;
-    await setRuntimeState({ active: true, tabId: tab.id, scanId });
+    await setRuntimeState({ active: true, tabId: target.tabId, scanId });
     await chrome.debugger.sendCommand(target, 'Network.enable');
   } catch (error) {
     if (scanStarted) await finishCaptureScan(scanId);
@@ -156,6 +152,28 @@ async function startObservation(): Promise<CaptureStatusResponse> {
   }
 
   return await getStatus();
+}
+
+async function resolveObservationTab(explicitTabId?: number): Promise<chrome.tabs.Tab> {
+  let tab: chrome.tabs.Tab | undefined;
+
+  if (explicitTabId !== undefined) {
+    if (!Number.isInteger(explicitTabId) || explicitTabId < 0) {
+      throw new Error('The selected GBF tab is invalid. Re-open the extension from the GBF tab.');
+    }
+    try {
+      tab = await chrome.tabs.get(explicitTabId);
+    } catch {
+      throw new Error('The selected GBF tab is no longer available. Re-open the extension from the GBF tab.');
+    }
+  } else {
+    [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  }
+
+  if (tab?.id === undefined || !isGbfPageUrl(tab.url)) {
+    throw new Error('Open game.granbluefantasy.jp in the active tab before starting observation.');
+  }
+  return tab;
 }
 
 async function stopObservation(): Promise<CaptureStatusResponse> {
