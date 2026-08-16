@@ -126,8 +126,8 @@ function unattributeDirectBossAbilityDamage(
     const remaining = signatures.get(signature) ?? 0;
     if (remaining <= 0) continue;
 
-    // Direct boss-side auxiliary effects remain part of party damage, but the
-    // supplied result evidence does not attribute them to a character row.
+    // Keep this auxiliary boss damage in the raid log/party total, but not in
+    // any character row. Sanitized live evidence showed six such 2M effects.
     delete action.actorId;
     delete action.actorName;
     if (remaining === 1) signatures.delete(signature);
