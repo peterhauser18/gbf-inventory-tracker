@@ -65,8 +65,7 @@ function enrichVerifiedSummonContext(body: Obj, observation: VerifiedCombatObser
     const value = statusSummons[index];
     if (!obj(value)) return summon;
     const cooldown = num(value.recast);
-    if (cooldown === undefined) return summon;
-    return { ...summon, cooldown, available: cooldown === 0 };
+    return cooldown === undefined ? summon : { ...summon, cooldown };
   });
 }
 
@@ -78,13 +77,7 @@ function verifiedSummonRoster(value: unknown): CombatSummonContext[] {
     const name = str(entry.name);
     const cooldown = num(entry.recast);
     if (!id && !name) return [];
-    return [{
-      id,
-      name,
-      cooldown,
-      available: cooldown === undefined ? undefined : cooldown === 0,
-      used: false,
-    }];
+    return [{ id, name, cooldown, used: false }];
   });
 }
 
