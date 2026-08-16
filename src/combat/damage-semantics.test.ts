@@ -43,6 +43,18 @@ test('classifies the observed flurry plus echo lane pattern conservatively', () 
   assert.equal(classified.reduce((sum, entry) => sum + entry.amount, 0), 1_599_992);
 });
 
+test('classifies a complete repeated concurrent lane grid as normal', () => {
+  const classified = classifyVerifiedNormalDamage([
+    hit(100, 0, { attackCount: 0 }),
+    hit(40, 1, { attackCount: 0 }),
+    hit(101, 0, { attackCount: 1 }),
+    hit(41, 1, { attackCount: 1 }),
+    hit(102, 0, { attackCount: 2 }),
+    hit(42, 1, { attackCount: 2 }),
+  ]);
+  assert.deepEqual(classified.map((entry) => entry.kind), ['normal', 'normal', 'normal', 'normal', 'normal', 'normal']);
+});
+
 test('does not classify Flurry plus Echo when attack_count evidence is partial', () => {
   const classified = classifyVerifiedNormalDamage([
     hit(588476, 0, { critical: false, attackCount: 0, isRandomAttack: true }),
