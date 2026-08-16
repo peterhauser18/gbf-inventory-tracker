@@ -1,7 +1,7 @@
 import { normalizeWikiTitle } from './farming.ts';
 import { resolveSafeExternalImageUrl } from './resolver.ts';
 
-const WIKI_THUMBNAIL_CACHE_KEY = 'gbfit:wiki-material-thumbnails:v1';
+const WIKI_THUMBNAIL_CACHE_KEY = 'gbfit:wiki-material-thumbnails:v2';
 const WIKI_API = 'https://gbf.wiki/api.php';
 const MAX_TITLES_PER_REQUEST = 50;
 export const WIKI_THUMBNAIL_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -14,7 +14,7 @@ type ThumbnailEntry = {
 };
 
 type ThumbnailCachePayload = {
-  version: 1;
+  version: 2;
   entries: Record<string, ThumbnailEntry>;
 };
 
@@ -23,13 +23,18 @@ type ThumbnailBatchResult = {
   thumbnails: Map<string, string | undefined>;
 };
 
+type ThumbnailResolution = {
+  resolved: boolean;
+  url?: string;
+};
+
 export interface WikiThumbnailLoadOptions {
   fetchImpl?: typeof fetch;
   storage?: StorageLike;
   now?: number;
 }
 
-const inFlightByTitle = new Map<string, Promise<string | undefined>>();
+const inFlightByTitle = new Map<string, Promise<ThumbnailResolution>>();
 
 export async function loadWikiMaterialThumbnails(
   wikiTitles: readonly string[],
@@ -48,7 +53,7 @@ export async function loadWikiMaterialThumbnails(
   const now = options.now ?? Date.now();
   const cache = readThumbnailCache(storage);
   const result = new Map<string, string | undefined>();
-  const pending = new Map<string, Promise<string | undefined>>();
+  const pending = new Map<string, Promise<ThumbnailResolution>>();
   const toFetch: Array<{ key: string; title: string }> = [];
 
   for (const [key, title] of requested) {
@@ -69,10 +74,11 @@ export async function loadWikiMaterialThumbnails(
       .catch(() => ({ ok: false, thumbnails: new Map<string, string | undefined>() }));
 
     for (const entry of batch) {
-      const promise = batchPromise.then(({ ok, thumbnails }) => {
+      const promise = batchPromise.then(({ ok, thumbnails }): ThumbnailResolution => {
+        if (!ok || !thumbnails.has(entry.key)) return { resolved: false };
         const url = thumbnails.get(entry.key);
-        if (ok) writeThumbnailCacheEntry(storage, entry.key, { cachedAt: now, url: url ?? null });
-        return url;
+        writeThumbnailCacheEntry(storage, entry.key, { cachedAt: now, url: url ?? null });
+        return { resolved: true, url };
       }).finally(() => {
         inFlightByTitle.delete(entry.key);
       });
@@ -82,7 +88,8 @@ export async function loadWikiMaterialThumbnails(
   }
 
   await Promise.all([...pending.entries()].map(async ([key, promise]) => {
-    result.set(key, await promise);
+    const resolution = await promise;
+    if (resolution.resolved) result.set(key, resolution.url);
   }));
   return result;
 }
@@ -151,12 +158,12 @@ function resolveRequestedAlias(key: string, aliases: ReadonlyMap<string, string>
 }
 
 function readThumbnailCache(storage: StorageLike | undefined): ThumbnailCachePayload {
-  if (!storage) return { version: 1, entries: {} };
+  if (!storage) return { version: 2, entries: {} };
   try {
     const raw = storage.getItem(WIKI_THUMBNAIL_CACHE_KEY);
-    if (!raw) return { version: 1, entries: {} };
+    if (!raw) return { version: 2, entries: {} };
     const value = JSON.parse(raw) as unknown;
-    if (!isObject(value) || value.version !== 1 || !isObject(value.entries)) return { version: 1, entries: {} };
+    if (!isObject(value) || value.version !== 2 || !isObject(value.entries)) return { version: 2, entries: {} };
     const entries: Record<string, ThumbnailEntry> = {};
     for (const [key, candidate] of Object.entries(value.entries)) {
       if (!isObject(candidate) || typeof candidate.cachedAt !== 'number' || !Number.isFinite(candidate.cachedAt)) continue;
@@ -167,9 +174,9 @@ function readThumbnailCache(storage: StorageLike | undefined): ThumbnailCachePay
           : null;
       entries[key] = { cachedAt: candidate.cachedAt, url };
     }
-    return { version: 1, entries };
+    return { version: 2, entries };
   } catch {
-    return { version: 1, entries: {} };
+    return { version: 2, entries: {} };
   }
 }
 
