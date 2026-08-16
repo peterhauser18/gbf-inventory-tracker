@@ -3,7 +3,7 @@ import type { DebuggerResponseBody } from './capture/types.ts';
 export const OBSERVED_TREASURE_ICON_CACHE_NAME = 'gbfit:observed-gbf-treasure-icons:v1';
 const CACHE_KEY_ORIGIN = 'https://gbfit.local';
 const CACHE_KEY_PREFIX = '/observed-treasure-icons/';
-const TREASURE_ICON_HOST = /^prd-game-[a-z0-9]+-granbluefantasy\.akamaized\.net$/i;
+const TREASURE_ICON_HOST = 'prd-game-a-granbluefantasy.akamaized.net';
 const TREASURE_ICON_PATH = /^\/assets_en\/img\/sp\/assets\/item\/article\/s\/(\d+)\.jpg$/;
 
 type CacheLike = Pick<Cache, 'match' | 'put'>;
@@ -28,7 +28,7 @@ export function parseObservedTreasureIconResponse(
   if (mimeType?.toLowerCase() !== 'image/jpeg') return null;
   try {
     const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' || !TREASURE_ICON_HOST.test(parsed.hostname)) return null;
+    if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== TREASURE_ICON_HOST) return null;
     const match = TREASURE_ICON_PATH.exec(parsed.pathname);
     const itemId = match?.[1];
     if (!itemId) return null;
