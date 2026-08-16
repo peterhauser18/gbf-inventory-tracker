@@ -16,11 +16,7 @@ export function classifyVerifiedNormalDamage(
   const echoPattern = isVerifiedFlurryEchoPattern(hits);
   return hits.map((hit) => ({
     ...hit,
-    kind: (hit.concurrentAttackCount ?? 0) === 0
-      ? 'normal'
-      : echoPattern
-        ? 'echo'
-        : 'other',
+    kind: echoPattern && (hit.concurrentAttackCount ?? 0) > 0 ? 'echo' : 'normal',
   }));
 }
 
