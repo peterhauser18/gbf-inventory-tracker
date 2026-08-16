@@ -25,7 +25,8 @@ const app = document.querySelector<HTMLElement>('#dashboard-app');
 const wikiSources = new Map<string, WikiMaterialRaidSources>();
 const wikiQueued = new Set<string>();
 const wikiQueue: string[] = [];
-const hydratedGoalRequirements = new WeakSet<HTMLDetailsElement>();
+const hydratedGoalSources = new WeakSet<HTMLDetailsElement>();
+const iconHydrationInFlight = new WeakMap<HTMLDetailsElement, Promise<void>>();
 const MAX_WIKI_CONCURRENCY = 4;
 let wikiActive = 0;
 let plannerCards: PlannerCard[] = [];
@@ -128,29 +129,42 @@ function handleClick(event: MouseEvent): void {
 }
 
 async function hydrateGoalRequirements(details: HTMLDetailsElement): Promise<void> {
-  if (!details.isConnected || !details.open || hydratedGoalRequirements.has(details)) return;
+  if (!details.isConnected || !details.open) return;
+  await hydrateGoalRequirementIcons(details);
+  if (!details.isConnected || !details.open || hydratedGoalSources.has(details)) return;
+
   const goal = goalForDetails(details);
   if (!goal) return;
-  hydratedGoalRequirements.add(details);
-
-  const titles = goal.materials
-    .map((material) => material.wikiTitle?.trim())
-    .filter((title): title is string => Boolean(title));
-  if (titles.length) {
-    const thumbnails = await loadWikiMaterialThumbnails(titles);
-    if (details.isConnected) {
-      details.querySelectorAll<HTMLImageElement>('[data-goal-material-icon]').forEach((image) => {
-        const title = image.dataset.wikiTitle?.trim();
-        if (!title || image.getAttribute('src')) return;
-        const url = thumbnails.get(normalizeWikiTitle(title));
-        if (url) image.src = url;
-      });
-    }
-  }
-
+  hydratedGoalSources.add(details);
   const missing = goal.materials.filter((material) => material.state === 'known' && (material.missing ?? 0) > 0);
   queueMissingWikiSources(missing);
   scheduleSync();
+}
+
+async function hydrateGoalRequirementIcons(details: HTMLDetailsElement): Promise<void> {
+  if (!details.isConnected || !details.open) return;
+  const existing = iconHydrationInFlight.get(details);
+  if (existing) return existing;
+
+  const images = Array.from(details.querySelectorAll<HTMLImageElement>('[data-goal-material-icon]'))
+    .filter((image) => !image.getAttribute('src') && image.dataset.wikiTitle?.trim());
+  if (images.length === 0) return;
+  const titles = [...new Set(images.map((image) => image.dataset.wikiTitle!.trim()))];
+
+  const hydration = loadWikiMaterialThumbnails(titles).then((thumbnails) => {
+    if (!details.isConnected) return;
+    for (const image of images) {
+      if (!image.isConnected || image.getAttribute('src')) continue;
+      const title = image.dataset.wikiTitle?.trim();
+      if (!title) continue;
+      const url = thumbnails.get(normalizeWikiTitle(title));
+      if (url) image.src = url;
+    }
+  }).finally(() => {
+    iconHydrationInFlight.delete(details);
+  });
+  iconHydrationInFlight.set(details, hydration);
+  await hydration;
 }
 
 function goalForDetails(details: HTMLDetailsElement): PinnedGoalSummary | undefined {
@@ -188,6 +202,9 @@ function syncUi(): void {
 
   if (goalsView) {
     app.querySelectorAll('[data-farming-focus]').forEach((node) => node.remove());
+    app.querySelectorAll<HTMLDetailsElement>('[data-goal-requirements][open]').forEach((details) => {
+      void hydrateGoalRequirementIcons(details);
+    });
     if (localState !== 'ready') return;
     const activeGoals = resolvePinnedGoals(plannerCards, readPins()).goals.filter((goal) => goal.targetReached !== true);
     app.querySelectorAll<HTMLDetailsElement>('[data-goal-requirements][open]').forEach((details) => {
