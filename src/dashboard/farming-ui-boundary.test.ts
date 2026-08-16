@@ -6,6 +6,7 @@ const ui = readFileSync(new URL('./farming-ui.ts', import.meta.url), 'utf8');
 const wiki = readFileSync(new URL('./wiki-sources.ts', import.meta.url), 'utf8');
 const assets = readFileSync(new URL('./wiki-assets.ts', import.meta.url), 'utf8');
 const goals = readFileSync(new URL('./goals-ui.ts', import.meta.url), 'utf8');
+const goalsCss = readFileSync(new URL('./goals.css', import.meta.url), 'utf8');
 const logic = readFileSync(new URL('./farming.ts', import.meta.url), 'utf8');
 const source = `${ui}\n${wiki}\n${assets}\n${logic}`;
 
@@ -54,6 +55,11 @@ test('Goal icons hydrate before Farming planner state is required', () => {
   assert.ok(hydration.indexOf('await hydrateGoalRequirementIcons(details)') < hydration.indexOf('const goal = goalForDetails(details)'));
   assert.match(hydration, /querySelectorAll<HTMLImageElement>\('\[data-goal-material-icon\]'\)/);
   assert.match(hydration, /iconHydrationInFlight/);
+});
+
+test('Goals hide unavailable/loading farming copy because the material name is the Wiki link', () => {
+  assert.match(goals, /<a class="goal-requirement-name" href=/);
+  assert.match(goalsCss, /\.goal-farming-state \{ display: none; \}/);
 });
 
 test('farming UI updates its observed containers idempotently', () => {
