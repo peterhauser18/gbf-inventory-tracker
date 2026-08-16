@@ -2,7 +2,7 @@ import { resolveSafeExternalImageUrl } from './resolver.ts';
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const TREASURE_CATEGORY = 'Category:Items';
-const CACHE_KEY = 'gbfit:wiki-treasure-images:v2';
+const CACHE_KEY = 'gbfit:wiki-treasure-images:v3';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Pick<Response, 'ok' | 'status' | 'json'>>;
@@ -10,7 +10,7 @@ type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 type JsonObject = Record<string, unknown>;
 
 interface CachedTreasureImagePayload {
-  version: 2;
+  version: 3;
   cachedAt: number;
   entries: Record<string, string>;
 }
@@ -116,15 +116,28 @@ async function loadFresh(fetchImpl: FetchLike): Promise<ReadonlyMap<string, stri
 }
 
 function wikiTreasurePageImage(page: JsonObject): string | undefined {
-  if (!Array.isArray(page.images)) return undefined;
+  if (typeof page.title !== 'string' || !Array.isArray(page.images)) return undefined;
+  let namedMatch: string | undefined;
   for (const image of page.images) {
     if (!isObject(image) || typeof image.title !== 'string') continue;
     const filename = image.title.replace(/^File:/i, '').trim();
-    if (!wikiTreasureItemIdFromFilename(filename)) continue;
-    const redirect = `https://gbf.wiki/Special:Redirect/file/${encodeURIComponent(filename)}`;
-    return resolveSafeExternalImageUrl(redirect) ?? undefined;
+    const redirect = safeWikiFileRedirect(filename);
+    if (!redirect) continue;
+    if (wikiTreasureItemIdFromFilename(filename)) return redirect;
+    if (!namedMatch && wikiTreasureNamedImageMatches(page.title, filename)) namedMatch = redirect;
   }
-  return undefined;
+  return namedMatch;
+}
+
+function safeWikiFileRedirect(filename: string): string | undefined {
+  if (!/\.(?:jpe?g|png|webp)$/i.test(filename)) return undefined;
+  const redirect = `https://gbf.wiki/Special:Redirect/file/${encodeURIComponent(filename)}`;
+  return resolveSafeExternalImageUrl(redirect) ?? undefined;
+}
+
+function wikiTreasureNamedImageMatches(pageTitle: string, filename: string): boolean {
+  const stem = filename.replace(/\.(?:jpe?g|png|webp)$/i, '');
+  return normalizeWikiTreasureTitle(stem) === normalizeWikiTreasureTitle(pageTitle);
 }
 
 function wikiTreasureItemId(imageUrl: string): string | undefined {
@@ -147,7 +160,7 @@ function readCache(storage: StorageLike | undefined): { cachedAt: number; index:
     const raw = storage.getItem(CACHE_KEY);
     if (!raw) return undefined;
     const value = JSON.parse(raw) as unknown;
-    if (!isObject(value) || value.version !== 2 || typeof value.cachedAt !== 'number' || !Number.isFinite(value.cachedAt) || !isObject(value.entries)) return undefined;
+    if (!isObject(value) || value.version !== 3 || typeof value.cachedAt !== 'number' || !Number.isFinite(value.cachedAt) || !isObject(value.entries)) return undefined;
     const index = new Map<string, string>();
     for (const [key, candidate] of Object.entries(value.entries)) {
       if (typeof candidate !== 'string') continue;
@@ -165,7 +178,7 @@ function writeCache(storage: StorageLike | undefined, index: ReadonlyMap<string,
   try {
     const entries: Record<string, string> = {};
     for (const [key, url] of index) entries[key] = url;
-    const payload: CachedTreasureImagePayload = { version: 2, cachedAt, entries };
+    const payload: CachedTreasureImagePayload = { version: 3, cachedAt, entries };
     storage.setItem(CACHE_KEY, JSON.stringify(payload));
   } catch {
     // Public metadata caching is optional.
