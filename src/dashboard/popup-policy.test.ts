@@ -18,14 +18,22 @@ test('popup keeps Dashboard as the normal action and developer controls collapse
   assert.ok(reset > developer);
   assert.ok(exportButton > developer);
   assert.ok(cleanup > developer);
-  assert.match(popup, /launchDashboardWithObservation/);
+  assert.match(popup, /openDashboardTab/);
 });
 
-test('popup uses the explicitly selected GBF tab for Dashboard and Developer observation start', () => {
+test('Dashboard always opens while observation only targets an explicitly active GBF tab', () => {
+  assert.match(popup, /findActiveGbfTabId/);
+  assert.match(popup, /if \(tabId !== undefined\)/);
+  assert.match(popup, /sendMessage\(\{ type: 'gbfit:start-observation', tabId \}\)/);
+  assert.match(popup, /await openDashboardTab\(\)/);
+  assert.match(popup, /Dashboard opened without observation/);
+});
+
+test('manual Developer observation still requires the explicitly selected GBF tab', () => {
   assert.match(popup, /chrome\.tabs\.query\(\{ active: true, currentWindow: true \}\)/);
   assert.match(popup, /isGbfPageUrl\(tab\.url\)/);
-  const explicitStarts = popup.match(/sendMessage\(\{ type: 'gbfit:start-observation', tabId/g) ?? [];
-  assert.equal(explicitStarts.length, 2);
+  assert.match(popup, /requireActiveGbfTabId/);
+  assert.match(popup, /sendMessage\(\{ type: 'gbfit:start-observation', tabId: await requireActiveGbfTabId\(\) \}\)/);
 });
 
 test('popup launch flow adds no GBF request or page instrumentation primitive', () => {
