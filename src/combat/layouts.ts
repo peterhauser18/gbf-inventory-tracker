@@ -253,13 +253,14 @@ function renderSelectedAnalysis(view: CombatView, mode: 'wide' | 'deep' | 'inlin
   const actor = actorFor(view.context, analysis.actorId);
   const metadata = characterMetadata(view.metadata, analysis.actorId, analysis.actorName ?? actor?.name);
   const label = actorDisplayName(view, analysis.actorId, analysis.actorName, actor, metadata);
+  const attackModeSamples = (analysis.single?.count ?? 0) + (analysis.double?.count ?? 0) + (analysis.triple?.count ?? 0);
   return `<section class="character-analysis analysis-${mode}">
     <div class="analysis-character"><span class="analysis-portrait">${renderImage(metadata?.imageUrl, label)}</span><div><p class="eyebrow">SELECTED CHARACTER</p><h3>${escapeHtml(label)}</h3>${renderHp(actor)}<strong>${formatNumber(analysis.totalDamage)} total damage</strong></div></div>
     <div class="analysis-breakdown">
-      ${analysisMetric('Normal', analysis.breakdown.normal)}${analysisMetric('Skill', analysis.breakdown.skill)}${analysisMetric('Ougi', analysis.breakdown.ougi)}${analysisMetric('Echo', analysis.breakdown.echo)}${analysisMetric('Supplemental', analysis.breakdown.supplemental)}
+      ${analysisMetric('Normal', analysis.breakdown.normal)}${analysisMetric('Skill', analysis.breakdown.skill)}${analysisMetric('Ougi', analysis.breakdown.ougi)}${analysisMetric('Echo', analysis.breakdown.echo)}${analysisMetric('Supplemental', analysis.breakdown.supplemental)}${analysisMetric('Unclassified', analysis.breakdown.other)}
     </div>
     <div class="attack-mode-grid">
-      ${attackMode('SA', analysis.single)}${attackMode('DA', analysis.double)}${attackMode('TA', analysis.triple)}
+      ${attackMode('SA', analysis.single, attackModeSamples)}${attackMode('DA', analysis.double, attackModeSamples)}${attackMode('TA', analysis.triple, attackModeSamples)}
       <div class="analysis-stat"><span>Crit rate</span><strong>${formatPercent(analysis.criticalRate)}</strong><small>${analysis.criticalHits === undefined || analysis.criticalDenominator === undefined ? 'denominator unavailable' : `${analysis.criticalHits}/${analysis.criticalDenominator} observed hits`}</small></div>
       <div class="analysis-stat"><span>Ougi</span><strong>${analysis.ougiUses}</strong><small>${formatNumber(analysis.ougiDamage)} damage</small></div>
     </div>
@@ -391,8 +392,13 @@ function analysisMetric(label: string, value: number | undefined): string {
   return `<div><span>${escapeHtml(label)}</span><strong>${optionalNumber(value)}</strong></div>`;
 }
 
-function attackMode(label: string, value: { count: number; damage: number } | undefined): string {
-  return `<div class="analysis-stat"><span>${label}</span><strong>${value?.count ?? '—'}</strong><small>${value ? `${formatNumber(value.damage)} damage` : 'not source-proven'}</small></div>`;
+function attackMode(label: string, value: { count: number; damage: number } | undefined, denominator: number): string {
+  if (denominator <= 0) {
+    return `<div class="analysis-stat"><span>${label}</span><strong>—</strong><small>not source-proven</small></div>`;
+  }
+  const count = value?.count ?? 0;
+  const damage = value?.damage ?? 0;
+  return `<div class="analysis-stat"><span>${label}</span><strong>${count} · ${formatPercent(count / denominator)}</strong><small>${denominator} source-proven attacks · ${formatNumber(damage)} damage</small></div>`;
 }
 
 function renderHp(actor: CombatActorContext | undefined): string {
