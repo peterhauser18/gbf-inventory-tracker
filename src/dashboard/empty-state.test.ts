@@ -6,7 +6,7 @@ test('distinguishes unobserved families from an observed filter with no matches'
   const unobserved = polishDashboardEmptyState('No matching entries', 'No data was observed for this family yet.');
   const filtered = polishDashboardEmptyState('No matching entries', 'Try a different search.');
   assert.equal(unobserved.kind, 'unobserved');
-  assert.match(unobserved.detail, /Unknown evidence is not treated as an empty collection/);
+  assert.match(unobserved.detail, /Unavailable evidence is not treated as an empty collection/);
   assert.equal(filtered.kind, 'filtered');
   assert.match(filtered.detail, /underlying local data is unchanged/);
 });
