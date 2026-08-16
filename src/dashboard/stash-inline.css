@@ -1,0 +1,135 @@
+.stash-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stash-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+.stash-card.expanded {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+}
+
+.stash-head {
+  position: relative;
+  min-height: 76px;
+}
+
+.stash-toggle {
+  width: 100%;
+  min-height: 76px;
+  padding: 12px 74px 12px 13px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stash-toggle:hover {
+  background: var(--panel-hover);
+}
+
+.stash-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.stash-copy strong {
+  font-size: 13px;
+}
+
+.stash-copy > span,
+.stash-copy small,
+.stash-child-count,
+.stash-empty {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.stash-chevron {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.stash-wiki {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.stash-wiki:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.stash-children {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-soft) 72%, transparent);
+}
+
+.stash-child-count {
+  margin-bottom: 8px;
+}
+
+.stash-weapon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+  gap: 9px;
+}
+
+.stash-weapon-card {
+  min-height: 104px;
+}
+
+.stash-weapon-card .card-open {
+  min-height: 104px;
+}
+
+.stash-provenance {
+  display: inline-flex;
+  width: fit-content;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.stash-empty {
+  padding: 12px 4px 3px;
+}
+
+:root[data-theme='dark'] .stash-card,
+:root[data-theme='dark'] .stash-wiki {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+:root[data-theme='dark'] .stash-toggle:hover {
+  background: var(--panel-hover);
+}
