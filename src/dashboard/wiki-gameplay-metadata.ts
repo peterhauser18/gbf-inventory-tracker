@@ -22,6 +22,8 @@ const SUMMON_FIELDS = [
   'aura5',
 ].join(',');
 
+export type WikiGameplayFamily = 'characters' | 'weapons' | 'summons';
+
 export interface WikiAbilityText {
   name: string;
   description: string;
@@ -56,7 +58,24 @@ export interface WikiGameplayMetadataIndex {
   };
 }
 
+const defaultFamilyPromises = new Map<WikiGameplayFamily, Promise<WikiGameplayMetadataIndex>>();
 let defaultGameplayPromise: Promise<WikiGameplayMetadataIndex> | null = null;
+
+export function loadWikiGameplayFamily(
+  family: WikiGameplayFamily,
+  fetcher: WikiCargoFetchLike = fetch,
+): Promise<WikiGameplayMetadataIndex> {
+  if (fetcher !== fetch) return loadWikiGameplayFamilyFresh(family, fetcher);
+  const existing = defaultFamilyPromises.get(family);
+  if (existing) return existing;
+
+  const pending = loadWikiGameplayFamilyFresh(family, fetcher).catch((error) => {
+    defaultFamilyPromises.delete(family);
+    throw error;
+  });
+  defaultFamilyPromises.set(family, pending);
+  return pending;
+}
 
 export function loadWikiGameplayMetadata(
   fetcher: WikiCargoFetchLike = fetch,
@@ -124,25 +143,54 @@ export function selectSummonGameplay(
 
 async function loadWikiGameplayMetadataFresh(fetcher: WikiCargoFetchLike): Promise<WikiGameplayMetadataIndex> {
   const [charactersResult, weaponsResult, summonsResult] = await Promise.allSettled([
-    loadWikiCharacterSkillRows(fetcher),
-    loadWikiCargoRows('weapon_skills', WEAPON_SKILL_FIELDS, fetcher),
-    loadWikiCargoRows('summons', SUMMON_FIELDS, fetcher),
+    loadWikiGameplayFamily('characters', fetcher),
+    loadWikiGameplayFamily('weapons', fetcher),
+    loadWikiGameplayFamily('summons', fetcher),
   ]);
 
   return {
-    charactersById: charactersResult.status === 'fulfilled'
-      ? characterAbilities(charactersResult.value)
-      : new Map(),
-    weaponsByTitle: weaponsResult.status === 'fulfilled'
-      ? weaponAbilities(weaponsResult.value)
-      : new Map(),
-    summonsById: summonsResult.status === 'fulfilled'
-      ? summonSources(summonsResult.value)
-      : new Map(),
+    charactersById: charactersResult.status === 'fulfilled' ? charactersResult.value.charactersById : new Map(),
+    weaponsByTitle: weaponsResult.status === 'fulfilled' ? weaponsResult.value.weaponsByTitle : new Map(),
+    summonsById: summonsResult.status === 'fulfilled' ? summonsResult.value.summonsById : new Map(),
     sourceQuality: {
       characters: resultQuality(charactersResult),
       weapons: resultQuality(weaponsResult),
       summons: resultQuality(summonsResult),
+    },
+  };
+}
+
+async function loadWikiGameplayFamilyFresh(
+  family: WikiGameplayFamily,
+  fetcher: WikiCargoFetchLike,
+): Promise<WikiGameplayMetadataIndex> {
+  if (family === 'characters') {
+    return familyIndex('characters', characterAbilities(await loadWikiCharacterSkillRows(fetcher)));
+  }
+  if (family === 'weapons') {
+    return familyIndex('weapons', weaponAbilities(await loadWikiCargoRows('weapon_skills', WEAPON_SKILL_FIELDS, fetcher)));
+  }
+  return familyIndex('summons', summonSources(await loadWikiCargoRows('summons', SUMMON_FIELDS, fetcher)));
+}
+
+function familyIndex(
+  family: WikiGameplayFamily,
+  values: ReadonlyMap<string, readonly WikiAbilityText[]> | ReadonlyMap<string, WikiSummonSource>,
+): WikiGameplayMetadataIndex {
+  return {
+    charactersById: family === 'characters'
+      ? values as ReadonlyMap<string, readonly WikiAbilityText[]>
+      : new Map(),
+    weaponsByTitle: family === 'weapons'
+      ? values as ReadonlyMap<string, readonly WikiAbilityText[]>
+      : new Map(),
+    summonsById: family === 'summons'
+      ? values as ReadonlyMap<string, WikiSummonSource>
+      : new Map(),
+    sourceQuality: {
+      characters: family === 'characters' ? 'known' : 'unknown',
+      weapons: family === 'weapons' ? 'known' : 'unknown',
+      summons: family === 'summons' ? 'known' : 'unknown',
     },
   };
 }
