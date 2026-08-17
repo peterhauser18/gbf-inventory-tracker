@@ -49,6 +49,7 @@ function applyRaidFixes(
   updateParticipants(root, raid, stableContext);
   keepSixRosterMembersVisible(root, stableContext, raid);
   improvePartyStateLabels(root);
+  correctPromotedMainSlotLabel(root, stableContext);
   ensureMainCharacterFallback(root, stableContext);
   ensureBossFallback(root, raid);
   normalizeSummonPresentation(root);
@@ -175,6 +176,21 @@ function improvePartyStateLabels(root: HTMLElement): void {
     else if (card.classList.contains('inactive') && card.querySelector('.party-slot')?.textContent?.startsWith('B')) {
       tag.textContent = 'Backline · Reserve';
     }
+  }
+}
+
+function correctPromotedMainSlotLabel(root: HTMLElement, context: CombatParseContext | null): void {
+  const mainCharacterId = context?.mainCharacterId;
+  const accountName = context?.accountDisplayName?.trim();
+  if (!mainCharacterId || !accountName) return;
+  for (const target of root.querySelectorAll<HTMLElement>('[data-character-select]')) {
+    const actorId = target.dataset.characterSelect;
+    if (!actorId || actorId === mainCharacterId) continue;
+    const label = target.querySelector<HTMLElement>('.party-card-copy > strong, .cockpit-character strong');
+    if (label?.textContent?.trim() !== accountName) continue;
+    const actor = context.actors?.find((entry) => entry.id === actorId)
+      ?? context.actorSlots.find((entry) => entry.id === actorId);
+    if (actor?.name) label.textContent = actor.name;
   }
 }
 
