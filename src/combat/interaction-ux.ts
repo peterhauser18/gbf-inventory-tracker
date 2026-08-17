@@ -10,6 +10,7 @@ const raidDropOpenById = new Map<string, boolean>();
 const selectedRaidActorById = new Map<string, string>();
 let suppressedCombatActorId: string | null = null;
 let raidAnnotationPending = false;
+let raidAnnotationQueued = false;
 
 export function installCombatRaidInteractionUx(root: HTMLElement): void {
   root.addEventListener('click', (event) => handleClick(root, event), true);
@@ -167,7 +168,10 @@ function collapseRaidDropsByDefault(section: HTMLElement): void {
 }
 
 async function annotateRaidCharacterRows(section: HTMLElement): Promise<void> {
-  if (raidAnnotationPending) return;
+  if (raidAnnotationPending) {
+    raidAnnotationQueued = true;
+    return;
+  }
   const cards = [...section.querySelectorAll<HTMLElement>('.raid-card')];
   if (!cards.length) return;
 
@@ -178,6 +182,10 @@ async function annotateRaidCharacterRows(section: HTMLElement): Promise<void> {
     for (const card of cards) annotateRaidCard(card, byId);
   } finally {
     raidAnnotationPending = false;
+    if (raidAnnotationQueued) {
+      raidAnnotationQueued = false;
+      void annotateRaidCharacterRows(section);
+    }
   }
 }
 
