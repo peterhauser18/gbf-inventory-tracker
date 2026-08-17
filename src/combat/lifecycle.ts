@@ -15,9 +15,14 @@ export function selectCombatContextKey(
   contexts: Readonly<Record<string, CombatContextIdentity>>,
   currentKey: string | undefined,
   directInstanceId: string | undefined,
+  preferredInstanceId?: string,
 ): string | undefined {
   if (directInstanceId) {
     return Object.entries(contexts).find(([, context]) => context.instanceId === directInstanceId)?.[0];
+  }
+  if (preferredInstanceId) {
+    const preferred = Object.entries(contexts).find(([, context]) => context.instanceId === preferredInstanceId)?.[0];
+    if (preferred) return preferred;
   }
   return currentKey && contexts[currentKey] ? currentKey : undefined;
 }
