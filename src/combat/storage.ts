@@ -43,19 +43,21 @@ export interface ActiveCombatRaid {
   context?: CombatParseContext;
 }
 
+// Background reads this immediately after ingest to maintain its passive tab lock.
+// Extension pages run in a separate JS context and therefore fall back to stored active state.
+let lastIngestedContext: CombatParseContext | undefined;
+
 export async function ingestCapturedCombatRecord(record: CapturedResponseRecord): Promise<NormalizedRaidParse | null> {
-  if (isVerifiedCombatResponseUrl(record.meta.url)) {
-    return await ingestVerifiedCombatRecord(record);
-  }
+  if (isVerifiedCombatResponseUrl(record.meta.url)) return await ingestVerifiedCombatRecord(record);
 
   const observation = parseCombatObservation(record);
   if (!observation) return null;
-  const active = await getActiveCombatRaids();
-  const current = active[0];
+  const current = (await getActiveCombatRaids())[0];
   const next = mergeCombatObservation(current?.parse ?? null, observation);
   const logTurn = latestLogTurn(next);
   if (logTurn !== undefined) next.lastObservedTurn = Math.max(next.lastObservedTurn ?? 0, logTurn);
   const key = current?.key ?? combatRaidKey(next.raidTechnicalId, next.instanceId);
+
   if (isTerminalRaid(next)) {
     const terminal = observedFinalizeRaid(next);
     await upsertCapturedHistory(terminal);
@@ -72,12 +74,13 @@ async function ingestVerifiedCombatRecord(record: CapturedResponseRecord): Promi
   if (!routed) return null;
 
   const { key, observation, startObserved } = routed;
+  lastIngestedContext = observation.context ? sanitizeCombatParseContext(observation.context) : undefined;
+
   const activeCurrent = await getActiveParseByKey(key);
   const manualCurrent = state.manualFinalizedKeys[key]
     ? await getCapturedHistoryForIdentity(observation.context?.instanceId, observation.raidTechnicalId)
     : undefined;
   const current = activeCurrent ?? manualCurrent ?? null;
-
   const next = mergeVerifiedMultiraidObservation(current, observation);
   next.instanceId = observation.context?.instanceId ?? current?.instanceId;
   preserveVerifiedNormalFacts(next, observation.actions);
@@ -90,6 +93,8 @@ async function ingestVerifiedCombatRecord(record: CapturedResponseRecord): Promi
     state.currentKey = key;
     if (state.manualFinalizedKeys[key]) {
       delete state.manualFinalizedKeys[key];
+      delete next.finalization;
+      delete next.finalizedAt;
       await deleteCapturedHistoryForIdentity(next.instanceId, next.raidTechnicalId);
     }
   }
@@ -126,13 +131,14 @@ async function routeVerifiedObservation(
     if (!probe?.context) return null;
     const key = combatRaidKey(probe.context.raidTechnicalId, probe.context.instanceId);
     const previous = state.contexts[key];
-    const observation = previous
-      ? parseVerifiedMultiraidObservation(record, previous) ?? probe
-      : probe;
+    const observation = previous ? parseVerifiedMultiraidObservation(record, previous) ?? probe : probe;
     enrichVerifiedScenarioSemantics(record.body, observation);
     const turn = directlyObservedTurn(record);
-    const parsed = turn === undefined ? observation : { ...observation, observedTurn: turn };
-    return { key, observation: parsed, startObserved: true };
+    return {
+      key,
+      observation: turn === undefined ? observation : { ...observation, observedTurn: turn },
+      startObserved: true,
+    };
   }
 
   const directInstanceId = observedInstanceId(record);
@@ -178,12 +184,10 @@ export async function getActiveCombatRaids(): Promise<ActiveCombatRaid[]> {
       key = combatRaidKey(parse.raidTechnicalId, parse.instanceId);
     }
     const context = state.contexts[key]
-      ?? Object.values(state.contexts).find((candidate) =>
-        Boolean(parse.instanceId) && candidate.instanceId === parse.instanceId,
-      );
-    const candidate = { key, parse, context };
+      ?? Object.values(state.contexts).find((candidate) => Boolean(parse.instanceId) && candidate.instanceId === parse.instanceId);
+    const candidate: ActiveCombatRaid = { key, parse, context };
     const existing = deduped.get(key);
-    if (!existing || candidate.parse.lastObservedAt >= existing.parse.lastObservedAt) deduped.set(key, candidate);
+    if (!existing || parse.lastObservedAt >= existing.parse.lastObservedAt) deduped.set(key, candidate);
   }
 
   return [...deduped.values()].sort((a, b) => b.parse.lastObservedAt - a.parse.lastObservedAt);
@@ -194,10 +198,12 @@ export async function getLatestCombatParse(): Promise<NormalizedRaidParse | null
 }
 
 export async function getCombatLiveContext(): Promise<CombatParseContext | undefined> {
+  if (lastIngestedContext) return lastIngestedContext;
   return (await getActiveCombatRaids())[0]?.context;
 }
 
 export async function clearCombatParseContext(): Promise<void> {
+  lastIngestedContext = undefined;
   await chrome.storage.session.remove([LEGACY_CONTEXT_KEY, CONTEXT_STATE_KEY]);
 }
 
@@ -213,9 +219,8 @@ export async function manualFinalizeActiveRaid(
 
   const state = await getCombatContextState();
   state.manualFinalizedKeys[key] = true;
-  // Keep the point-in-time context and current key so a delayed response for the
-  // same raid can reconcile the stable history record. A later verified start
-  // for another raid moves currentKey without touching this retained context.
+  // If this was the currently played raid, retain that proven routing key for
+  // delayed packets. A later start for another raid replaces currentKey.
   state.currentKey ??= key;
   await saveCombatContextState(state);
   return record;
@@ -224,19 +229,13 @@ export async function manualFinalizeActiveRaid(
 async function getCombatContextState(): Promise<CombatContextState> {
   const stored = await chrome.storage.session.get([CONTEXT_STATE_KEY, LEGACY_CONTEXT_KEY]);
   const existing = stored[CONTEXT_STATE_KEY] as CombatContextState | undefined;
-  if (existing && existing.contexts && typeof existing.contexts === 'object') {
-    return sanitizeContextState(existing);
-  }
+  if (existing && existing.contexts && typeof existing.contexts === 'object') return sanitizeContextState(existing);
 
   const legacy = stored[LEGACY_CONTEXT_KEY] as CombatParseContext | undefined;
   if (!legacy?.raidTechnicalId) return emptyContextState();
   const context = sanitizeCombatParseContext(legacy);
   const key = combatRaidKey(context.raidTechnicalId, context.instanceId);
-  const migrated: CombatContextState = {
-    currentKey: key,
-    contexts: { [key]: context },
-    manualFinalizedKeys: {},
-  };
+  const migrated: CombatContextState = { currentKey: key, contexts: { [key]: context }, manualFinalizedKeys: {} };
   await saveCombatContextState(migrated);
   await chrome.storage.session.remove(LEGACY_CONTEXT_KEY);
   return migrated;
@@ -249,8 +248,7 @@ async function saveCombatContextState(state: CombatContextState): Promise<void> 
 function sanitizeContextState(state: CombatContextState): CombatContextState {
   const contexts: Record<string, CombatParseContext> = {};
   for (const [key, context] of Object.entries(state.contexts ?? {})) {
-    if (!context?.raidTechnicalId) continue;
-    contexts[key] = sanitizeCombatParseContext(context);
+    if (context?.raidTechnicalId) contexts[key] = sanitizeCombatParseContext(context);
   }
   const manualFinalizedKeys: Record<string, true> = {};
   for (const key of Object.keys(state.manualFinalizedKeys ?? {})) manualFinalizedKeys[key] = true;
@@ -351,13 +349,7 @@ function isVerifiedStart(url: string): boolean {
 }
 
 function minimalContext(parse: NormalizedRaidParse): CombatParseContext {
-  return {
-    raidTechnicalId: parse.raidTechnicalId,
-    instanceId: parse.instanceId,
-    actorSlots: [],
-    actors: [],
-    turn: parse.lastObservedTurn,
-  };
+  return { raidTechnicalId: parse.raidTechnicalId, instanceId: parse.instanceId, actorSlots: [], actors: [], turn: parse.lastObservedTurn };
 }
 
 function latestLogTurn(parse: NormalizedRaidParse): number | undefined {
@@ -369,7 +361,9 @@ export async function getRaidHistory(): Promise<RaidHistoryRecord[]> {
   const db = await openCombatDatabase();
   const values = await requestValue<RaidHistoryRecord[]>(db.transaction(HISTORY_STORE, 'readonly').objectStore(HISTORY_STORE).getAll());
   db.close();
-  return values.sort((a, b) => (b.observedEndedAt ?? b.finalizedAt ?? b.lastObservedAt) - (a.observedEndedAt ?? a.finalizedAt ?? a.lastObservedAt));
+  return values.sort((a, b) =>
+    (b.observedEndedAt ?? b.finalizedAt ?? b.lastObservedAt) - (a.observedEndedAt ?? a.finalizedAt ?? a.lastObservedAt),
+  );
 }
 
 export async function getAllDropPreferences(): Promise<RaidDropPreferences[]> {
@@ -382,14 +376,11 @@ export async function getAllDropPreferences(): Promise<RaidDropPreferences[]> {
 export async function clearCombatStorage(): Promise<void> {
   await clearCombatParseContext();
   const db = await openCombatDatabase();
-  await transactionDone(
-    db.transaction([ACTIVE_STORE, HISTORY_STORE, PREFS_STORE], 'readwrite'),
-    (tx) => {
-      tx.objectStore(ACTIVE_STORE).clear();
-      tx.objectStore(HISTORY_STORE).clear();
-      tx.objectStore(PREFS_STORE).clear();
-    },
-  );
+  await transactionDone(db.transaction([ACTIVE_STORE, HISTORY_STORE, PREFS_STORE], 'readwrite'), (tx) => {
+    tx.objectStore(ACTIVE_STORE).clear();
+    tx.objectStore(HISTORY_STORE).clear();
+    tx.objectStore(PREFS_STORE).clear();
+  });
   db.close();
 }
 
@@ -423,12 +414,7 @@ export async function updateRaidLocalState(localId: string, patch: { favorite?: 
 
 export async function importRaidParseJson(json: string): Promise<RaidHistoryRecord> {
   const parse = parseRaidParseExport(json);
-  const record: RaidHistoryRecord = {
-    ...parse,
-    localId: `import:${crypto.randomUUID()}`,
-    source: 'imported',
-    favorite: false,
-  };
+  const record: RaidHistoryRecord = { ...parse, localId: `import:${crypto.randomUUID()}`, source: 'imported', favorite: false };
   const db = await openCombatDatabase();
   await transactionDone(db.transaction(HISTORY_STORE, 'readwrite'), (tx) => tx.objectStore(HISTORY_STORE).put(record));
   db.close();
@@ -443,18 +429,12 @@ async function getActiveRows(): Promise<ActiveRow[]> {
 }
 
 async function getActiveParseByKey(key: string): Promise<NormalizedRaidParse | null> {
-  const db = await openCombatDatabase();
-  const store = db.transaction(ACTIVE_STORE, 'readonly').objectStore(ACTIVE_STORE);
-  const direct = await requestValue<ActiveRow | undefined>(store.get(key));
-  if (direct) {
-    db.close();
-    return direct.parse;
-  }
-  const legacy = await requestValue<ActiveRow | undefined>(store.get(LEGACY_LATEST_KEY));
-  db.close();
+  const rows = await getActiveRows();
+  const direct = rows.find((row) => row.key === key);
+  if (direct) return direct.parse;
+  const legacy = rows.find((row) => row.key === LEGACY_LATEST_KEY);
   if (!legacy) return null;
-  const derived = combatRaidKey(legacy.parse.raidTechnicalId, legacy.parse.instanceId);
-  return derived === key ? legacy.parse : null;
+  return combatRaidKey(legacy.parse.raidTechnicalId, legacy.parse.instanceId) === key ? legacy.parse : null;
 }
 
 async function saveActive(key: string, parse: NormalizedRaidParse): Promise<void> {
@@ -478,23 +458,21 @@ async function getCapturedHistoryForIdentity(
   raidTechnicalId: string,
 ): Promise<RaidHistoryRecord | undefined> {
   const db = await openCombatDatabase();
-  const store = db.transaction(HISTORY_STORE, 'readonly').objectStore(HISTORY_STORE);
   if (instanceId) {
-    const direct = await requestValue<RaidHistoryRecord | undefined>(store.get(`capture:${instanceId}`));
+    const value = await requestValue<RaidHistoryRecord | undefined>(
+      db.transaction(HISTORY_STORE, 'readonly').objectStore(HISTORY_STORE).get(`capture:${instanceId}`),
+    );
     db.close();
-    return direct;
+    return value;
   }
-  const values = await requestValue<RaidHistoryRecord[]>(store.getAll());
+  const values = await requestValue<RaidHistoryRecord[]>(db.transaction(HISTORY_STORE, 'readonly').objectStore(HISTORY_STORE).getAll());
   db.close();
   return values
     .filter((entry) => entry.source === 'captured' && entry.raidTechnicalId === raidTechnicalId)
     .sort((a, b) => b.lastObservedAt - a.lastObservedAt)[0];
 }
 
-async function deleteCapturedHistoryForIdentity(
-  instanceId: string | undefined,
-  raidTechnicalId: string,
-): Promise<void> {
+async function deleteCapturedHistoryForIdentity(instanceId: string | undefined, raidTechnicalId: string): Promise<void> {
   const current = await getCapturedHistoryForIdentity(instanceId, raidTechnicalId);
   if (!current || current.finalization !== 'manual') return;
   const db = await openCombatDatabase();
@@ -518,7 +496,7 @@ async function upsertCapturedHistory(parse: NormalizedRaidParse): Promise<RaidHi
         source: 'captured',
         favorite: current?.favorite ?? false,
         note: current?.note,
-      } satisfies RaidHistoryRecord;
+      };
       store.put(saved);
     };
     tx.oncomplete = () => resolve();
