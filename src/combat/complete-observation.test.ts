@@ -73,7 +73,7 @@ test('special_npc is retained as a C.A. on the current slot actor', () => {
   assert.equal(raid.characterDamage.find((row) => row.actorId === 'front-a')?.breakdown.ougi, 30);
 });
 
-test('C.A.-adjacent loop damage keeps the proven actor and lands in Skill damage', () => {
+test('C.A.-adjacent damage and loop_damage keep the actor and land in Skill damage within the bounded source window', () => {
   const observation = parse(record(ATTACK, { scenario: [
     {
       cmd: 'special',
@@ -83,21 +83,25 @@ test('C.A.-adjacent loop damage keeps the proven actor and lands in Skill damage
       list: [{ damage: [{ value: 100 }] }],
     },
     { cmd: 'message' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 20 }] },
+    { cmd: 'message' },
     { cmd: 'loop_damage', to: 'boss', list: [[{ value: 30 }, { value: 40 }]] },
   ] }));
 
-  assert.equal(observation.actions.length, 2);
+  assert.equal(observation.actions.length, 3);
   assert.equal(observation.actions[1]?.actorId, 'mc-tech');
-  assert.equal(observation.actions[1]?.kind, 'other');
+  assert.equal(observation.actions[2]?.actorId, 'mc-tech');
   assert.equal(observation.actions[1]?.name, 'C.A. follow-up');
-  assert.deepEqual(observation.actions[1]?.hits.map((hit) => hit.kind), ['skill', 'skill']);
+  assert.equal(observation.actions[2]?.name, 'C.A. follow-up');
+  assert.deepEqual(observation.actions[1]?.hits.map((hit) => hit.kind), ['skill']);
+  assert.deepEqual(observation.actions[2]?.hits.map((hit) => hit.kind), ['skill', 'skill']);
 
   const raid = mergeVerifiedMultiraidObservation(null, observation);
   const mc = raid.characterDamage.find((row) => row.actorId === 'mc-tech');
-  assert.equal(raid.partyDamage, 170);
-  assert.equal(mc?.total, 170);
+  assert.equal(raid.partyDamage, 190);
+  assert.equal(mc?.total, 190);
   assert.equal(mc?.breakdown.ougi, 100);
-  assert.equal(mc?.breakdown.skill, 70);
+  assert.equal(mc?.breakdown.skill, 90);
 });
 
 test('ability-scoped loop damage remains one attributed skill action', () => {
@@ -144,6 +148,30 @@ test('death promotion changes later slot attribution without stealing a pre-deat
   assert.equal(dead?.breakdown.ougi, 100);
   assert.equal(dead?.breakdown.skill, 50);
   assert.equal(promoted?.breakdown.ougi, 200);
+});
+
+test('chain_cutin breaks C.A. actor inheritance and keeps Chain Burst party-only', () => {
+  const observation = parse(record(ATTACK, { scenario: [
+    {
+      cmd: 'special',
+      target: 'boss',
+      pos: 1,
+      name: 'Synthetic C.A.',
+      list: [{ damage: [{ value: 100 }] }],
+    },
+    { cmd: 'chain_cutin' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 75 }] },
+  ] }));
+
+  assert.equal(observation.actions.length, 2);
+  assert.equal(observation.actions[0]?.actorId, 'front-a');
+  assert.equal(observation.actions[1]?.actorId, undefined);
+  assert.equal(observation.actions[1]?.name, 'Chain Burst');
+  assert.deepEqual(observation.actions[1]?.hits.map((hit) => hit.kind), ['other']);
+
+  const raid = mergeVerifiedMultiraidObservation(null, observation);
+  assert.equal(raid.partyDamage, 175);
+  assert.equal(raid.characterDamage.find((row) => row.actorId === 'front-a')?.total, 100);
 });
 
 test('Fated Chain keeps observed boss damage as party-only named evidence', () => {
