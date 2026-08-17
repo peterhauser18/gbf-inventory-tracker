@@ -1,18 +1,23 @@
 import type { CapturedResponseRecord } from '../capture/types.ts';
 import {
   isVerifiedCombatResponseUrl as isBaseVerifiedCombatResponseUrl,
+  mergeVerifiedMultiraidObservation as mergeBaseVerifiedMultiraidObservation,
   parseVerifiedMultiraidObservation as parseBaseVerifiedMultiraidObservation,
   type CombatActorContext,
   type CombatParseContext,
   type VerifiedCombatObservation,
 } from './multiraid.ts';
-import type { ParsedCombatAction, ParsedDamageHit } from './types.ts';
+import type {
+  CombatParseDiagnostic,
+  NormalizedRaidParse,
+  ParsedCombatAction,
+  ParsedDamageHit,
+} from './types.ts';
 
 type Obj = Record<string, unknown>;
 type TimedActorSource = { actor: CombatActorContext; step: number };
 type TimedPartySource = { name: string; step: number };
 
-export { mergeVerifiedMultiraidObservation } from './multiraid.ts';
 export type {
   CombatActorContext,
   CombatParseContext,
@@ -24,6 +29,7 @@ export type {
 const FATED_CHAIN_PATH = '/rest/multiraid/fatal_chain_result.json';
 const ABILITY_RESULT_PATH = '/rest/multiraid/ability_result.json';
 const FOLLOW_UP_LOOKBACK = 4;
+const PARSE_DIAGNOSTIC_LIMIT = 200;
 const SOURCE_WINDOW_COMMANDS = new Set([
   'attack',
   'ability',
@@ -60,7 +66,23 @@ export function parseVerifiedMultiraidObservation(
 
   repairScenarioDamageEvidence(record.body, observation, context, fatedChain);
   if (fatedChain) labelFatedChainDamage(observation);
+  const diagnostics = unrepresentedScenarioDamageDiagnostics(record.body, observation);
+  if (diagnostics.length > 0) observation.parseDiagnostics = diagnostics;
   return observation;
+}
+
+export function mergeVerifiedMultiraidObservation(
+  current: NormalizedRaidParse | null,
+  observation: VerifiedCombatObservation,
+): NormalizedRaidParse {
+  const next = mergeBaseVerifiedMultiraidObservation(current, observation);
+  if (observation.parseDiagnostics?.length) {
+    next.parseDiagnostics = [
+      ...(next.parseDiagnostics ?? []),
+      ...observation.parseDiagnostics,
+    ].slice(-PARSE_DIAGNOSTIC_LIMIT);
+  }
+  return next;
 }
 
 function normalizeVerifiedRecord(
@@ -234,6 +256,92 @@ function repairScenarioDamageEvidence(
   }
 
   observation.unparsedActionCount += extraGaps;
+}
+
+function unrepresentedScenarioDamageDiagnostics(
+  body: unknown,
+  observation: VerifiedCombatObservation,
+): CombatParseDiagnostic[] {
+  if (!obj(body) || !Array.isArray(body.scenario)) return [];
+  const diagnostics: CombatParseDiagnostic[] = [];
+
+  for (const raw of body.scenario) {
+    if (!obj(raw)) continue;
+    const cmd = str(raw.cmd)?.toLowerCase();
+    if (!cmd) continue;
+    const target = (cmd === 'special' || cmd === 'special_npc')
+      ? str(raw.target, raw.to)?.toLowerCase()
+      : str(raw.to, raw.target)?.toLowerCase();
+    if (!isPotentialPlayerBossDamage(raw, cmd, target)) continue;
+
+    const amounts = diagnosticDamageAmounts(raw);
+    if (!amounts.length || amounts.every((amount) => amount === 0)) continue;
+    if (observation.actions.some((action) => damageAmountsAreContained(action.hits, amounts))) continue;
+
+    diagnostics.push({
+      observedAt: observation.observedAt,
+      turn: observation.observedTurn ?? observation.context?.turn,
+      cmd,
+      name: str(raw.name),
+      pos: num(raw.pos),
+      target,
+      damage: amounts.reduce((sum, amount) => sum + amount, 0),
+    });
+    if (diagnostics.length >= PARSE_DIAGNOSTIC_LIMIT) break;
+  }
+
+  return diagnostics;
+}
+
+function isPotentialPlayerBossDamage(raw: Obj, cmd: string, target: string | undefined): boolean {
+  if (cmd === 'attack') return str(raw.from)?.toLowerCase() === 'player';
+  if (cmd === 'special' || cmd === 'special_npc') return target === 'boss';
+  if (cmd === 'damage' || cmd === 'loop_damage') return target === 'boss';
+  if (cmd === 'summon') return true;
+  if (cmd === 'ability') return num(raw.pos) !== undefined && Boolean(str(raw.name));
+  return target === 'boss';
+}
+
+function diagnosticDamageAmounts(raw: Obj): number[] {
+  for (const candidate of [raw.damage, raw.list, raw.damages, raw.hits]) {
+    const amounts: number[] = [];
+    collectDiagnosticDamageAmounts(candidate, amounts);
+    if (amounts.length > 0) return amounts;
+  }
+  return [];
+}
+
+function collectDiagnosticDamageAmounts(value: unknown, out: number[]): void {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+    out.push(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectDiagnosticDamageAmounts(item, out);
+    return;
+  }
+  if (!obj(value)) return;
+
+  const direct = num(value.value, value.amount);
+  if (direct !== undefined) {
+    out.push(direct);
+    return;
+  }
+  if (typeof value.damage === 'number' && Number.isFinite(value.damage) && value.damage >= 0) {
+    out.push(value.damage);
+    return;
+  }
+  for (const key of ['damage', 'list', 'damages', 'hits']) {
+    if (value[key] !== undefined) collectDiagnosticDamageAmounts(value[key], out);
+  }
+}
+
+function damageAmountsAreContained(hits: readonly ParsedDamageHit[], amounts: readonly number[]): boolean {
+  if (!amounts.length || amounts.length > hits.length) return false;
+  for (let start = 0; start <= hits.length - amounts.length; start += 1) {
+    if (amounts.every((amount, offset) => amount === hits[start + offset]?.amount)) return true;
+  }
+  return false;
 }
 
 function preserveObservedDamage(
