@@ -32,7 +32,7 @@ test('raid history removes notes, starts drops collapsed, and reuses cockpit cha
 });
 
 test('combat hydrates MC, retained dead actors, and boss fallbacks from passive visual ids through Wiki only', () => {
-  assert.match(storage, /enrichObservedActorVisuals\(record, parsed\.context\)/);
+  assert.match(storage, /enrichObservedActorVisuals\(record, observation\.context\)/);
   assert.match(storage, /retainActorVisualId\(actor,/);
   assert.match(ux, /getCombatLiveContext\(\)/);
   assert.match(ux, /getLatestCombatParse\(\)/);
