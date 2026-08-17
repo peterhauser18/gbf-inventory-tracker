@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { capturedRaidLocalId, combatRaidKey, manualFinalizeRaid, observedFinalizeRaid } from './lifecycle.ts';
+import {
+  capturedRaidLocalId,
+  combatRaidKey,
+  manualFinalizeRaid,
+  observedFinalizeRaid,
+  selectCombatContextKey,
+} from './lifecycle.ts';
 import type { NormalizedRaidParse } from './types.ts';
 
 function raid(patch: Partial<NormalizedRaidParse> = {}): NormalizedRaidParse {
@@ -29,6 +35,16 @@ test('instance identity keeps two raids of the same quest independent', () => {
   assert.equal(combatRaidKey('305211', 'instance-a'), 'instance:instance-a');
   assert.equal(combatRaidKey('305211', 'instance-b'), 'instance:instance-b');
   assert.notEqual(combatRaidKey('305211', 'instance-a'), combatRaidKey('305211', 'instance-b'));
+});
+
+test('direct raid identity overrides the currently played raid while ordinary actions stay on current raid', () => {
+  const contexts = {
+    'instance:instance-a': { instanceId: 'instance-a' },
+    'instance:instance-b': { instanceId: 'instance-b' },
+  };
+  assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', 'instance-a'), 'instance:instance-a');
+  assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', undefined), 'instance:instance-b');
+  assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', 'unknown'), undefined);
 });
 
 test('captured history identity remains stable across manual and observed finalization', () => {
