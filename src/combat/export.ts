@@ -29,7 +29,6 @@ function sanitizeRaidParse(value: NormalizedRaidParse | RaidHistoryRecord): Norm
   return {
     schemaVersion: 1,
     raidTechnicalId: cleanString(value.raidTechnicalId)!,
-    instanceId: cleanString(value.instanceId),
     raidName: cleanString(value.raidName),
     role: value.role === 'host' || value.role === 'joined' ? value.role : undefined,
     observedStartedAt: finiteNumber(value.observedStartedAt),
