@@ -209,6 +209,16 @@ test('Fated Chain without an observed individual actor stays party-only', () => 
   assert.deepEqual(raid.characterDamage, []);
 });
 
+test('observed heals are not misclassified as party-to-boss damage', () => {
+  const observation = parse(record(ABILITY, { scenario: [
+    { cmd: 'heal', to: 'boss', list: [{ value: 1_000_000 }, { value: 2_000_000 }] },
+  ] }));
+
+  assert.equal(observation.actions.some((action) => action.name === 'Unclassified heal'), false);
+  const raid = mergeVerifiedMultiraidObservation(null, observation);
+  assert.equal(raid.partyDamage, 0);
+});
+
 test('unknown damage-bearing boss commands are retained and mark parsing partial', () => {
   const observation = parse(record(ABILITY, { scenario: [
     { cmd: 'future_damage_shape', to: 'boss', list: [{ value: 77 }] },
