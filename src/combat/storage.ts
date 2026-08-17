@@ -89,10 +89,10 @@ async function ingestVerifiedCombatRecord(
   lastIngestedContext = observation.context ? sanitizeCombatParseContext(observation.context) : undefined;
 
   const activeCurrent = await getActiveParseByKey(key);
-  const manualCurrent = state.manualFinalizedKeys[key]
+  const capturedCurrent = !activeCurrent && (observation.context?.instanceId || state.manualFinalizedKeys[key])
     ? await getCapturedHistoryForIdentity(observation.context?.instanceId, observation.raidTechnicalId)
     : undefined;
-  const current = activeCurrent ?? manualCurrent ?? null;
+  const current = activeCurrent ?? capturedCurrent ?? null;
   const next = mergeVerifiedMultiraidObservation(current, observation);
   next.instanceId = observation.context?.instanceId ?? current?.instanceId;
   preserveVerifiedNormalFacts(next, observation.actions);
@@ -122,7 +122,7 @@ async function ingestVerifiedCombatRecord(
   }
 
   if (state.manualFinalizedKeys[key]) {
-    const finalizedAt = manualCurrent?.finalizedAt ?? next.lastObservedAt;
+    const finalizedAt = capturedCurrent?.finalizedAt ?? next.lastObservedAt;
     const manual = manualFinalizeRaid(next, finalizedAt);
     await upsertCapturedHistory(manual);
     await saveCombatContextState(state);
