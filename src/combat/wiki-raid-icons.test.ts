@@ -7,20 +7,30 @@ import { resolveWikiRaidIcon, wikiRaidPageTitles } from './wiki-raid-icons.ts';
 test('raid names resolve to the GBF Wiki raid page naming used by the Raids index', () => {
   assert.deepEqual(wikiRaidPageTitles('Osiris'), ['Osiris (Raid)', 'Osiris']);
   assert.deepEqual(wikiRaidPageTitles('Lindwurm (Raid)'), ['Lindwurm (Raid)']);
+  assert.deepEqual(wikiRaidPageTitles('Lvl 200 Narophirmidas'), ['Narophirmidas (Raid)', 'Narophirmidas']);
+  assert.deepEqual(wikiRaidPageTitles('Lv. 250 Hexachromatic Hierarch'), [
+    'Hexachromatic Hierarch (Raid)',
+    'Hexachromatic Hierarch',
+  ]);
   assert.deepEqual(wikiRaidPageTitles('  '), []);
 });
 
 test('raid icon resolution prefers an already-observed local boss image before Wiki', async () => {
   let wikiCalled = false;
+  let localName = '';
   const local = 'data:image/png;base64,AAAA';
   const resolved = await resolveWikiRaidIcon(
-    'Old Lignoid',
+    'Lvl 200 Narophirmidas',
     async () => {
       wikiCalled = true;
       return new Map();
     },
-    async () => local,
+    async (raidName) => {
+      localName = raidName;
+      return local;
+    },
   );
+  assert.equal(localName, 'Narophirmidas');
   assert.equal(resolved, local);
   assert.equal(wikiCalled, false);
 });
@@ -29,7 +39,7 @@ test('raid icon resolution falls back to the cached Wiki thumbnail pipeline and 
   let requested: readonly string[] = [];
   const direct = 'https://gbf.wiki/images/example-osiris.png';
   const resolved = await resolveWikiRaidIcon(
-    'Osiris',
+    'Lvl 120 Osiris',
     async (titles) => {
       requested = [...titles];
       return new Map([
@@ -49,6 +59,7 @@ test('live Combat boss hydration remains passive and uses the shared raid icon r
   assert.match(source, /resolveWikiRaidIcon/);
   assert.match(source, /raid\.raidName/);
   assert.match(resolver, /readObservedRaidBossIconDataUrl/);
+  assert.match(resolver, /raidNameWithoutLevelPrefix/);
   assert.doesNotMatch(source, /enemy_id|Enemy_Icon_/);
   assert.doesNotMatch(resolver, /granbluefantasy\.jp|akamaized\.net/);
 });
