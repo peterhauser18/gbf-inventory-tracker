@@ -29,6 +29,7 @@ function sanitizeRaidParse(value: NormalizedRaidParse | RaidHistoryRecord): Norm
   return {
     schemaVersion: 1,
     raidTechnicalId: cleanString(value.raidTechnicalId)!,
+    instanceId: cleanString(value.instanceId),
     raidName: cleanString(value.raidName),
     role: value.role === 'host' || value.role === 'joined' ? value.role : undefined,
     observedStartedAt: finiteNumber(value.observedStartedAt),
@@ -89,6 +90,8 @@ function sanitizeRaidParse(value: NormalizedRaidParse | RaidHistoryRecord): Norm
       parseGapObserved: value.coverage?.parseGapObserved === true,
     },
     lastObservedAt: finiteNumber(value.lastObservedAt) ?? 0,
+    finalization: value.finalization === 'observed' || value.finalization === 'manual' ? value.finalization : undefined,
+    finalizedAt: finiteNumber(value.finalizedAt),
   };
 }
 
