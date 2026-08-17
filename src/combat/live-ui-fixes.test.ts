@@ -81,6 +81,14 @@ test('missing roster history retains dead frontliners after two backline promoti
   ]);
 });
 
+test('already-loaded local boss image is revealed even when no later load event fires', () => {
+  const source = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
+  assert.match(source, /if \(image\.complete\)/);
+  assert.match(source, /image\.naturalWidth > 0/);
+  assert.match(source, /image\.hidden = false/);
+  assert.match(source, /fallback\?\.remove\(\)/);
+});
+
 test('failed boss icon hydration removes the shell so the next live refresh retries local CJS cache', () => {
   const source = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
   assert.match(source, /if \(!title \|\| title\.querySelector\('\.combat-boss-icon'\)\) return/);
