@@ -50,7 +50,7 @@ let lastIngestedContext: CombatParseContext | undefined;
 
 export async function ingestCapturedCombatRecord(
   record: CapturedResponseRecord,
-  preferredInstanceId?: string,
+  preferredInstanceId?: string | null,
 ): Promise<NormalizedRaidParse | null> {
   if (isVerifiedCombatResponseUrl(record.meta.url)) {
     return await ingestVerifiedCombatRecord(record, preferredInstanceId);
@@ -77,7 +77,7 @@ export async function ingestCapturedCombatRecord(
 
 async function ingestVerifiedCombatRecord(
   record: CapturedResponseRecord,
-  preferredInstanceId?: string,
+  preferredInstanceId?: string | null,
 ): Promise<NormalizedRaidParse | null> {
   const state = await getCombatContextState();
   const routed = await routeVerifiedObservation(record, state, preferredInstanceId);
@@ -135,7 +135,7 @@ async function ingestVerifiedCombatRecord(
 async function routeVerifiedObservation(
   record: CapturedResponseRecord,
   state: CombatContextState,
-  preferredInstanceId?: string,
+  preferredInstanceId?: string | null,
 ): Promise<{ key: string; observation: VerifiedCombatObservation; startObserved: boolean } | null> {
   if (isVerifiedStart(record.meta.url)) {
     const probe = parseVerifiedMultiraidObservation(record);
@@ -155,7 +155,7 @@ async function routeVerifiedObservation(
   const directInstanceId = observedInstanceId(record);
   let key = selectCombatContextKey(state.contexts, state.currentKey, directInstanceId, preferredInstanceId);
   let context = key ? state.contexts[key] : undefined;
-  const scopedInstanceId = directInstanceId ?? preferredInstanceId;
+  const scopedInstanceId = directInstanceId ?? (preferredInstanceId === null ? undefined : preferredInstanceId);
 
   if (!context && scopedInstanceId) {
     const active = (await getActiveCombatRaids()).find((entry) => entry.parse.instanceId === scopedInstanceId);
@@ -163,7 +163,7 @@ async function routeVerifiedObservation(
       key = active.key;
       context = active.context ?? minimalContext(active.parse);
     }
-  } else if (!context && !scopedInstanceId && state.currentKey) {
+  } else if (!context && preferredInstanceId !== null && !scopedInstanceId && state.currentKey) {
     const active = await getActiveParseByKey(state.currentKey);
     if (active) {
       key = state.currentKey;
