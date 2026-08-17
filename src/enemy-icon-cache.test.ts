@@ -14,7 +14,9 @@ function memoryCacheStorage() {
   const values = new Map<string, Response>();
   const cache = {
     match: async (key: RequestInfo | URL) => values.get(String(key))?.clone(),
-    put: async (key: RequestInfo | URL, response: Response) => values.set(String(key), response.clone()),
+    put: async (key: RequestInfo | URL, response: Response) => {
+      values.set(String(key), response.clone());
+    },
   };
   return {
     open: async (name: string) => {
