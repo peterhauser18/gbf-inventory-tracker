@@ -50,6 +50,7 @@ let lastIngestedContext: CombatParseContext | undefined;
 export async function ingestCapturedCombatRecord(record: CapturedResponseRecord): Promise<NormalizedRaidParse | null> {
   if (isVerifiedCombatResponseUrl(record.meta.url)) return await ingestVerifiedCombatRecord(record);
 
+  lastIngestedContext = undefined;
   const observation = parseCombatObservation(record);
   if (!observation) return null;
   const current = (await getActiveCombatRaids())[0];
@@ -429,27 +430,34 @@ async function getActiveRows(): Promise<ActiveRow[]> {
 }
 
 async function getActiveParseByKey(key: string): Promise<NormalizedRaidParse | null> {
-  const rows = await getActiveRows();
-  const direct = rows.find((row) => row.key === key);
-  if (direct) return direct.parse;
-  const legacy = rows.find((row) => row.key === LEGACY_LATEST_KEY);
-  if (!legacy) return null;
-  return combatRaidKey(legacy.parse.raidTechnicalId, legacy.parse.instanceId) === key ? legacy.parse : null;
+  return (await getActiveCombatRaids()).find((entry) => entry.key === key)?.parse ?? null;
 }
 
 async function saveActive(key: string, parse: NormalizedRaidParse): Promise<void> {
   const db = await openCombatDatabase();
   await transactionDone(db.transaction(ACTIVE_STORE, 'readwrite'), (tx) => {
-    const store = tx.objectStore(ACTIVE_STORE);
-    store.put({ key, parse } satisfies ActiveRow);
-    if (key !== LEGACY_LATEST_KEY) store.delete(LEGACY_LATEST_KEY);
+    tx.objectStore(ACTIVE_STORE).put({ key, parse } satisfies ActiveRow);
   });
   db.close();
 }
 
 async function deleteActive(key: string): Promise<void> {
+  const [rows, state] = await Promise.all([getActiveRows(), getCombatContextState()]);
+  const legacy = rows.find((row) => row.key === LEGACY_LATEST_KEY);
+  let deleteLegacy = false;
+  if (legacy) {
+    let parse = legacy.parse;
+    const context = Object.values(state.contexts).find((candidate) => candidate.raidTechnicalId === parse.raidTechnicalId);
+    if (context?.instanceId && !parse.instanceId) parse = { ...parse, instanceId: context.instanceId };
+    deleteLegacy = combatRaidKey(parse.raidTechnicalId, parse.instanceId) === key;
+  }
+
   const db = await openCombatDatabase();
-  await transactionDone(db.transaction(ACTIVE_STORE, 'readwrite'), (tx) => tx.objectStore(ACTIVE_STORE).delete(key));
+  await transactionDone(db.transaction(ACTIVE_STORE, 'readwrite'), (tx) => {
+    const store = tx.objectStore(ACTIVE_STORE);
+    store.delete(key);
+    if (deleteLegacy) store.delete(LEGACY_LATEST_KEY);
+  });
   db.close();
 }
 
