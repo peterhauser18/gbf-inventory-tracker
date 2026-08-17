@@ -6,11 +6,11 @@ import {
   type CombatParseContext,
   type VerifiedCombatObservation,
 } from './multiraid.ts';
-import type { ParsedDamageHit } from './types.ts';
+import type { ParsedCombatAction, ParsedDamageHit } from './types.ts';
 
 type Obj = Record<string, unknown>;
-type TimedActorSource = { actor: CombatActorContext; index: number };
-type TimedPartySource = { name: string; index: number };
+type TimedActorSource = { actor: CombatActorContext; step: number };
+type TimedPartySource = { name: string; step: number };
 
 export { mergeVerifiedMultiraidObservation } from './multiraid.ts';
 export type {
@@ -24,6 +24,17 @@ export type {
 const FATED_CHAIN_PATH = '/rest/multiraid/fatal_chain_result.json';
 const ABILITY_RESULT_PATH = '/rest/multiraid/ability_result.json';
 const FOLLOW_UP_LOOKBACK = 4;
+const SOURCE_WINDOW_COMMANDS = new Set([
+  'attack',
+  'ability',
+  'chain_cutin',
+  'damage',
+  'loop_damage',
+  'special',
+  'special_npc',
+  'summon',
+  'wait',
+]);
 const BASE_DAMAGE_COMMANDS = new Set([
   'attack',
   'damage',
@@ -98,28 +109,34 @@ function repairScenarioDamageEvidence(
   const slots = (context?.actorSlots ?? []).map((actor) => ({ ...actor }));
   let chargeSource: TimedActorSource | undefined;
   let partySource: TimedPartySource | undefined;
-  const matchedActions = new Set<number>();
+  let sourceStep = 0;
+  let ownerBoundaryObserved = false;
+  const matchedActions = new Set<ParsedCombatAction>();
   let extraGaps = 0;
 
-  for (let index = 0; index < body.scenario.length; index++) {
-    const raw = body.scenario[index];
+  for (const raw of body.scenario) {
     if (!obj(raw)) continue;
     const cmd = str(raw.cmd)?.toLowerCase();
     if (!cmd) continue;
+    if (SOURCE_WINDOW_COMMANDS.has(cmd)) sourceStep += 1;
+
     const target = (cmd === 'special' || cmd === 'special_npc')
       ? str(raw.target, raw.to)?.toLowerCase()
       : str(raw.to, raw.target)?.toLowerCase();
 
     if (cmd === 'special' || cmd === 'special_npc') {
       const actor = target === 'boss' ? actorAt(slots, num(raw.pos)) : undefined;
-      chargeSource = actor?.id ? { actor: { ...actor }, index } : undefined;
+      chargeSource = actor?.id ? { actor: { ...actor }, step: sourceStep } : undefined;
       partySource = undefined;
+      ownerBoundaryObserved = false;
     } else if (cmd === 'chain_cutin') {
       chargeSource = undefined;
-      partySource = { name: fatedChain ? 'Fated Chain' : 'Chain Burst', index };
+      partySource = { name: fatedChain ? 'Fated Chain' : 'Chain Burst', step: sourceStep };
+      ownerBoundaryObserved = false;
     } else if (cmd === 'wait') {
       chargeSource = undefined;
       partySource = undefined;
+      ownerBoundaryObserved = true;
     } else if (
       (cmd === 'attack' && str(raw.from)?.toLowerCase() === 'player') ||
       cmd === 'ability' ||
@@ -127,11 +144,12 @@ function repairScenarioDamageEvidence(
     ) {
       chargeSource = undefined;
       partySource = undefined;
+      ownerBoundaryObserved = false;
     }
 
     if ((cmd === 'damage' || cmd === 'loop_damage') && target === 'boss') {
       const payload = raw.list ?? raw.damage;
-      if (isFreshSource(chargeSource, index) && chargeSource?.actor.id) {
+      if (isFreshSource(chargeSource, sourceStep) && chargeSource?.actor.id) {
         const rawHits = damageHits(payload, 'skill');
         if (rawHits.length) {
           preserveObservedDamage(
@@ -142,11 +160,16 @@ function repairScenarioDamageEvidence(
             'C.A. follow-up',
             chargeSource.actor,
             context?.turn,
+            {
+              matchAnyAttribution: true,
+              replaceName: true,
+              extractContained: true,
+            },
           );
         } else if (payload !== undefined) {
           extraGaps += 1;
         }
-      } else if (isFreshSource(partySource, index)) {
+      } else if (isFreshSource(partySource, sourceStep)) {
         const rawHits = damageHits(payload, 'other');
         if (rawHits.length) {
           const resultActor = fatedChain ? undefined : mainCharacterActor(context, slots);
@@ -161,8 +184,31 @@ function repairScenarioDamageEvidence(
             {
               matchAnyAttribution: true,
               replaceName: !fatedChain,
+              extractContained: true,
             },
           );
+        } else if (payload !== undefined) {
+          extraGaps += 1;
+        }
+      } else if (ownerBoundaryObserved) {
+        const rawHits = damageHits(payload, 'other');
+        if (rawHits.length) {
+          preserveObservedDamage(
+            observation,
+            matchedActions,
+            rawHits,
+            'other',
+            'Unclassified damage',
+            undefined,
+            context?.turn,
+            {
+              matchAnyAttribution: true,
+              replaceName: true,
+              extractContained: true,
+              clearAttribution: true,
+            },
+          );
+          extraGaps += 1;
         } else if (payload !== undefined) {
           extraGaps += 1;
         }
@@ -192,16 +238,21 @@ function repairScenarioDamageEvidence(
 
 function preserveObservedDamage(
   observation: VerifiedCombatObservation,
-  matchedActions: Set<number>,
+  matchedActions: Set<ParsedCombatAction>,
   rawHits: ParsedDamageHit[],
   kind: ParsedDamageHit['kind'],
   name: string,
   actor: CombatActorContext | undefined,
   fallbackTurn: number | undefined,
-  options: { matchAnyAttribution?: boolean; replaceName?: boolean } = {},
+  options: {
+    matchAnyAttribution?: boolean;
+    replaceName?: boolean;
+    extractContained?: boolean;
+    clearAttribution?: boolean;
+  } = {},
 ): void {
-  const actionIndex = observation.actions.findIndex((action, index) =>
-    !matchedActions.has(index) &&
+  const actionIndex = observation.actions.findIndex((action) =>
+    !matchedActions.has(action) &&
     sameDamageSequence(rawHits, action.hits) &&
     (options.matchAnyAttribution || (!action.actorId && action.kind === 'other')),
   );
@@ -209,27 +260,85 @@ function preserveObservedDamage(
   if (actionIndex >= 0) {
     const action = observation.actions[actionIndex];
     if (!action) return;
-    if (actor?.id) {
-      action.actorId = actor.id;
-      action.actorName = actor.name;
-    }
-    action.kind = 'other';
-    action.name = options.replaceName ? name : (action.name ?? name);
-    action.hits = action.hits.map((hit) => ({ ...hit, kind }));
-    matchedActions.add(actionIndex);
+    applyObservedAttribution(action, rawHits, kind, name, actor, options);
+    matchedActions.add(action);
     return;
   }
 
-  observation.actions.push({
+  if (options.extractContained) {
+    const containingIndex = observation.actions.findIndex((action) =>
+      !matchedActions.has(action) &&
+      (options.matchAnyAttribution || (!action.actorId && action.kind === 'other')) &&
+      damageSubsequenceStart(action.hits, rawHits) >= 0,
+    );
+    if (containingIndex >= 0) {
+      const action = observation.actions[containingIndex];
+      if (action) {
+        const start = damageSubsequenceStart(action.hits, rawHits);
+        const extractedHits = action.hits
+          .slice(start, start + rawHits.length)
+          .map((hit) => ({ ...hit, kind }));
+        action.hits = [
+          ...action.hits.slice(0, start),
+          ...action.hits.slice(start + rawHits.length),
+        ];
+
+        const extracted: ParsedCombatAction = {
+          observedAt: action.observedAt,
+          turn: action.turn ?? observation.observedTurn ?? fallbackTurn,
+          kind: 'other',
+          name,
+          hits: extractedHits,
+        };
+        if (!options.clearAttribution && actor?.id) {
+          extracted.actorId = actor.id;
+          extracted.actorName = actor.name;
+        }
+        observation.actions.splice(containingIndex + 1, 0, extracted);
+        matchedActions.add(extracted);
+        observation.actionsFieldPresent = true;
+        return;
+      }
+    }
+  }
+
+  const appended: ParsedCombatAction = {
     observedAt: observation.observedAt,
     turn: observation.observedTurn ?? fallbackTurn,
-    actorId: actor?.id,
-    actorName: actor?.name,
     kind: 'other',
     name,
     hits: rawHits,
-  });
+  };
+  if (!options.clearAttribution && actor?.id) {
+    appended.actorId = actor.id;
+    appended.actorName = actor.name;
+  }
+  observation.actions.push(appended);
+  matchedActions.add(appended);
   observation.actionsFieldPresent = true;
+}
+
+function applyObservedAttribution(
+  action: ParsedCombatAction,
+  rawHits: readonly ParsedDamageHit[],
+  kind: ParsedDamageHit['kind'],
+  name: string,
+  actor: CombatActorContext | undefined,
+  options: { replaceName?: boolean; clearAttribution?: boolean },
+): void {
+  if (options.clearAttribution) {
+    delete action.actorId;
+    delete action.actorName;
+  } else if (actor?.id) {
+    action.actorId = actor.id;
+    action.actorName = actor.name;
+  }
+  action.kind = 'other';
+  action.name = options.replaceName ? name : (action.name ?? name);
+  action.hits = action.hits.map((hit, index) => ({
+    ...hit,
+    kind: rawHits[index]?.kind ?? kind,
+  }));
 }
 
 function sameDamageSequence(
@@ -237,6 +346,17 @@ function sameDamageSequence(
   right: readonly ParsedDamageHit[],
 ): boolean {
   return left.length === right.length && left.every((hit, index) => hit.amount === right[index]?.amount);
+}
+
+function damageSubsequenceStart(
+  haystack: readonly ParsedDamageHit[],
+  needle: readonly ParsedDamageHit[],
+): number {
+  if (!needle.length || needle.length > haystack.length) return -1;
+  for (let start = 0; start <= haystack.length - needle.length; start += 1) {
+    if (needle.every((hit, offset) => hit.amount === haystack[start + offset]?.amount)) return start;
+  }
+  return -1;
 }
 
 function mainCharacterActor(
@@ -253,13 +373,13 @@ function mainCharacterActor(
 }
 
 function isFreshSource(
-  source: { index: number } | undefined,
-  currentIndex: number,
+  source: { step: number } | undefined,
+  currentStep: number,
 ): boolean {
   return Boolean(
     source &&
-    currentIndex > source.index &&
-    currentIndex - source.index <= FOLLOW_UP_LOOKBACK,
+    currentStep > source.step &&
+    currentStep - source.step <= FOLLOW_UP_LOOKBACK,
   );
 }
 
