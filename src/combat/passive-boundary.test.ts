@@ -30,12 +30,12 @@ test('recognized combat responses persist only normalized combat facts', () => {
   );
 });
 
-test('raid instance correlation is session-only and strips non-public actor names', () => {
-  assert.match(storage, /const CONTEXT_KEY = 'gbfit:combat-context'/);
-  assert.match(storage, /chrome\.storage\.session\.get\(CONTEXT_KEY\)/);
-  assert.match(storage, /chrome\.storage\.session\.set\(\{ \[CONTEXT_KEY\]: context \}\)/);
+test('raid instance correlation remains session-only and active rows store normalized parses only', () => {
+  assert.match(storage, /CONTEXT_STATE_KEY = 'gbfit:combat-context-state-v2'/);
+  assert.match(storage, /chrome\.storage\.session\.get\(\[CONTEXT_STATE_KEY, LEGACY_CONTEXT_KEY\]\)/);
+  assert.match(storage, /chrome\.storage\.session\.set\(\{ \[CONTEXT_STATE_KEY\]: sanitizeContextState\(state\) \}\)/);
   assert.match(background, /clearCombatParseContext/);
-  assert.doesNotMatch(storage, /interface LatestRow[^\n]*context/);
-  assert.doesNotMatch(storage, /objectStore\(LATEST_STORE\)\.put\(\{ key: LATEST_KEY, parse, context/);
+  assert.match(storage, /interface ActiveRow \{ key: string; parse: NormalizedRaidParse; \}/);
+  assert.doesNotMatch(storage, /interface ActiveRow[^\n]*context/);
   assert.match(storage, /\^30\[234\]\\d\{7\}\$/);
 });
