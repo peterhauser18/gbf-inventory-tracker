@@ -1,4 +1,11 @@
-import type { DamageBreakdown, DamageKind, NormalizedRaidParse, ParsedDamageHit, RaidHistoryRecord } from './types.ts';
+import type {
+  CombatParseDiagnostic,
+  DamageBreakdown,
+  DamageKind,
+  NormalizedRaidParse,
+  ParsedDamageHit,
+  RaidHistoryRecord,
+} from './types.ts';
 
 export interface RaidParseExport {
   format: 'gbf-tool-raid-parse';
@@ -76,6 +83,7 @@ function sanitizeRaidParse(value: NormalizedRaidParse | RaidHistoryRecord): Norm
       criticalHits: finiteNumber(entry.criticalHits), multiattack: finiteNumber(entry.multiattack),
       damageInstances: sanitizeDamageInstances(entry.damageInstances),
     })) : [],
+    parseDiagnostics: sanitizeParseDiagnostics(value.parseDiagnostics),
     drops: Array.isArray(value.drops) ? value.drops.flatMap((drop) => {
       const itemId = cleanString(drop.itemId);
       const quantity = finiteNumber(drop.quantity);
@@ -123,6 +131,25 @@ function sanitizeDamageInstances(value: unknown): ParsedDamageHit[] | undefined 
     }];
   });
   return result.length > 0 ? result : undefined;
+}
+
+function sanitizeParseDiagnostics(value: unknown): CombatParseDiagnostic[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result = value.flatMap((entry): CombatParseDiagnostic[] => {
+    if (!isObject(entry)) return [];
+    const cmd = cleanString(entry.cmd);
+    if (!cmd) return [];
+    return [{
+      observedAt: finiteNumber(entry.observedAt) ?? 0,
+      turn: finiteNumber(entry.turn),
+      cmd,
+      name: cleanString(entry.name),
+      pos: finiteNumber(entry.pos),
+      target: cleanString(entry.target),
+      damage: finiteNumber(entry.damage),
+    }];
+  });
+  return result.length > 0 ? result.slice(-200) : undefined;
 }
 
 function damageKind(value: unknown): DamageKind | undefined {
