@@ -243,9 +243,21 @@ async function hydrateWikiRaidIcon(image: HTMLImageElement, raidName: string): P
     removeBossIconForRetry(image);
     return;
   }
-  image.addEventListener('load', () => { image.hidden = false; }, { once: true });
+  const reveal = () => revealBossIcon(image);
+  image.addEventListener('load', reveal, { once: true });
   image.addEventListener('error', () => removeBossIconForRetry(image), { once: true });
   image.src = source;
+  if (image.complete) {
+    if (image.naturalWidth > 0) reveal();
+    else removeBossIconForRetry(image);
+  }
+}
+
+function revealBossIcon(image: HTMLImageElement): void {
+  if (!image.isConnected || image.naturalWidth <= 0) return;
+  image.hidden = false;
+  const fallback = image.parentElement?.querySelector<HTMLElement>(':scope > span');
+  fallback?.remove();
 }
 
 function removeBossIconForRetry(image: HTMLImageElement): void {
