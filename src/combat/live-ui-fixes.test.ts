@@ -81,6 +81,13 @@ test('missing roster history retains dead frontliners after two backline promoti
   ]);
 });
 
+test('failed boss icon hydration removes the shell so the next live refresh retries local CJS cache', () => {
+  const source = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
+  assert.match(source, /if \(!title \|\| title\.querySelector\('\.combat-boss-icon'\)\) return/);
+  assert.match(source, /removeBossIconForRetry\(image\)/);
+  assert.match(source, /image\.closest<HTMLElement>\('\.combat-boss-icon'\)\?\.remove\(\)/);
+});
+
 test('live UI fix remains local/read-only and applies state per active raid wrapper', () => {
   const source = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('./live-ui-fixes.css', import.meta.url), 'utf8');
