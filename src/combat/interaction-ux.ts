@@ -1,4 +1,10 @@
 import './interaction-ux.css';
+import {
+  EMPTY_ENTITY_METADATA,
+  loadWikiEntityMetadata,
+  type EntityMetadata,
+  type EntityMetadataIndex,
+} from '../dashboard/wiki-metadata.ts';
 import { buildCharacterAnalyses } from './analytics.ts';
 import { renderCombatLayout } from './layouts.ts';
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
@@ -16,6 +22,7 @@ let raidAnnotationPending = false;
 let raidAnnotationQueued = false;
 let combatVisualHydrationPending = false;
 let combatVisualHydrationQueued = false;
+let combatVisualMetadataPromise: Promise<EntityMetadataIndex> | null = null;
 
 export function installCombatRaidInteractionUx(root: HTMLElement): void {
   root.addEventListener('click', (event) => handleClick(root, event), true);
@@ -182,11 +189,16 @@ async function hydrateCombatVisuals(section: HTMLElement): Promise<void> {
 
   combatVisualHydrationPending = true;
   try {
-    const [context, raid] = await Promise.all([getCombatLiveContext(), getLatestCombatParse()]);
-    if (context) await hydrateActorVisuals(section, context);
+    const [context, raid, metadata] = await Promise.all([
+      getCombatLiveContext(),
+      getLatestCombatParse(),
+      combatVisualMetadata(),
+    ]);
+    if (context) await hydrateActorVisuals(section, context, metadata);
+    await hydrateRaidDetailVisuals(section, metadata);
     const bossImage = section.querySelector<HTMLElement>('.combat-boss-icon .combat-image');
     if (bossImage && !bossImage.querySelector('img') && raid?.boss?.id) {
-      await hydrateImageContainer(bossImage, 'boss', raid.boss.id);
+      await hydrateImageContainerFromAsset(bossImage, 'boss', raid.boss.id);
     }
   } finally {
     combatVisualHydrationPending = false;
@@ -203,20 +215,60 @@ function hasMissingCombatVisual(section: HTMLElement): boolean {
     const image = target.querySelector<HTMLElement>('.combat-image');
     if (image && !image.querySelector('img')) return true;
   }
+  const analysisImages = section.querySelectorAll<HTMLElement>('.character-analysis .analysis-portrait .combat-image');
+  for (const image of analysisImages) if (!image.querySelector('img')) return true;
   const bossImage = section.querySelector<HTMLElement>('.combat-boss-icon .combat-image');
   return Boolean(bossImage && !bossImage.querySelector('img'));
 }
 
-async function hydrateActorVisuals(section: HTMLElement, context: CombatParseContext): Promise<void> {
+async function hydrateActorVisuals(
+  section: HTMLElement,
+  context: CombatParseContext,
+  metadata: EntityMetadataIndex,
+): Promise<void> {
   const targets = section.querySelectorAll<HTMLElement>('[data-character-select], [data-roster-actor-id]');
   for (const target of targets) {
     const image = target.querySelector<HTMLElement>('.combat-image');
     if (!image || image.querySelector('img')) continue;
     const actorId = target.dataset.characterSelect ?? target.dataset.rosterActorId;
     const actor = actorId ? actorForVisual(context, actorId) : undefined;
-    const imageId = actorVisualImageId(actor);
-    if (imageId) await hydrateImageContainer(image, 'character', imageId);
+    if (actor) await hydrateActorImage(image, actor, metadata);
   }
+
+  const selectedId = section.querySelector<HTMLElement>('[data-character-select].selected')?.dataset.characterSelect;
+  const selectedActor = selectedId ? actorForVisual(context, selectedId) : undefined;
+  if (!selectedActor) return;
+  for (const image of section.querySelectorAll<HTMLElement>('.character-analysis .analysis-portrait .combat-image')) {
+    if (!image.closest('.raid-character-detail') && !image.querySelector('img')) {
+      await hydrateActorImage(image, selectedActor, metadata);
+    }
+  }
+}
+
+async function hydrateRaidDetailVisuals(section: HTMLElement, metadata: EntityMetadataIndex): Promise<void> {
+  for (const detail of section.querySelectorAll<HTMLElement>('.raid-character-detail[data-raid-actor-id]')) {
+    const image = detail.querySelector<HTMLElement>('.analysis-portrait .combat-image');
+    if (!image || image.querySelector('img')) continue;
+    const actorId = detail.dataset.raidActorId;
+    const label = detail.querySelector<HTMLElement>('.analysis-character h3')?.textContent?.trim();
+    const entry = actorId ? characterMetadata(metadata, actorId, label) : label ? findMetadataByName(metadata, label) : undefined;
+    if (entry?.imageUrl) appendCombatImage(image, entry.imageUrl);
+  }
+}
+
+async function hydrateActorImage(
+  container: HTMLElement,
+  actor: CombatActorContext,
+  metadata: EntityMetadataIndex,
+): Promise<void> {
+  if (container.querySelector('img')) return;
+  const entry = actor.id ? characterMetadata(metadata, actor.id, actor.name) : actor.name ? findMetadataByName(metadata, actor.name) : undefined;
+  if (entry?.imageUrl) {
+    appendCombatImage(container, entry.imageUrl);
+    return;
+  }
+  const imageId = actorVisualImageId(actor);
+  if (imageId) await hydrateImageContainerFromAsset(container, 'character', imageId);
 }
 
 function actorForVisual(context: CombatParseContext, actorId: string): CombatActorContext | undefined {
@@ -224,15 +276,18 @@ function actorForVisual(context: CombatParseContext, actorId: string): CombatAct
     ?? context.actorSlots.find((actor) => actor.id === actorId);
 }
 
-async function hydrateImageContainer(
+async function hydrateImageContainerFromAsset(
   container: HTMLElement,
   kind: 'character' | 'boss',
   assetId: string,
 ): Promise<void> {
   if (container.querySelector('img')) return;
   const source = await resolveWikiCombatAssetImage(kind, assetId);
-  if (!source || !container.isConnected || container.querySelector('img')) return;
+  if (source) appendCombatImage(container, source);
+}
 
+function appendCombatImage(container: HTMLElement, source: string): void {
+  if (!container.isConnected || container.querySelector('img')) return;
   const image = document.createElement('img');
   image.dataset.combatImage = 'true';
   image.alt = '';
@@ -242,6 +297,30 @@ async function hydrateImageContainer(
   image.addEventListener('error', () => image.remove(), { once: true });
   image.src = source;
   container.append(image);
+}
+
+function characterMetadata(
+  index: EntityMetadataIndex,
+  actorId: string,
+  actorName?: string,
+): EntityMetadata | undefined {
+  return index.characters.get(actorId) ?? (actorName ? findMetadataByName(index, actorName) : undefined);
+}
+
+function findMetadataByName(index: EntityMetadataIndex, name: string): EntityMetadata | undefined {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) return undefined;
+  for (const metadata of index.characters.values()) {
+    if (metadata.name.toLowerCase() === normalized || metadata.wikiTitle.toLowerCase() === normalized) return metadata;
+  }
+  return undefined;
+}
+
+function combatVisualMetadata(): Promise<EntityMetadataIndex> {
+  if (!combatVisualMetadataPromise) {
+    combatVisualMetadataPromise = loadWikiEntityMetadata().catch(() => EMPTY_ENTITY_METADATA);
+  }
+  return combatVisualMetadataPromise;
 }
 
 async function annotateRaidCharacterRows(section: HTMLElement): Promise<void> {
