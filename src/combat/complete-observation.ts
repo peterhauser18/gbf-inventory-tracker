@@ -103,7 +103,9 @@ function repairScenarioDamageEvidence(
     if (!obj(raw)) continue;
     const cmd = str(raw.cmd)?.toLowerCase();
     if (!cmd) continue;
-    const target = str(raw.to, raw.target)?.toLowerCase();
+    const target = (cmd === 'special' || cmd === 'special_npc')
+      ? str(raw.target, raw.to)?.toLowerCase()
+      : str(raw.to, raw.target)?.toLowerCase();
 
     if (cmd === 'special' || cmd === 'special_npc') {
       const actor = target === 'boss' ? actorAt(slots, num(raw.pos)) : undefined;
