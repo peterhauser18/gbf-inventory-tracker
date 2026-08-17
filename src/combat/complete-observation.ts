@@ -46,7 +46,7 @@ export function parseVerifiedMultiraidObservation(
   const observation = parseBaseVerifiedMultiraidObservation(normalized, context);
   if (!observation) return null;
 
-  repairScenarioDamageEvidence(record.body, observation, context);
+  repairScenarioDamageEvidence(record.body, observation, context, fatedChain);
   if (fatedChain) labelFatedChainDamage(observation);
   return observation;
 }
@@ -79,9 +79,10 @@ function normalizeSpecialNpcBody(body: unknown): unknown {
 
 function labelFatedChainDamage(observation: VerifiedCombatObservation): void {
   for (const action of observation.actions) {
-    if (!action.actorId && action.kind === 'other' && action.hits.length > 0) {
-      action.name = 'Fated Chain';
-    }
+    if (!action.hits.length) continue;
+    action.kind = 'other';
+    action.hits = action.hits.map((hit) => ({ ...hit, kind: 'other' }));
+    if (!action.name || action.name === 'Chain Burst') action.name = 'Fated Chain';
   }
 }
 
@@ -89,6 +90,7 @@ function repairScenarioDamageEvidence(
   body: unknown,
   observation: VerifiedCombatObservation,
   context?: CombatParseContext,
+  fatedChain = false,
 ): void {
   if (!obj(body) || !Array.isArray(body.scenario)) return;
 
@@ -113,7 +115,7 @@ function repairScenarioDamageEvidence(
       partySource = undefined;
     } else if (cmd === 'chain_cutin') {
       chargeSource = undefined;
-      partySource = { name: 'Chain Burst', index };
+      partySource = { name: fatedChain ? 'Fated Chain' : 'Chain Burst', index };
     } else if (cmd === 'wait') {
       chargeSource = undefined;
       partySource = undefined;
@@ -146,14 +148,19 @@ function repairScenarioDamageEvidence(
       } else if (isFreshSource(partySource, index)) {
         const rawHits = damageHits(payload, 'other');
         if (rawHits.length) {
+          const resultActor = fatedChain ? undefined : mainCharacterActor(context, slots);
           preserveObservedDamage(
             observation,
             matchedActions,
             rawHits,
             'other',
             partySource?.name ?? 'Party follow-up',
-            undefined,
+            resultActor,
             context?.turn,
+            {
+              matchAnyAttribution: true,
+              replaceName: !fatedChain,
+            },
           );
         } else if (payload !== undefined) {
           extraGaps += 1;
@@ -190,21 +197,23 @@ function preserveObservedDamage(
   name: string,
   actor: CombatActorContext | undefined,
   fallbackTurn: number | undefined,
+  options: { matchAnyAttribution?: boolean; replaceName?: boolean } = {},
 ): void {
-  const total = rawHits.reduce((sum, hit) => sum + hit.amount, 0);
   const actionIndex = observation.actions.findIndex((action, index) =>
     !matchedActions.has(index) &&
-    !action.actorId &&
-    action.kind === 'other' &&
-    action.hits.reduce((sum, hit) => sum + hit.amount, 0) === total,
+    sameDamageSequence(rawHits, action.hits) &&
+    (options.matchAnyAttribution || (!action.actorId && action.kind === 'other')),
   );
 
   if (actionIndex >= 0) {
     const action = observation.actions[actionIndex];
     if (!action) return;
-    action.actorId = actor?.id;
-    action.actorName = actor?.name;
-    action.name ??= name;
+    if (actor?.id) {
+      action.actorId = actor.id;
+      action.actorName = actor.name;
+    }
+    action.kind = 'other';
+    action.name = options.replaceName ? name : (action.name ?? name);
     action.hits = action.hits.map((hit) => ({ ...hit, kind }));
     matchedActions.add(actionIndex);
     return;
@@ -220,6 +229,26 @@ function preserveObservedDamage(
     hits: rawHits,
   });
   observation.actionsFieldPresent = true;
+}
+
+function sameDamageSequence(
+  left: readonly ParsedDamageHit[],
+  right: readonly ParsedDamageHit[],
+): boolean {
+  return left.length === right.length && left.every((hit, index) => hit.amount === right[index]?.amount);
+}
+
+function mainCharacterActor(
+  context: CombatParseContext | undefined,
+  slots: readonly CombatActorContext[],
+): CombatActorContext | undefined {
+  const id = context?.mainCharacterId;
+  if (id) {
+    const actor = slots.find((slot) => slot.id === id);
+    return actor ? { ...actor } : { id };
+  }
+  const actor = slots[0];
+  return actor?.id ? { ...actor } : undefined;
 }
 
 function isFreshSource(
