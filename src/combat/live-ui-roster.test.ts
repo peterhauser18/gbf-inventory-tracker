@@ -23,13 +23,13 @@ test('observed six-character roster survives a later death/promotion snapshot th
   assert.deepEqual(initial.map((actor) => actor.id), ['a', 'b', 'c', 'd', 'e', 'f']);
 
   const later = mergeObservedRosterHistory(initial, context(
-    [initialActors[0], initialActors[2], initialActors[3], initialActors[4]],
+    [initialActors[0]!, initialActors[2]!, initialActors[3]!, initialActors[4]!],
     [
-      initialActors[0],
-      { ...initialActors[1], hp: 0, alive: false },
-      initialActors[2],
-      initialActors[3],
-      initialActors[4],
+      initialActors[0]!,
+      { ...initialActors[1]!, hp: 0, alive: false },
+      initialActors[2]!,
+      initialActors[3]!,
+      initialActors[4]!,
     ],
   ));
 
