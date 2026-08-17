@@ -10,6 +10,7 @@ import {
   participantSummary,
   type MissingRosterActor,
 } from './live-ui-state.ts';
+import { resolveWikiRaidIcon } from './wiki-raid-icons.ts';
 
 let liveRaids = new Map<string, ActiveCombatRaid>();
 const observedRosterByRaid = new Map<string, CombatActorContext[]>();
@@ -221,6 +222,26 @@ function ensureBossFallback(root: HTMLElement, raid: NormalizedRaidParse): void 
   icon.append(image);
   title.classList.add('has-boss-icon');
   title.prepend(icon);
+
+  const raidName = raid.raidName?.trim();
+  if (raidName) {
+    icon.dataset.bossRaidName = raidName;
+    void hydrateWikiRaidIcon(image, raidName);
+  }
+}
+
+async function hydrateWikiRaidIcon(container: HTMLElement, raidName: string): Promise<void> {
+  const source = await resolveWikiRaidIcon(raidName).catch(() => undefined);
+  if (!source || !container.isConnected || container.querySelector('img')) return;
+  const image = document.createElement('img');
+  image.dataset.combatImage = 'true';
+  image.alt = '';
+  image.loading = 'lazy';
+  image.decoding = 'async';
+  image.referrerPolicy = 'no-referrer';
+  image.addEventListener('error', () => image.remove(), { once: true });
+  image.src = source;
+  container.append(image);
 }
 
 function normalizeSummonPresentation(root: HTMLElement): void {
