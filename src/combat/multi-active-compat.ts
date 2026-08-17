@@ -85,6 +85,14 @@ function handleScopedPartyToggle(root: HTMLElement, event: MouseEvent): boolean 
   const actorId = button.dataset.characterSelect;
   if (!actorId || key === 'single') return false;
 
+  if (retainedActorByRaid.has(key)) clearRetainedActorSelection(root, key);
+
+  const suppressed = suppressedActorByRaid.get(key);
+  if (suppressed && suppressed !== actorId) {
+    suppressedActorByRaid.delete(key);
+    clearScopedSuppressionArtifacts(root, key);
+  }
+
   if (suppressedActorByRaid.get(key) === actorId) {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -105,7 +113,13 @@ function applyScopedSuppression(root: HTMLElement): void {
   for (const [key, actorId] of suppressedActorByRaid) {
     const card = activeCard(root, key);
     if (!card) continue;
-    for (const button of card.querySelectorAll<HTMLElement>('[data-character-select]')) {
+    const buttons = [...card.querySelectorAll<HTMLElement>('[data-character-select]')];
+    if (!buttons.some((button) => button.dataset.characterSelect === actorId)) {
+      suppressedActorByRaid.delete(key);
+      clearScopedSuppressionArtifacts(root, key);
+      continue;
+    }
+    for (const button of buttons) {
       if (button.dataset.characterSelect === actorId) button.classList.remove('selected');
     }
     for (const inline of card.querySelectorAll<HTMLElement>('.cockpit-inline-detail')) {
@@ -124,6 +138,15 @@ function applyScopedSuppression(root: HTMLElement): void {
   }
 }
 
+function clearScopedSuppressionArtifacts(root: HTMLElement, key: string): void {
+  const card = activeCard(root, key);
+  if (!card) return;
+  for (const analysis of card.querySelectorAll<HTMLElement>('.character-analysis[hidden]')) {
+    if (!analysis.closest('.raid-character-detail, .combat-retained-character-detail')) analysis.hidden = false;
+  }
+  for (const note of card.querySelectorAll<HTMLElement>('.combat-ux-collapsed-note')) note.remove();
+}
+
 function revealScopedDetails(root: HTMLElement, key: string, actorId: string): void {
   const card = activeCard(root, key);
   if (!card) return;
@@ -134,10 +157,7 @@ function revealScopedDetails(root: HTMLElement, key: string, actorId: string): v
     const row = inline.previousElementSibling as HTMLElement | null;
     if (row?.dataset.characterSelect === actorId) inline.hidden = false;
   }
-  for (const analysis of card.querySelectorAll<HTMLElement>('.character-analysis[hidden]')) {
-    if (!analysis.closest('.raid-character-detail, .combat-retained-character-detail')) analysis.hidden = false;
-  }
-  for (const note of card.querySelectorAll<HTMLElement>('.combat-ux-collapsed-note')) note.remove();
+  clearScopedSuppressionArtifacts(root, key);
 }
 
 function handleRetainedActorClick(root: HTMLElement, event: MouseEvent): void {
@@ -148,6 +168,8 @@ function handleRetainedActorClick(root: HTMLElement, event: MouseEvent): void {
   if (!actorId || key === 'single') return;
   event.preventDefault();
   event.stopImmediatePropagation();
+  suppressedActorByRaid.delete(key);
+  clearScopedSuppressionArtifacts(root, key);
   toggleRetainedActor(key, actorId);
   scheduleSync(root);
 }
@@ -161,6 +183,8 @@ function handleRetainedActorKeydown(root: HTMLElement, event: KeyboardEvent): vo
   if (!actorId || key === 'single') return;
   event.preventDefault();
   event.stopImmediatePropagation();
+  suppressedActorByRaid.delete(key);
+  clearScopedSuppressionArtifacts(root, key);
   toggleRetainedActor(key, actorId);
   scheduleSync(root);
 }
@@ -168,6 +192,17 @@ function handleRetainedActorKeydown(root: HTMLElement, event: KeyboardEvent): vo
 function toggleRetainedActor(key: string, actorId: string): void {
   if (retainedActorByRaid.get(key) === actorId) retainedActorByRaid.delete(key);
   else retainedActorByRaid.set(key, actorId);
+}
+
+function clearRetainedActorSelection(root: HTMLElement, key: string): void {
+  retainedActorByRaid.delete(key);
+  const active = activeCard(root, key);
+  if (!active) return;
+  for (const card of active.querySelectorAll<HTMLElement>('[data-roster-actor-id]')) {
+    card.classList.remove('selected');
+    card.setAttribute('aria-expanded', 'false');
+  }
+  for (const detail of active.querySelectorAll<HTMLElement>('.combat-retained-character-detail')) detail.remove();
 }
 
 function syncRetainedActorCards(
@@ -201,8 +236,10 @@ function ensureRetainedActorDetail(
   actorId: string,
   metadata: EntityMetadataIndex,
 ): void {
-  const next = card.nextElementSibling as HTMLElement | null;
-  if (next?.classList.contains('combat-retained-character-detail') && next.dataset.raidActorId === actorId) return;
+  const active = card.closest<HTMLElement>('[data-active-combat-key]');
+  const existing = [...(active?.querySelectorAll<HTMLElement>('.combat-retained-character-detail') ?? [])]
+    .find((detail) => detail.dataset.raidActorId === actorId);
+  if (existing) return;
   if (!entry.parse.characterDamage.some((row) => row.actorId === actorId)) return;
 
   const markup = renderCombatLayout('party-first', {
@@ -223,7 +260,8 @@ function ensureRetainedActorDetail(
   detail.dataset.raidLocalId = `active:${entry.key}`;
   detail.dataset.raidActorId = actorId;
   detail.append(analysis);
-  card.insertAdjacentElement('afterend', detail);
+  const roster = card.closest<HTMLElement>('.party-cards, .combat-roster-history');
+  (roster ?? card).insertAdjacentElement('afterend', detail);
 }
 
 async function hydrateActiveCardVisuals(
@@ -232,14 +270,17 @@ async function hydrateActiveCardVisuals(
   metadata: EntityMetadataIndex,
 ): Promise<void> {
   const context = entry.context;
-  if (context) {
-    for (const target of card.querySelectorAll<HTMLElement>('[data-character-select], [data-roster-actor-id]')) {
-      const image = target.querySelector<HTMLElement>('.combat-image');
-      if (!image || image.querySelector('img')) continue;
-      const actorId = target.dataset.characterSelect ?? target.dataset.rosterActorId;
-      const actor = actorId ? actorForVisual(context, actorId) : undefined;
-      if (actor) await hydrateActorImage(image, actor, metadata);
+  for (const target of card.querySelectorAll<HTMLElement>('[data-character-select], [data-roster-actor-id]')) {
+    const image = target.querySelector<HTMLElement>('.combat-image');
+    if (!image || image.querySelector('img')) continue;
+    const actorId = target.dataset.characterSelect ?? target.dataset.rosterActorId;
+    const actor = actorId && context ? actorForVisual(context, actorId) : undefined;
+    if (actor) {
+      await hydrateActorImage(image, actor, metadata);
+      continue;
     }
+    const entryMetadata = actorId ? characterMetadata(metadata, actorId) : undefined;
+    if (entryMetadata?.imageUrl) appendCombatImage(image, entryMetadata.imageUrl);
   }
 
   const bossImage = card.querySelector<HTMLElement>('.combat-boss-icon .combat-image');
