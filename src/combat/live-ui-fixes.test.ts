@@ -96,4 +96,6 @@ test('live UI fix remains local/read-only and applies state per active raid wrap
   assert.match(styles, /repeat\(6, minmax\(0, 1fr\)\)/);
   assert.match(styles, /aspect-ratio: 1 \/ 1/);
   assert.match(styles, /object-fit: contain/);
+  assert.match(styles, /\.party-card\.inactive\.reserve \.state-tag/);
+  assert.match(styles, /background: transparent/);
 });
