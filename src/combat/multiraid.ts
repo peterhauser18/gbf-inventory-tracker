@@ -753,11 +753,18 @@ function verifiedResultInstanceId(url: string): string | undefined {
 function verifiedFamily(url: string): VerifiedFamily | null {
   try {
     const path = new URL(url).pathname;
-    if (path === '/rest/multiraid/start.json') return 'start';
-    if (path === '/rest/multiraid/normal_attack_result.json') return 'normal-attack';
-    if (path === '/rest/multiraid/ability_result.json') return 'ability';
-    if (path === '/rest/multiraid/summon_result.json') return 'summon';
-    if (path === '/rest/multiraid/temporary_item_result.json') return 'temporary-item';
+    const battlePrefix = path.startsWith('/rest/multiraid/')
+      ? '/rest/multiraid'
+      : path.startsWith('/rest/raid/')
+        ? '/rest/raid'
+        : undefined;
+    if (battlePrefix) {
+      if (path === `${battlePrefix}/start.json`) return 'start';
+      if (path === `${battlePrefix}/normal_attack_result.json`) return 'normal-attack';
+      if (path === `${battlePrefix}/ability_result.json`) return 'ability';
+      if (path === `${battlePrefix}/summon_result.json`) return 'summon';
+      if (path === `${battlePrefix}/temporary_item_result.json`) return 'temporary-item';
+    }
     if (path === '/rest/multiraid/multi_member_info') return 'members';
     if (/^\/resultmulti\/content\/index\/[^/]+\/?$/.test(path)) return 'result';
     return null;
