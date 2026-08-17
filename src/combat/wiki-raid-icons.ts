@@ -1,6 +1,6 @@
 import { loadWikiMaterialThumbnails } from '../dashboard/wiki-assets.ts';
 import { deferWikiImageUrl, installWikiImageDomLoader } from '../dashboard/wiki-image-loader.ts';
-import { readObservedRaidBossIconDataUrl } from '../enemy-icon-cache.ts';
+import { raidNameWithoutLevelPrefix, readObservedRaidBossIconDataUrl } from '../enemy-icon-cache.ts';
 
 type RaidThumbnailLoader = (
   wikiTitles: readonly string[],
@@ -10,7 +10,7 @@ type LocalRaidIconLoader = (raidName: string) => Promise<string | undefined>;
 installWikiImageDomLoader();
 
 export function wikiRaidPageTitles(raidName: string): string[] {
-  const trimmed = raidName.trim();
+  const trimmed = raidNameWithoutLevelPrefix(raidName);
   if (!trimmed) return [];
   if (/\(Raid\)$/i.test(trimmed)) return [trimmed];
   return [`${trimmed} (Raid)`, trimmed];
@@ -21,7 +21,7 @@ export async function resolveWikiRaidIcon(
   loadThumbnails: RaidThumbnailLoader = loadWikiMaterialThumbnails,
   loadLocal: LocalRaidIconLoader = readObservedRaidBossIconDataUrl,
 ): Promise<string | undefined> {
-  const trimmed = raidName.trim();
+  const trimmed = raidNameWithoutLevelPrefix(raidName);
   if (!trimmed) return undefined;
   const local = await loadLocal(trimmed).catch(() => undefined);
   if (local) return local;
