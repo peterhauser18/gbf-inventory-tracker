@@ -1,3 +1,13 @@
 .combat-layout-control select { width: 100%; border: 1px solid #d0d1ca; border-radius: 10px; background: #fff; color: inherit; padding: 10px 12px; outline: none; }
 .combat-layout-control select:focus { border-color: #65675f; box-shadow: 0 0 0 3px rgba(65,67,61,.09); }
 :root[data-theme='dark'] .combat-layout-control select { background: #1d1f1a; border-color: #34372f; color: #e7e8e2; }
+.active-combat-list { display: grid; gap: 24px; }
+.active-combat-card { min-width: 0; border: 1px solid var(--border, #d9dbd3); border-radius: 16px; padding: 14px; background: var(--panel, transparent); }
+.active-combat-card-label, .active-combat-footer, .active-combat-actions { display: flex; align-items: center; gap: 10px; }
+.active-combat-card-label { justify-content: space-between; padding: 2px 4px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.active-combat-card-label span:last-child { font-weight: 500; text-transform: none; letter-spacing: 0; opacity: .7; }
+.active-combat-footer { justify-content: space-between; flex-wrap: wrap; margin-top: 14px; padding: 12px 4px 2px; border-top: 1px solid var(--border, #d9dbd3); }
+.active-combat-actions { margin-left: auto; flex-wrap: wrap; }
+.active-combat-actions button { border: 1px solid var(--border, #d0d1ca); border-radius: 10px; background: transparent; color: inherit; padding: 9px 12px; cursor: pointer; }
+.active-combat-actions .danger-outline { border-color: #a85b5b; }
+@media (max-width: 760px) { .active-combat-footer { align-items: stretch; } .active-combat-actions { width: 100%; margin-left: 0; } .active-combat-actions button { flex: 1; } }
