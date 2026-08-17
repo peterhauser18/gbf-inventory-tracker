@@ -9,6 +9,8 @@ import {
 import type { ParsedDamageHit } from './types.ts';
 
 type Obj = Record<string, unknown>;
+type TimedActorSource = { actor: CombatActorContext; index: number };
+type TimedPartySource = { name: string; index: number };
 
 export { mergeVerifiedMultiraidObservation } from './multiraid.ts';
 export type {
@@ -21,6 +23,7 @@ export type {
 
 const FATED_CHAIN_PATH = '/rest/multiraid/fatal_chain_result.json';
 const ABILITY_RESULT_PATH = '/rest/multiraid/ability_result.json';
+const FOLLOW_UP_LOOKBACK = 4;
 const BASE_DAMAGE_COMMANDS = new Set([
   'attack',
   'damage',
@@ -77,7 +80,7 @@ function normalizeSpecialNpcBody(body: unknown): unknown {
 function labelFatedChainDamage(observation: VerifiedCombatObservation): void {
   for (const action of observation.actions) {
     if (!action.actorId && action.kind === 'other' && action.hits.length > 0) {
-      action.name ??= 'Fated Chain';
+      action.name = 'Fated Chain';
     }
   }
 }
@@ -90,66 +93,70 @@ function repairScenarioDamageEvidence(
   if (!obj(body) || !Array.isArray(body.scenario)) return;
 
   const slots = (context?.actorSlots ?? []).map((actor) => ({ ...actor }));
-  let chargeSource: CombatActorContext | undefined;
+  let chargeSource: TimedActorSource | undefined;
+  let partySource: TimedPartySource | undefined;
   const matchedActions = new Set<number>();
   let extraGaps = 0;
 
-  for (const raw of body.scenario) {
+  for (let index = 0; index < body.scenario.length; index++) {
+    const raw = body.scenario[index];
     if (!obj(raw)) continue;
     const cmd = str(raw.cmd)?.toLowerCase();
     if (!cmd) continue;
+    const target = str(raw.to, raw.target)?.toLowerCase();
 
     if (cmd === 'special' || cmd === 'special_npc') {
-      chargeSource = str(raw.target, raw.to)?.toLowerCase() === 'boss'
-        ? actorAt(slots, num(raw.pos))
-        : undefined;
+      const actor = target === 'boss' ? actorAt(slots, num(raw.pos)) : undefined;
+      chargeSource = actor?.id ? { actor: { ...actor }, index } : undefined;
+      partySource = undefined;
+    } else if (cmd === 'chain_cutin') {
+      chargeSource = undefined;
+      partySource = { name: 'Chain Burst', index };
+    } else if (cmd === 'wait') {
+      chargeSource = undefined;
+      partySource = undefined;
     } else if (
       (cmd === 'attack' && str(raw.from)?.toLowerCase() === 'player') ||
       cmd === 'ability' ||
       cmd === 'summon'
     ) {
       chargeSource = undefined;
+      partySource = undefined;
     }
 
-    if (
-      cmd === 'loop_damage' &&
-      str(raw.to, raw.target)?.toLowerCase() === 'boss' &&
-      chargeSource?.id
-    ) {
-      const rawHits = damageHits(raw.list, 'skill');
-      if (rawHits.length) {
-        const total = rawHits.reduce((sum, hit) => sum + hit.amount, 0);
-        const actionIndex = observation.actions.findIndex((action, index) =>
-          !matchedActions.has(index) &&
-          !action.actorId &&
-          action.kind === 'other' &&
-          action.hits.reduce((sum, hit) => sum + hit.amount, 0) === total,
-        );
-        if (actionIndex >= 0) {
-          const action = observation.actions[actionIndex];
-          if (action) {
-            action.actorId = chargeSource.id;
-            action.actorName = chargeSource.name;
-            action.name ??= 'C.A. follow-up';
-            action.hits = action.hits.map((hit) => ({ ...hit, kind: 'skill' }));
-            matchedActions.add(actionIndex);
-          }
-        } else {
-          observation.actions.push({
-            observedAt: observation.observedAt,
-            turn: observation.observedTurn ?? context?.turn,
-            actorId: chargeSource.id,
-            actorName: chargeSource.name,
-            kind: 'other',
-            name: 'C.A. follow-up',
-            hits: rawHits,
-          });
-          observation.actionsFieldPresent = true;
+    if ((cmd === 'damage' || cmd === 'loop_damage') && target === 'boss') {
+      const payload = raw.list ?? raw.damage;
+      if (isFreshSource(chargeSource, index) && chargeSource?.actor.id) {
+        const rawHits = damageHits(payload, 'skill');
+        if (rawHits.length) {
+          preserveObservedDamage(
+            observation,
+            matchedActions,
+            rawHits,
+            'skill',
+            'C.A. follow-up',
+            chargeSource.actor,
+            context?.turn,
+          );
+        } else if (payload !== undefined) {
+          extraGaps += 1;
         }
-      } else if (raw.list !== undefined) {
-        extraGaps += 1;
+      } else if (isFreshSource(partySource, index)) {
+        const rawHits = damageHits(payload, 'other');
+        if (rawHits.length) {
+          preserveObservedDamage(
+            observation,
+            matchedActions,
+            rawHits,
+            'other',
+            partySource?.name ?? 'Party follow-up',
+            undefined,
+            context?.turn,
+          );
+        } else if (payload !== undefined) {
+          extraGaps += 1;
+        }
       }
-      chargeSource = undefined;
     } else if (isUnknownBossDamageCommand(raw, cmd)) {
       const rawHits = damageHits(raw.list ?? raw.damage, 'other');
       if (rawHits.length) {
@@ -165,12 +172,63 @@ function repairScenarioDamageEvidence(
       extraGaps += 1;
     }
 
-    if (cmd === 'die' && str(raw.to, raw.target)?.toLowerCase() === 'player') {
+    if (cmd === 'die' && target === 'player') {
       for (const pos of playerDeathPositions(raw)) promoteBackline(slots, pos);
     }
   }
 
   observation.unparsedActionCount += extraGaps;
+}
+
+function preserveObservedDamage(
+  observation: VerifiedCombatObservation,
+  matchedActions: Set<number>,
+  rawHits: ParsedDamageHit[],
+  kind: ParsedDamageHit['kind'],
+  name: string,
+  actor: CombatActorContext | undefined,
+  fallbackTurn: number | undefined,
+): void {
+  const total = rawHits.reduce((sum, hit) => sum + hit.amount, 0);
+  const actionIndex = observation.actions.findIndex((action, index) =>
+    !matchedActions.has(index) &&
+    !action.actorId &&
+    action.kind === 'other' &&
+    action.hits.reduce((sum, hit) => sum + hit.amount, 0) === total,
+  );
+
+  if (actionIndex >= 0) {
+    const action = observation.actions[actionIndex];
+    if (!action) return;
+    action.actorId = actor?.id;
+    action.actorName = actor?.name;
+    action.name ??= name;
+    action.hits = action.hits.map((hit) => ({ ...hit, kind }));
+    matchedActions.add(actionIndex);
+    return;
+  }
+
+  observation.actions.push({
+    observedAt: observation.observedAt,
+    turn: observation.observedTurn ?? fallbackTurn,
+    actorId: actor?.id,
+    actorName: actor?.name,
+    kind: 'other',
+    name,
+    hits: rawHits,
+  });
+  observation.actionsFieldPresent = true;
+}
+
+function isFreshSource(
+  source: { index: number } | undefined,
+  currentIndex: number,
+): boolean {
+  return Boolean(
+    source &&
+    currentIndex > source.index &&
+    currentIndex - source.index <= FOLLOW_UP_LOOKBACK,
+  );
 }
 
 function isUnknownBossDamageCommand(raw: Obj, cmd: string): boolean {
