@@ -13,13 +13,17 @@ import { resolveWikiCombatAssetImage } from './wiki-visuals.ts';
 
 const participantOpenByRaid = new Map<string, boolean>();
 const retainedActorByRaid = new Map<string, string>();
+const suppressedActorByRaid = new Map<string, string>();
 let metadataPromise: Promise<EntityMetadataIndex> | null = null;
 let syncQueued = false;
 let syncRunning = false;
 let syncAgain = false;
 
 export function installCombatMultiActiveCompat(root: HTMLElement): void {
-  root.addEventListener('click', (event) => handleRetainedActorClick(root, event), true);
+  root.addEventListener('click', (event) => {
+    if (handleScopedPartyToggle(root, event)) return;
+    handleRetainedActorClick(root, event);
+  }, true);
   root.addEventListener('keydown', (event) => handleRetainedActorKeydown(root, event), true);
   const observer = new MutationObserver(() => scheduleSync(root));
   observer.observe(root, { childList: true, subtree: true });
@@ -37,6 +41,7 @@ function scheduleSync(root: HTMLElement): void {
 
 async function syncCompat(root: HTMLElement): Promise<void> {
   collapseParticipantsByDefault(root);
+  applyScopedSuppression(root);
   if (syncRunning) {
     syncAgain = true;
     return;
@@ -51,6 +56,7 @@ async function syncCompat(root: HTMLElement): Promise<void> {
       const entry = key ? byKey.get(key) : undefined;
       if (entry) await hydrateActiveCardVisuals(card, entry, metadata);
     }
+    applyScopedSuppression(root);
   } finally {
     syncRunning = false;
     if (syncAgain) {
@@ -72,6 +78,68 @@ function collapseParticipantsByDefault(root: HTMLElement): void {
   }
 }
 
+function handleScopedPartyToggle(root: HTMLElement, event: MouseEvent): boolean {
+  const button = (event.target as Element | null)?.closest<HTMLElement>('[data-character-select]');
+  if (!button || button.closest('.raid-character-detail')) return false;
+  const key = activeRaidKey(button);
+  const actorId = button.dataset.characterSelect;
+  if (!actorId || key === 'single') return false;
+
+  if (suppressedActorByRaid.get(key) === actorId) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    suppressedActorByRaid.delete(key);
+    revealScopedDetails(root, key, actorId);
+    return true;
+  }
+
+  if (!button.classList.contains('selected')) return false;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  suppressedActorByRaid.set(key, actorId);
+  applyScopedSuppression(root);
+  return true;
+}
+
+function applyScopedSuppression(root: HTMLElement): void {
+  for (const [key, actorId] of suppressedActorByRaid) {
+    const card = activeCard(root, key);
+    if (!card) continue;
+    for (const button of card.querySelectorAll<HTMLElement>('[data-character-select]')) {
+      if (button.dataset.characterSelect === actorId) button.classList.remove('selected');
+    }
+    for (const inline of card.querySelectorAll<HTMLElement>('.cockpit-inline-detail')) {
+      const row = inline.previousElementSibling as HTMLElement | null;
+      if (row?.dataset.characterSelect === actorId) inline.hidden = true;
+    }
+    for (const analysis of card.querySelectorAll<HTMLElement>('.character-analysis')) {
+      if (analysis.closest('.cockpit-inline-detail, .raid-character-detail, .combat-retained-character-detail')) continue;
+      analysis.hidden = true;
+      if (analysis.nextElementSibling?.classList.contains('combat-ux-collapsed-note')) continue;
+      const note = document.createElement('p');
+      note.className = 'muted combat-ux-collapsed-note';
+      note.textContent = 'Character details collapsed. Click the party member to expand them again.';
+      analysis.insertAdjacentElement('afterend', note);
+    }
+  }
+}
+
+function revealScopedDetails(root: HTMLElement, key: string, actorId: string): void {
+  const card = activeCard(root, key);
+  if (!card) return;
+  for (const button of card.querySelectorAll<HTMLElement>('[data-character-select]')) {
+    if (button.dataset.characterSelect === actorId) button.classList.add('selected');
+  }
+  for (const inline of card.querySelectorAll<HTMLElement>('.cockpit-inline-detail[hidden]')) {
+    const row = inline.previousElementSibling as HTMLElement | null;
+    if (row?.dataset.characterSelect === actorId) inline.hidden = false;
+  }
+  for (const analysis of card.querySelectorAll<HTMLElement>('.character-analysis[hidden]')) {
+    if (!analysis.closest('.raid-character-detail, .combat-retained-character-detail')) analysis.hidden = false;
+  }
+  for (const note of card.querySelectorAll<HTMLElement>('.combat-ux-collapsed-note')) note.remove();
+}
+
 function handleRetainedActorClick(root: HTMLElement, event: MouseEvent): void {
   const card = (event.target as Element | null)?.closest<HTMLElement>('[data-roster-actor-id]');
   if (!card || card.closest('.combat-retained-character-detail')) return;
@@ -79,7 +147,7 @@ function handleRetainedActorClick(root: HTMLElement, event: MouseEvent): void {
   const actorId = card.dataset.rosterActorId;
   if (!actorId || key === 'single') return;
   event.preventDefault();
-  event.stopPropagation();
+  event.stopImmediatePropagation();
   toggleRetainedActor(key, actorId);
   scheduleSync(root);
 }
@@ -92,6 +160,7 @@ function handleRetainedActorKeydown(root: HTMLElement, event: KeyboardEvent): vo
   const actorId = card.dataset.rosterActorId;
   if (!actorId || key === 'single') return;
   event.preventDefault();
+  event.stopImmediatePropagation();
   toggleRetainedActor(key, actorId);
   scheduleSync(root);
 }
@@ -242,6 +311,11 @@ function findMetadataByName(index: EntityMetadataIndex, name: string): EntityMet
 function combatMetadata(): Promise<EntityMetadataIndex> {
   if (!metadataPromise) metadataPromise = loadWikiEntityMetadata().catch(() => EMPTY_ENTITY_METADATA);
   return metadataPromise;
+}
+
+function activeCard(root: HTMLElement, key: string): HTMLElement | undefined {
+  return [...root.querySelectorAll<HTMLElement>('[data-active-combat-key]')]
+    .find((card) => card.dataset.activeCombatKey === key);
 }
 
 function activeRaidKey(element: Element): string {
