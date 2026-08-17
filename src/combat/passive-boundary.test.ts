@@ -20,14 +20,29 @@ test('combat ingestion remains attached only to debugger response-body capture',
 });
 
 test('recognized combat responses persist only normalized combat facts', () => {
+  const routeStart = background.indexOf('async function saveObservedResponse');
+  const routeEnd = background.indexOf('async function updateCombatLock', routeStart);
+  assert.ok(routeStart >= 0 && routeEnd > routeStart);
+  const routeSource = background.slice(routeStart, routeEnd);
+
+  assert.match(routeSource, /const route = classifyObservedResponseUrl\(record\.meta\.url\)/);
+  assert.match(routeSource, /if \(route === 'combat'\)/);
+  assert.match(routeSource, /const state = await getRuntimeState\(\)/);
   assert.match(
-    background,
-    /const route = classifyObservedResponseUrl\(record\.meta\.url\);\s*if \(route === 'combat'\) \{\s*const parse = await ingestCapturedCombatRecord\(record\);\s*const context = parse \? await getCombatLiveContext\(\) : undefined;\s*if \(parse && context\?\.instanceId\) \{\s*await updateCombatLock\(tabId, context\.instanceId, parse\.result\);\s*\}\s*return;\s*\}/s,
+    routeSource,
+    /ingestCapturedCombatRecord\(record, combatInstanceForTab\(state, tabId\) \?\? null\)/,
   );
-  assert.match(
-    background,
-    /if \(route !== 'account'\) return;\s*await queueAccountIngest\(record\);\s*await saveCapturedResponse\(record\);/s,
+  assert.match(routeSource, /if \(parse\?\.instanceId\)/);
+  assert.match(routeSource, /updateCombatLock\(tabId, parse\.instanceId, parse\.result\)/);
+  assert.match(routeSource, /if \(route !== 'account'\) return/);
+  assert.match(routeSource, /await queueAccountIngest\(record\)/);
+  assert.match(routeSource, /await saveCapturedResponse\(record\)/);
+
+  const combatBranch = routeSource.slice(
+    routeSource.indexOf("if (route === 'combat')"),
+    routeSource.indexOf("if (route !== 'account')"),
   );
+  assert.doesNotMatch(combatBranch, /saveCapturedResponse\(record\)|queueAccountIngest\(record\)/);
 });
 
 test('raid instance correlation remains session-only and active rows store normalized parses only', () => {
