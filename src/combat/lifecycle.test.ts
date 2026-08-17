@@ -38,14 +38,21 @@ test('instance identity keeps two raids of the same quest independent', () => {
   assert.notEqual(combatRaidKey('305211', 'instance-a'), combatRaidKey('305211', 'instance-b'));
 });
 
-test('direct raid identity overrides the currently played raid while ordinary actions stay on current raid', () => {
+test('direct identity wins, then the observed tab instance, then the current raid', () => {
   const contexts = {
     'instance:instance-a': { instanceId: 'instance-a' },
     'instance:instance-b': { instanceId: 'instance-b' },
   };
-  assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', 'instance-a'), 'instance:instance-a');
+  assert.equal(
+    selectCombatContextKey(contexts, 'instance:instance-b', 'instance-a', 'instance-b'),
+    'instance:instance-a',
+  );
+  assert.equal(
+    selectCombatContextKey(contexts, 'instance:instance-b', undefined, 'instance-a'),
+    'instance:instance-a',
+  );
   assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', undefined), 'instance:instance-b');
-  assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', 'unknown'), undefined);
+  assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', 'unknown', 'instance-a'), undefined);
 });
 
 test('captured history identity remains stable across manual and observed finalization', () => {
