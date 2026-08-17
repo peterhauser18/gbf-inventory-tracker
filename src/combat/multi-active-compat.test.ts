@@ -7,11 +7,20 @@ const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 
 test('multi-active compat starts Participants collapsed independently per active raid', () => {
   assert.match(ui, /installCombatMultiActiveCompat\(app\)/);
+  assert.ok(ui.indexOf('installCombatMultiActiveCompat(app)') < ui.indexOf('installCombatRaidInteractionUx(app)'));
   assert.match(compat, /const participantOpenByRaid = new Map<string, boolean>\(\)/);
   assert.match(compat, /\[data-combat-collapse="participants"\]/);
   assert.match(compat, /participantOpenByRaid\.set\(key, false\)/);
   assert.match(compat, /details\.addEventListener\('toggle'/);
   assert.match(compat, /data-active-combat-key/);
+});
+
+test('selected live character collapse state is scoped to its active raid', () => {
+  assert.match(compat, /const suppressedActorByRaid = new Map<string, string>\(\)/);
+  assert.match(compat, /suppressedActorByRaid\.get\(key\) === actorId/);
+  assert.match(compat, /suppressedActorByRaid\.set\(key, actorId\)/);
+  assert.match(compat, /activeCard\(root, key\)/);
+  assert.match(compat, /event\.stopImmediatePropagation\(\)/);
 });
 
 test('retained dead or replaced roster cards toggle shared character analysis', () => {
