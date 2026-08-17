@@ -12,6 +12,13 @@
 .party-card.dead { opacity: 1; }
 .party-card.inactive,
 .party-card-history.reserve { border-style: dashed; }
+.party-card.inactive.reserve .state-tag,
+.party-card-history.reserve .state-tag {
+  padding-left: 0;
+  padding-right: 0;
+  background: transparent;
+  border-radius: 0;
+}
 .party-card-history { cursor: default; }
 .party-card-history .party-card-visual { min-height: 112px; }
 .party-card-history-note { color: #777972; font-size: 9px; font-weight: 750; }
@@ -20,7 +27,7 @@
 .combat-roster-history .party-card-visual { min-height: 72px; }
 
 .summon-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); align-items: start; }
-.summon-panel-sidebar .summon-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.summon-panel-sidebar .summon-strip { grid-template-columns: repeat(2, minmax(90px, 1fr)); }
 .summon-card { min-width: 0; overflow: hidden; }
 .summon-card .combat-image { width: 100%; height: auto; min-height: 0; aspect-ratio: 1 / 1; }
 .summon-card .combat-image img { object-fit: contain; }
