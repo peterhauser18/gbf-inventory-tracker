@@ -1,8 +1,11 @@
 import './interaction-ux.css';
 import { buildCharacterAnalyses } from './analytics.ts';
 import { renderCombatLayout } from './layouts.ts';
-import { getRaidHistory } from './storage.ts';
+import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
+import { getCombatLiveContext, getLatestCombatParse, getRaidHistory } from './storage.ts';
 import type { RaidHistoryRecord } from './types.ts';
+import { actorVisualImageId } from './visual-context.ts';
+import { resolveWikiCombatAssetImage } from './wiki-visuals.ts';
 
 const combatLogOpenByPreset = new Map<string, boolean>();
 const skillOpenByKey = new Map<string, boolean>();
@@ -11,6 +14,8 @@ const selectedRaidActorById = new Map<string, string>();
 let suppressedCombatActorId: string | null = null;
 let raidAnnotationPending = false;
 let raidAnnotationQueued = false;
+let combatVisualHydrationPending = false;
+let combatVisualHydrationQueued = false;
 
 export function installCombatRaidInteractionUx(root: HTMLElement): void {
   root.addEventListener('click', (event) => handleClick(root, event), true);
@@ -31,6 +36,7 @@ function applyInteractionUx(root: HTMLElement): void {
   removeLocalNotes(section);
   collapseRaidDropsByDefault(section);
   void annotateRaidCharacterRows(section);
+  void hydrateCombatVisuals(section);
 }
 
 function collapseCombatLogsByDefault(section: HTMLElement): void {
@@ -165,6 +171,77 @@ function collapseRaidDropsByDefault(section: HTMLElement): void {
     if (!localId) continue;
     bindDefaultCollapsedDetails(details, raidDropOpenById, localId, 'uxRaidDropsBound');
   }
+}
+
+async function hydrateCombatVisuals(section: HTMLElement): Promise<void> {
+  if (!hasMissingCombatVisual(section)) return;
+  if (combatVisualHydrationPending) {
+    combatVisualHydrationQueued = true;
+    return;
+  }
+
+  combatVisualHydrationPending = true;
+  try {
+    const [context, raid] = await Promise.all([getCombatLiveContext(), getLatestCombatParse()]);
+    if (context) await hydrateActorVisuals(section, context);
+    const bossImage = section.querySelector<HTMLElement>('.combat-boss-icon .combat-image');
+    if (bossImage && !bossImage.querySelector('img') && raid?.boss?.id) {
+      await hydrateImageContainer(bossImage, 'boss', raid.boss.id);
+    }
+  } finally {
+    combatVisualHydrationPending = false;
+    if (combatVisualHydrationQueued) {
+      combatVisualHydrationQueued = false;
+      void hydrateCombatVisuals(section);
+    }
+  }
+}
+
+function hasMissingCombatVisual(section: HTMLElement): boolean {
+  const actorTargets = section.querySelectorAll<HTMLElement>('[data-character-select], [data-roster-actor-id]');
+  for (const target of actorTargets) {
+    const image = target.querySelector<HTMLElement>('.combat-image');
+    if (image && !image.querySelector('img')) return true;
+  }
+  const bossImage = section.querySelector<HTMLElement>('.combat-boss-icon .combat-image');
+  return Boolean(bossImage && !bossImage.querySelector('img'));
+}
+
+async function hydrateActorVisuals(section: HTMLElement, context: CombatParseContext): Promise<void> {
+  const targets = section.querySelectorAll<HTMLElement>('[data-character-select], [data-roster-actor-id]');
+  for (const target of targets) {
+    const image = target.querySelector<HTMLElement>('.combat-image');
+    if (!image || image.querySelector('img')) continue;
+    const actorId = target.dataset.characterSelect ?? target.dataset.rosterActorId;
+    const actor = actorId ? actorForVisual(context, actorId) : undefined;
+    const imageId = actorVisualImageId(actor);
+    if (imageId) await hydrateImageContainer(image, 'character', imageId);
+  }
+}
+
+function actorForVisual(context: CombatParseContext, actorId: string): CombatActorContext | undefined {
+  return context.actors?.find((actor) => actor.id === actorId)
+    ?? context.actorSlots.find((actor) => actor.id === actorId);
+}
+
+async function hydrateImageContainer(
+  container: HTMLElement,
+  kind: 'character' | 'boss',
+  assetId: string,
+): Promise<void> {
+  if (container.querySelector('img')) return;
+  const source = await resolveWikiCombatAssetImage(kind, assetId);
+  if (!source || !container.isConnected || container.querySelector('img')) return;
+
+  const image = document.createElement('img');
+  image.dataset.combatImage = 'true';
+  image.alt = '';
+  image.loading = 'lazy';
+  image.decoding = 'async';
+  image.referrerPolicy = 'no-referrer';
+  image.addEventListener('error', () => image.remove(), { once: true });
+  image.src = source;
+  container.append(image);
 }
 
 async function annotateRaidCharacterRows(section: HTMLElement): Promise<void> {
