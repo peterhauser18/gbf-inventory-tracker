@@ -4,9 +4,14 @@ import test from 'node:test';
 import {
   OBSERVED_ENEMY_ICON_CACHE_NAME,
   clearObservedEnemyIconCache,
+  enemyIconAliasCacheKey,
   enemyIconCacheKey,
   parseObservedEnemyIconResponse,
+  raidBossIconAliasCacheKey,
   readObservedEnemyIconBlob,
+  readObservedRaidBossIconDataUrl,
+  rememberObservedEnemyIconAlias,
+  rememberObservedRaidBossIcon,
   storeObservedEnemyIconBody,
 } from './enemy-icon-cache.ts';
 
@@ -86,6 +91,25 @@ test('observed enemy bytes round-trip locally without issuing a network request'
   } finally {
     Object.defineProperty(globalThis, 'fetch', { configurable: true, value: originalFetch });
   }
+});
+
+test('verified start aliases enemy_id and raid name to the observed cjs image asset id', async () => {
+  const storage = memoryCacheStorage();
+  const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0a]);
+  const body = { body: Buffer.from(bytes).toString('base64'), base64Encoded: true };
+
+  assert.equal(await storeObservedEnemyIconBody('4200263', 'image/png', body, storage), true);
+  assert.equal(await rememberObservedEnemyIconAlias('9900010', '4200263', storage), true);
+  assert.equal(await rememberObservedRaidBossIcon('Old Lignoid', '4200263', storage), true);
+  assert.equal(storage.values.has(enemyIconAliasCacheKey('9900010')), true);
+  assert.equal(storage.values.has(raidBossIconAliasCacheKey('Old Lignoid')), true);
+
+  const aliased = await readObservedEnemyIconBlob('9900010', storage);
+  assert.ok(aliased);
+  assert.deepEqual([...new Uint8Array(await aliased.arrayBuffer())], [...bytes]);
+
+  const dataUrl = await readObservedRaidBossIconDataUrl(' old   lignoid ', storage);
+  assert.ok(dataUrl?.startsWith('data:image/png;base64,'));
 });
 
 test('background copies enemy images only from debugger responses already received by the game', () => {
