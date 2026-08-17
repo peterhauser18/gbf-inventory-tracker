@@ -15,21 +15,27 @@ test('multi-active compat starts Participants collapsed independently per active
   assert.match(compat, /data-active-combat-key/);
 });
 
-test('selected live character collapse state is scoped to its active raid', () => {
+test('selected live character collapse state is scoped to its active raid and stale suppression is dropped', () => {
   assert.match(compat, /const suppressedActorByRaid = new Map<string, string>\(\)/);
   assert.match(compat, /suppressedActorByRaid\.get\(key\) === actorId/);
   assert.match(compat, /suppressedActorByRaid\.set\(key, actorId\)/);
+  assert.match(compat, /suppressed && suppressed !== actorId/);
+  assert.match(compat, /buttons\.some\(\(button\) => button\.dataset\.characterSelect === actorId\)/);
+  assert.match(compat, /clearScopedSuppressionArtifacts\(root, key\)/);
   assert.match(compat, /activeCard\(root, key\)/);
   assert.match(compat, /event\.stopImmediatePropagation\(\)/);
 });
 
-test('retained dead or replaced roster cards toggle shared character analysis', () => {
+test('retained dead or replaced roster cards toggle shared analysis without blocking later live selection', () => {
   assert.match(compat, /\[data-roster-actor-id\]/);
   assert.match(compat, /retainedActorByRaid\.get\(key\) === actorId/);
+  assert.match(compat, /clearRetainedActorSelection\(root, key\)/);
   assert.match(compat, /retainedActorByRaid\.delete\(key\)/);
   assert.match(compat, /renderCombatLayout\('party-first', \{/);
   assert.match(compat, /querySelector<HTMLElement>\('\.character-analysis'\)/);
   assert.match(compat, /combat-retained-character-detail/);
+  assert.match(compat, /card\.closest<HTMLElement>\('\.party-cards, \.combat-roster-history'\)/);
+  assert.match(compat, /insertAdjacentElement\('afterend', detail\)/);
 });
 
 test('compat resolves missing fallback visuals per active raid without GBF requests', () => {
