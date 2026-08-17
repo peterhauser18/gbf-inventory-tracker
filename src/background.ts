@@ -369,7 +369,9 @@ async function releaseUnavailableTarget(tabId: number, reason: string): Promise<
   const state = await getRuntimeState();
   if (!state.active || !state.scanId) return;
   const combatInstances = getCombatInstances(state);
-  const hadCombat = delete combatInstances[String(tabId)];
+  const tabKey = String(tabId);
+  const hadCombat = combatInstances[tabKey] !== undefined;
+  delete combatInstances[tabKey];
   if (state.tabId !== tabId && !hadCombat) return;
 
   pendingResponses.clear();
@@ -519,7 +521,7 @@ async function saveObservedResponse(tabId: number, record: CapturedResponseRecor
 
 async function updateCombatLock(tabId: number, instanceId: string, result: RaidResult): Promise<void> {
   const current = await getRuntimeState();
-  if (!current.active || current.tabId !== tabId || !current.scanId) return;
+  if (!current.active || !current.scanId) return;
   const combatInstances = getCombatInstances(current);
   const key = String(tabId);
 
