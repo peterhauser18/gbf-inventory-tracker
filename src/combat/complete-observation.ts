@@ -32,6 +32,7 @@ const BASE_DAMAGE_COMMANDS = new Set([
   'special_npc',
   'summon',
 ]);
+const NON_DAMAGE_COMMANDS = new Set(['heal']);
 
 export function isVerifiedCombatResponseUrl(url: string): boolean {
   return isBaseVerifiedCombatResponseUrl(url) || responsePath(url) === FATED_CHAIN_PATH;
@@ -263,7 +264,7 @@ function isFreshSource(
 }
 
 function isUnknownBossDamageCommand(raw: Obj, cmd: string): boolean {
-  if (BASE_DAMAGE_COMMANDS.has(cmd)) return false;
+  if (BASE_DAMAGE_COMMANDS.has(cmd) || NON_DAMAGE_COMMANDS.has(cmd)) return false;
   if (str(raw.to, raw.target)?.toLowerCase() !== 'boss') return false;
   return raw.list !== undefined || raw.damage !== undefined;
 }
