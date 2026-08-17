@@ -1,6 +1,6 @@
 import './raids-v2.css';
 import './ui-v2.css';
-import { CombatDashboardControllerV2 } from './dashboard-v2.ts';
+import { CombatDashboardControllerV2 } from './dashboard-multi-active.ts';
 import { COMBAT_LAYOUT_PRESETS, type CombatLayoutPreset } from './layouts.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 

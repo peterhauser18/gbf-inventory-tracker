@@ -15,7 +15,7 @@ test('observation follows active tabs and focused Edge windows without attach-al
   assert.doesNotMatch(background, /chrome\.tabs\.query\(\{[^}]*url:/);
 });
 
-test('retargeting detaches the previous target before attaching the revalidated candidate', () => {
+test('cross-window retarget preserves combat contexts while attaching only the focused verified GBF tab', () => {
   const start = background.indexOf('async function switchObservationTarget');
   const end = background.indexOf('async function enableNetworkObservation', start);
   assert.ok(start >= 0 && end > start);
@@ -26,30 +26,29 @@ test('retargeting detaches the previous target before attaching the revalidated 
   assert.ok(detach >= 0);
   assert.ok(revalidate > detach);
   assert.ok(attach > revalidate);
+  assert.doesNotMatch(switchSource, /clearCombatParseContext\(\)/);
+  assert.match(switchSource, /const preservedState: RuntimeState = \{ \.\.\.state, active: true, scanId: state\.scanId \}/);
   assert.match(switchSource, /if \(candidateAttached\)[\s\S]*chrome\.debugger\.detach\(\{ tabId: candidateTabId \}\)/);
 });
 
-test('combat lock is keyed by the existing raid instance id and only the same instance can release it', () => {
-  assert.match(background, /const parse = await ingestCapturedCombatRecord\(record\)/);
-  assert.match(background, /const context = parse \? await getCombatLiveContext\(\) : undefined/);
-  assert.match(background, /context\?\.instanceId/);
-  assert.match(background, /updateCombatLock\(tabId, context\.instanceId, parse\.result\)/);
-  assert.match(background, /combatInstanceId: instanceId/);
-  assert.match(background, /current\.combatInstanceId !== instanceId/);
-  assert.match(background, /isTerminalResult\(result\)/);
+test('combat routing remembers a proven raid instance per GBF tab and fails closed before that tab is mapped', () => {
+  assert.match(background, /combatInstances\?: Record<string, string>/);
+  assert.match(background, /ingestCapturedCombatRecord\(record, combatInstanceForTab\(state, tabId\) \?\? null\)/);
+  assert.match(background, /if \(parse\?\.instanceId\)/);
+  assert.match(background, /updateCombatLock\(tabId, parse\.instanceId, parse\.result\)/);
+  assert.match(background, /combatInstances\[key\] = instanceId/);
+  assert.match(background, /delete combatInstances\[key\]/);
 });
 
-test('moving a locked fight tab preserves its raid instance and reattaches the same tab', () => {
+test('moving a known fight tab preserves its raid instance and reattaches the same tab', () => {
   assert.match(background, /chrome\.tabs\.onAttached\.addListener\(\(tabId\) => \{\s*void recoverMovedCombatTarget\(tabId\);\s*\}\)/s);
-  assert.match(background, /async function recoverMovedCombatTarget[\s\S]*state\.combatTabId !== tabId[\s\S]*!state\.combatInstanceId[\s\S]*queueObservationRetarget\(tabId\)/);
-  assert.match(background, /const preserveCombatLock = state\.combatTabId === candidateTabId && Boolean\(state\.combatInstanceId\)/);
+  assert.match(background, /async function recoverMovedCombatTarget[\s\S]*!combatInstanceForTab\(state, tabId\)[\s\S]*queueObservationRetarget\(tabId\)/);
   const start = background.indexOf('async function handleUnexpectedDetach');
   const end = background.indexOf('function normalizeResourceType', start);
   assert.ok(start >= 0 && end > start);
   const detachSource = background.slice(start, end);
   assert.match(detachSource, /if \(reason === 'canceled_by_user'\) \{\s*await clearCombatParseContext\(\)/s);
-  assert.match(detachSource, /const next: RuntimeState = \{\s*\.\.\.state,[\s\S]*delete next\.tabId/);
-  assert.match(detachSource, /state\.combatTabId === tabId && state\.combatInstanceId[\s\S]*queueObservationRetarget\(tabId\)/);
+  assert.match(detachSource, /combatInstanceForTab\(state, tabId\)[\s\S]*queueObservationRetarget\(tabId\)/);
 });
 
 test('cross-window lifecycle adds no broader browser or GBF host permission', () => {

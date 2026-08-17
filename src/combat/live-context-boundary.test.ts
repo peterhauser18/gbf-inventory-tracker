@@ -6,8 +6,8 @@ const storage = readFileSync(new URL('./storage.ts', import.meta.url), 'utf8');
 const exporter = readFileSync(new URL('./export.ts', import.meta.url), 'utf8');
 
 test('live participant display remains in session context and strips technical participant identity fields', () => {
-  assert.match(storage, /chrome\.storage\.session\.get\(CONTEXT_KEY\)/);
-  assert.match(storage, /chrome\.storage\.session\.set\(\{ \[CONTEXT_KEY\]: context \}\)/);
+  assert.match(storage, /chrome\.storage\.session\.get\(\[CONTEXT_STATE_KEY, LEGACY_CONTEXT_KEY\]\)/);
+  assert.match(storage, /chrome\.storage\.session\.set\(\{ \[CONTEXT_STATE_KEY\]: sanitizeContextState\(state\) \}\)/);
   assert.match(storage, /participants: context\.participants\?\.slice\(0, 30\)\.map\(sanitizeParticipantDisplay\)/);
   assert.doesNotMatch(storage, /user_id|viewer_id|account_id/);
 });
