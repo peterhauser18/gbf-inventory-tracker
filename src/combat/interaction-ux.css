@@ -1,0 +1,14 @@
+.combat-ux-skills { border-radius: 10px; }
+.combat-ux-collapsed-note { margin: 0; padding: 10px 2px 2px; }
+
+.raid-character-row { cursor: pointer; user-select: none; }
+.raid-character-row:hover,
+.raid-character-row.selected { background: #f5f8fa; }
+.raid-character-row:focus-visible { outline: 2px solid #7f8f9e; outline-offset: -2px; }
+.raid-character-detail { min-width: 620px; padding: 10px; border-top: 1px solid #e5e6df; background: #fafaf7; }
+.raid-character-detail .character-analysis { border-radius: 10px; }
+
+:root[data-theme='dark'] .raid-character-row:hover,
+:root[data-theme='dark'] .raid-character-row.selected,
+:root[data-theme='dark'] .raid-character-detail { background: #222620; }
+:root[data-theme='dark'] .raid-character-detail { border-color: #34372f; }

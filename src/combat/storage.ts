@@ -21,6 +21,7 @@ import {
 } from './complete-observation.ts';
 import type { NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord } from './types.ts';
 import { enrichVerifiedScenarioSemantics, preserveVerifiedNormalFacts } from './verified-combat-semantics.ts';
+import { enrichObservedActorVisuals, retainActorVisualId } from './visual-context.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-combat';
 const DB_VERSION = 1;
@@ -84,13 +85,14 @@ async function ingestVerifiedCombatRecord(
   if (!routed) return null;
 
   const { key, observation, startObserved } = routed;
+  enrichObservedActorVisuals(record, observation.context);
   lastIngestedContext = observation.context ? sanitizeCombatParseContext(observation.context) : undefined;
 
   const activeCurrent = await getActiveParseByKey(key);
-  const manualCurrent = state.manualFinalizedKeys[key]
+  const capturedCurrent = !activeCurrent && (observation.context?.instanceId || state.manualFinalizedKeys[key])
     ? await getCapturedHistoryForIdentity(observation.context?.instanceId, observation.raidTechnicalId)
     : undefined;
-  const current = activeCurrent ?? manualCurrent ?? null;
+  const current = activeCurrent ?? capturedCurrent ?? null;
   const next = mergeVerifiedMultiraidObservation(current, observation);
   next.instanceId = observation.context?.instanceId ?? current?.instanceId;
   preserveVerifiedNormalFacts(next, observation.actions);
@@ -120,7 +122,7 @@ async function ingestVerifiedCombatRecord(
   }
 
   if (state.manualFinalizedKeys[key]) {
-    const finalizedAt = manualCurrent?.finalizedAt ?? next.lastObservedAt;
+    const finalizedAt = capturedCurrent?.finalizedAt ?? next.lastObservedAt;
     const manual = manualFinalizeRaid(next, finalizedAt);
     await upsertCapturedHistory(manual);
     await saveCombatContextState(state);
@@ -285,13 +287,13 @@ function sanitizeCombatParseContext(context: CombatParseContext): CombatParseCon
 }
 
 function sanitizeActorContext(actor: CombatActorContext): CombatActorContext {
-  return {
+  return retainActorVisualId(actor, {
     id: actor.id,
     name: actor.id && /^30[234]\d{7}$/.test(actor.id) ? actor.name : undefined,
     hp: safeNumber(actor.hp),
     maxHp: safeNumber(actor.maxHp),
     alive: typeof actor.alive === 'boolean' ? actor.alive : undefined,
-  };
+  });
 }
 
 function sanitizeSummonContext(summon: CombatSummonContext): CombatSummonContext {

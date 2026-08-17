@@ -31,6 +31,11 @@ import type {
   DebuggerResponseBody,
   ObservedResponse,
 } from './capture/types.ts';
+import {
+  clearObservedEnemyIconCache,
+  parseObservedEnemyIconResponse,
+  storeObservedEnemyIconBody,
+} from './enemy-icon-cache.ts';
 import { cleanupLocalData, type LocalCleanupMode } from './storage/cleanup.ts';
 import {
   clearObservedTreasureIconCache,
@@ -49,6 +54,7 @@ const CAPTURE_NETWORK_METHODS = new Set([
 ]);
 const pendingResponses = new CaptureEventBuffer();
 const pendingTreasureIcons = new Map<string, { itemId: string }>();
+const pendingEnemyIcons = new Map<string, { enemyId: string; mimeType: string }>();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
 let targetQueue: Promise<void> = Promise.resolve();
@@ -172,7 +178,10 @@ async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
     clearDiagnostic: clearCaptureStorage,
     clearCombat: clearCombatStorage,
   });
-  if (mode === 'all-except-account') await clearObservedTreasureIconCache();
+  if (mode === 'all-except-account') {
+    await clearObservedTreasureIconCache();
+    await clearObservedEnemyIconCache();
+  }
   await setRuntimeState({ active: false });
 }
 
@@ -190,6 +199,7 @@ async function startObservation(explicitTabId?: number): Promise<CaptureStatusRe
   try {
     pendingResponses.clear();
     pendingTreasureIcons.clear();
+    pendingEnemyIcons.clear();
     await clearCombatParseContext();
     await chrome.debugger.attach(target, DEBUGGER_PROTOCOL_VERSION);
     await startCaptureScan(scanId);
@@ -239,6 +249,7 @@ async function stopObservation(): Promise<CaptureStatusResponse> {
   await setRuntimeState({ active: false, scanId: state.scanId });
   pendingResponses.clear();
   pendingTreasureIcons.clear();
+  pendingEnemyIcons.clear();
   await finishCaptureScan(state.scanId);
   await clearCombatParseContext();
   if (state.tabId !== undefined) {
@@ -277,6 +288,7 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
 
   pendingResponses.clear();
   pendingTreasureIcons.clear();
+  pendingEnemyIcons.clear();
   await setRuntimeState(preservedState);
 
   if (previousTabId !== undefined) {
@@ -376,6 +388,7 @@ async function releaseUnavailableTarget(tabId: number, reason: string): Promise<
 
   pendingResponses.clear();
   pendingTreasureIcons.clear();
+  pendingEnemyIcons.clear();
   const next: RuntimeState = {
     ...state,
     active: true,
@@ -406,6 +419,7 @@ async function handleDebuggerEvent(
     if (requestId) {
       pendingResponses.forget(requestId);
       pendingTreasureIcons.delete(requestId);
+      pendingEnemyIcons.delete(requestId);
     }
     return;
   }
@@ -426,6 +440,19 @@ async function handleDebuggerEvent(
       const state = await getRuntimeState();
       if (!state.active || state.tabId !== tabId || !state.scanId) return;
       pendingTreasureIcons.set(requestId, { itemId: treasureIcon.itemId });
+      return;
+    }
+
+    const enemyIcon = parseObservedEnemyIconResponse(
+      url,
+      event?.type,
+      event?.response?.mimeType,
+      event?.response?.status,
+    );
+    if (enemyIcon) {
+      const state = await getRuntimeState();
+      if (!state.active || state.tabId !== tabId || !state.scanId) return;
+      pendingEnemyIcons.set(requestId, { enemyId: enemyIcon.enemyId, mimeType: enemyIcon.mimeType });
       return;
     }
 
@@ -458,6 +485,15 @@ async function handleDebuggerEvent(
     return;
   }
 
+  const pendingEnemyIcon = pendingEnemyIcons.get(requestId);
+  pendingEnemyIcons.delete(requestId);
+  if (pendingEnemyIcon) {
+    const state = await getRuntimeState();
+    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    void captureObservedEnemyIcon(tabId, requestId, pendingEnemyIcon.enemyId, pendingEnemyIcon.mimeType);
+    return;
+  }
+
   const meta = pendingResponses.take(requestId);
   if (!meta || !shouldReadObservedResponse(meta.url, meta.resourceType)) return;
 
@@ -479,6 +515,27 @@ async function captureObservedTreasureIcon(tabId: number, requestId: string, ite
     await storeObservedTreasureIconBody(itemId, body);
   } catch {
     // Observed Treasure icons are an optional local visual cache; account capture must continue unchanged.
+  }
+}
+
+async function captureObservedEnemyIcon(
+  tabId: number,
+  requestId: string,
+  enemyId: string,
+  mimeType: string,
+): Promise<void> {
+  try {
+    const body = await readResponseBodyWithRetry({
+      getResponseBody: async (id): Promise<DebuggerResponseBody> =>
+        (await chrome.debugger.sendCommand(
+          { tabId },
+          'Network.getResponseBody',
+          { requestId: id },
+        )) as DebuggerResponseBody,
+    }, requestId);
+    await storeObservedEnemyIconBody(enemyId, mimeType, body);
+  } catch {
+    // Enemy images are optional local visuals copied only from responses already loaded by the game.
   }
 }
 
@@ -583,6 +640,7 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
 
   pendingResponses.clear();
   pendingTreasureIcons.clear();
+  pendingEnemyIcons.clear();
   if (reason === 'canceled_by_user') {
     await clearCombatParseContext();
     await finishCaptureScan(state.scanId);

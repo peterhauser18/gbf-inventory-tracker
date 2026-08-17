@@ -31,6 +31,22 @@ export function participantSummary(
   return rows > 0 ? `${formatNumber(rows)}+ observed` : 'not observed';
 }
 
+export function mergeObservedRosterHistory(
+  previous: readonly CombatActorContext[],
+  context: CombatParseContext | null | undefined,
+): CombatActorContext[] {
+  const result = previous.slice(0, 6).map((actor) => ({ ...actor }));
+  const observed = [...(context?.actors ?? []), ...(context?.actorSlots ?? [])];
+
+  for (const actor of observed) {
+    if (!actor.id) continue;
+    const index = result.findIndex((entry) => entry.id === actor.id);
+    if (index >= 0) result[index] = { ...result[index], ...actor };
+    else if (result.length < 6) result.push({ ...actor });
+  }
+  return result;
+}
+
 export function missingRosterActors(
   context: CombatParseContext | null | undefined,
   representedActorIds: ReadonlySet<string>,
