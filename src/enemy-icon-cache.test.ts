@@ -41,14 +41,14 @@ function memoryCacheStorage() {
 
 test('only already-loaded enemy images on the proven static GBF asset host are accepted', () => {
   const accepted = parseObservedEnemyIconResponse(
-    'https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/enemy/s/8103533.png',
+    'https://prd-game-a-granbluefantasy.akamaized.net/assets_en/1786933262/img/sp/assets/enemy/s/9102863.png',
     'Image',
     'image/png',
     200,
   );
   assert.deepEqual(accepted, {
-    enemyId: '8103533',
-    url: 'https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/enemy/s/8103533.png',
+    enemyId: '9102863',
+    url: 'https://prd-game-a-granbluefantasy.akamaized.net/assets_en/1786933262/img/sp/assets/enemy/s/9102863.png',
     mimeType: 'image/png',
   });
   assert.equal(parseObservedEnemyIconResponse(
@@ -59,13 +59,14 @@ test('only already-loaded enemy images on the proven static GBF asset host are a
   )?.enemyId, '8103533');
 
   const rejected = [
-    ['https://evil.example/assets_en/img/sp/assets/enemy/s/8103533.png', 'Image', 'image/png', 200],
-    ['https://prd-game-b-granbluefantasy.akamaized.net/assets_en/img/sp/assets/enemy/s/8103533.png', 'Image', 'image/png', 200],
-    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/enemy/l/8103533.png', 'Image', 'image/png', 200],
-    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/enemy/s/not-an-id.png', 'Image', 'image/png', 200],
-    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/enemy/s/8103533.png', 'XHR', 'image/png', 200],
-    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/enemy/s/8103533.png', 'Image', 'image/svg+xml', 200],
-    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/img/sp/assets/enemy/s/8103533.png', 'Image', 'image/png', 404],
+    ['https://evil.example/assets_en/1786933262/img/sp/assets/enemy/s/9102863.png', 'Image', 'image/png', 200],
+    ['https://prd-game-b-granbluefantasy.akamaized.net/assets_en/1786933262/img/sp/assets/enemy/s/9102863.png', 'Image', 'image/png', 200],
+    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/not-a-version/img/sp/assets/enemy/s/9102863.png', 'Image', 'image/png', 200],
+    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/1786933262/img/sp/assets/enemy/l/9102863.png', 'Image', 'image/png', 200],
+    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/1786933262/img/sp/assets/enemy/s/not-an-id.png', 'Image', 'image/png', 200],
+    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/1786933262/img/sp/assets/enemy/s/9102863.png', 'XHR', 'image/png', 200],
+    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/1786933262/img/sp/assets/enemy/s/9102863.png', 'Image', 'image/svg+xml', 200],
+    ['https://prd-game-a-granbluefantasy.akamaized.net/assets_en/1786933262/img/sp/assets/enemy/s/9102863.png', 'Image', 'image/png', 404],
   ] as const;
   for (const [url, type, mimeType, status] of rejected) {
     assert.equal(parseObservedEnemyIconResponse(url, type, mimeType, status), null);
