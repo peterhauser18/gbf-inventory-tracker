@@ -12,18 +12,8 @@ export function classifyObservedResponseUrl(url: string): ObservedResponseRoute 
 }
 
 export function shouldReadObservedResponse(url: string, resourceType: CaptureResourceType): boolean {
-  if (resourceType === 'xhr' || resourceType === 'fetch') return classifyObservedResponseUrl(url) !== null;
-  if (resourceType === 'document') return isVerifiedCombatResultDocument(url);
-  return false;
-}
-
-function isVerifiedCombatResultDocument(url: string): boolean {
-  if (!isGbfGameOrigin(url)) return false;
-  try {
-    return /^\/resultmulti\/content\/index\/[^/]+\/?$/.test(new URL(url).pathname);
-  } catch {
-    return false;
-  }
+  if (resourceType !== 'xhr' && resourceType !== 'fetch') return false;
+  return classifyObservedResponseUrl(url) !== null;
 }
 
 function isGbfGameOrigin(url: string): boolean {
