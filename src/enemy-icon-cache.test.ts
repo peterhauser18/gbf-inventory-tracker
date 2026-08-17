@@ -8,6 +8,7 @@ import {
   enemyIconCacheKey,
   parseObservedEnemyIconResponse,
   raidBossIconAliasCacheKey,
+  raidNameWithoutLevelPrefix,
   readObservedEnemyIconBlob,
   readObservedRaidBossIconDataUrl,
   rememberObservedEnemyIconAlias,
@@ -93,6 +94,14 @@ test('observed enemy bytes round-trip locally without issuing a network request'
   }
 });
 
+test('raid icon names ignore the display level prefix', () => {
+  assert.equal(raidNameWithoutLevelPrefix('Lvl 200 Narophirmidas'), 'Narophirmidas');
+  assert.equal(raidNameWithoutLevelPrefix('Lv. 250 Hexachromatic Hierarch'), 'Hexachromatic Hierarch');
+  assert.equal(raidNameWithoutLevelPrefix('Level 120 Osiris'), 'Osiris');
+  assert.equal(raidNameWithoutLevelPrefix('Osiris'), 'Osiris');
+  assert.equal(raidBossIconAliasCacheKey('Lvl 200 Narophirmidas'), raidBossIconAliasCacheKey('Narophirmidas'));
+});
+
 test('verified start aliases enemy_id and raid name to the observed cjs image asset id', async () => {
   const storage = memoryCacheStorage();
   const bytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0a]);
@@ -100,15 +109,15 @@ test('verified start aliases enemy_id and raid name to the observed cjs image as
 
   assert.equal(await storeObservedEnemyIconBody('4200263', 'image/png', body, storage), true);
   assert.equal(await rememberObservedEnemyIconAlias('9900010', '4200263', storage), true);
-  assert.equal(await rememberObservedRaidBossIcon('Old Lignoid', '4200263', storage), true);
+  assert.equal(await rememberObservedRaidBossIcon('Narophirmidas', '4200263', storage), true);
   assert.equal(storage.values.has(enemyIconAliasCacheKey('9900010')), true);
-  assert.equal(storage.values.has(raidBossIconAliasCacheKey('Old Lignoid')), true);
+  assert.equal(storage.values.has(raidBossIconAliasCacheKey('Narophirmidas')), true);
 
   const aliased = await readObservedEnemyIconBlob('9900010', storage);
   assert.ok(aliased);
   assert.deepEqual([...new Uint8Array(await aliased.arrayBuffer())], [...bytes]);
 
-  const dataUrl = await readObservedRaidBossIconDataUrl(' old   lignoid ', storage);
+  const dataUrl = await readObservedRaidBossIconDataUrl('Lvl 200 Narophirmidas', storage);
   assert.ok(dataUrl?.startsWith('data:image/png;base64,'));
 });
 
