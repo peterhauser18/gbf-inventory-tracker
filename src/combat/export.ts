@@ -138,7 +138,7 @@ function sanitizeParseDiagnostics(value: unknown): CombatParseDiagnostic[] | und
   const result = value.flatMap((entry): CombatParseDiagnostic[] => {
     if (!isObject(entry)) return [];
     const cmd = cleanString(entry.cmd);
-    if (!cmd) return [];
+    if (!cmd || cmd.toLowerCase() === 'heal') return [];
     return [{
       observedAt: finiteNumber(entry.observedAt) ?? 0,
       turn: finiteNumber(entry.turn),
