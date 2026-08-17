@@ -20,7 +20,6 @@ import { isTerminalResult, shouldRetargetObservation } from './capture/target-po
 import {
   clearCombatParseContext,
   clearCombatStorage,
-  getCombatLiveContext,
   ingestCapturedCombatRecord,
 } from './combat/storage.ts';
 import type { RaidResult } from './combat/types.ts';
@@ -58,6 +57,8 @@ type RuntimeState = {
   active: boolean;
   tabId?: number;
   scanId?: string;
+  combatInstances?: Record<string, string>;
+  // Legacy single-tab lock fields are migrated into combatInstances.
   combatTabId?: number;
   combatInstanceId?: string;
   error?: string;
@@ -193,7 +194,7 @@ async function startObservation(explicitTabId?: number): Promise<CaptureStatusRe
     await chrome.debugger.attach(target, DEBUGGER_PROTOCOL_VERSION);
     await startCaptureScan(scanId);
     scanStarted = true;
-    await setRuntimeState({ active: true, tabId: target.tabId, scanId });
+    await setRuntimeState({ active: true, tabId: target.tabId, scanId, combatInstances: {} });
     await enableNetworkObservation(target.tabId);
   } catch (error) {
     if (scanStarted) await finishCaptureScan(scanId);
@@ -270,19 +271,12 @@ async function retargetObservation(candidateTabId: number): Promise<void> {
 async function switchObservationTarget(state: RuntimeState, candidateTabId: number): Promise<void> {
   if (!state.scanId) return;
   const previousTabId = state.tabId;
-  const preserveCombatLock = state.combatTabId === candidateTabId && Boolean(state.combatInstanceId);
-  const preservedState: RuntimeState = preserveCombatLock
-    ? {
-        active: true,
-        scanId: state.scanId,
-        combatTabId: state.combatTabId,
-        combatInstanceId: state.combatInstanceId,
-      }
-    : { active: true, scanId: state.scanId };
+  const preservedState: RuntimeState = { ...state, active: true, scanId: state.scanId };
+  delete preservedState.tabId;
+  delete preservedState.error;
 
   pendingResponses.clear();
   pendingTreasureIcons.clear();
-  if (!preserveCombatLock) await clearCombatParseContext();
   await setRuntimeState(preservedState);
 
   if (previousTabId !== undefined) {
@@ -366,28 +360,29 @@ async function recoverMovedCombatTarget(tabId: number): Promise<void> {
     !state.active ||
     !state.scanId ||
     state.tabId === tabId ||
-    state.combatTabId !== tabId ||
-    !state.combatInstanceId
+    !combatInstanceForTab(state, tabId)
   ) return;
   await queueObservationRetarget(tabId);
 }
 
 async function releaseUnavailableTarget(tabId: number, reason: string): Promise<void> {
   const state = await getRuntimeState();
-  if (
-    !state.active ||
-    !state.scanId ||
-    (state.tabId !== tabId && state.combatTabId !== tabId)
-  ) return;
+  if (!state.active || !state.scanId) return;
+  const combatInstances = getCombatInstances(state);
+  const hadCombat = delete combatInstances[String(tabId)];
+  if (state.tabId !== tabId && !hadCombat) return;
 
   pendingResponses.clear();
   pendingTreasureIcons.clear();
-  await clearCombatParseContext();
-  await setRuntimeState({
+  const next: RuntimeState = {
+    ...state,
     active: true,
     scanId: state.scanId,
+    combatInstances,
     error: `Observation target released: ${reason}.`,
-  });
+  };
+  if (state.tabId === tabId) delete next.tabId;
+  await setRuntimeState(next);
 
   if (state.tabId === tabId) {
     try {
@@ -395,8 +390,8 @@ async function releaseUnavailableTarget(tabId: number, reason: string): Promise<
     } catch {
       // The closed target is already gone.
     }
+    void retargetToFocusedGbfTab();
   }
-  void retargetToFocusedGbfTab();
 }
 
 async function handleDebuggerEvent(
@@ -509,10 +504,10 @@ async function captureObservedResponse(tabId: number, scanId: string, meta: Obse
 async function saveObservedResponse(tabId: number, record: CapturedResponseRecord): Promise<void> {
   const route = classifyObservedResponseUrl(record.meta.url);
   if (route === 'combat') {
-    const parse = await ingestCapturedCombatRecord(record);
-    const context = parse ? await getCombatLiveContext() : undefined;
-    if (parse && context?.instanceId) {
-      await updateCombatLock(tabId, context.instanceId, parse.result);
+    const state = await getRuntimeState();
+    const parse = await ingestCapturedCombatRecord(record, combatInstanceForTab(state, tabId) ?? null);
+    if (parse?.instanceId) {
+      await updateCombatLock(tabId, parse.instanceId, parse.result);
     }
     return;
   }
@@ -525,28 +520,19 @@ async function saveObservedResponse(tabId: number, record: CapturedResponseRecor
 async function updateCombatLock(tabId: number, instanceId: string, result: RaidResult): Promise<void> {
   const current = await getRuntimeState();
   if (!current.active || current.tabId !== tabId || !current.scanId) return;
+  const combatInstances = getCombatInstances(current);
+  const key = String(tabId);
 
   if (result === 'active') {
-    if (current.combatTabId === tabId && current.combatInstanceId === instanceId) return;
-    await setRuntimeState({
-      ...current,
-      combatTabId: tabId,
-      combatInstanceId: instanceId,
-    });
+    if (combatInstances[key] === instanceId) return;
+    combatInstances[key] = instanceId;
+    await setRuntimeState({ ...current, combatInstances });
     return;
   }
 
-  if (
-    !isTerminalResult(result) ||
-    current.combatTabId !== tabId ||
-    current.combatInstanceId !== instanceId
-  ) return;
-
-  const next = { ...current };
-  delete next.combatTabId;
-  delete next.combatInstanceId;
-  await setRuntimeState(next);
-  void retargetToFocusedGbfTab();
+  if (!isTerminalResult(result) || combatInstances[key] !== instanceId) return;
+  delete combatInstances[key];
+  await setRuntimeState({ ...current, combatInstances });
 }
 
 async function recordObservationReadWarning(
@@ -613,7 +599,7 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   delete next.tabId;
   await setRuntimeState(next);
 
-  if (state.combatTabId === tabId && state.combatInstanceId) {
+  if (combatInstanceForTab(state, tabId)) {
     void queueObservationRetarget(tabId);
     return;
   }
@@ -650,9 +636,32 @@ async function getStatus(): Promise<CaptureStatusResponse> {
 
 async function getRuntimeState(): Promise<RuntimeState> {
   const stored = await chrome.storage.session.get(STATE_KEY);
-  return (stored[STATE_KEY] as RuntimeState | undefined) ?? { active: false };
+  const state = (stored[STATE_KEY] as RuntimeState | undefined) ?? { active: false };
+  return normalizeRuntimeState(state);
 }
 
 async function setRuntimeState(state: RuntimeState): Promise<void> {
-  await chrome.storage.session.set({ [STATE_KEY]: state });
+  await chrome.storage.session.set({ [STATE_KEY]: normalizeRuntimeState(state) });
+}
+
+function normalizeRuntimeState(state: RuntimeState): RuntimeState {
+  const normalized: RuntimeState = {
+    ...state,
+    combatInstances: getCombatInstances(state),
+  };
+  delete normalized.combatTabId;
+  delete normalized.combatInstanceId;
+  return normalized;
+}
+
+function getCombatInstances(state: RuntimeState): Record<string, string> {
+  const instances = { ...(state.combatInstances ?? {}) };
+  if (state.combatTabId !== undefined && state.combatInstanceId) {
+    instances[String(state.combatTabId)] ??= state.combatInstanceId;
+  }
+  return instances;
+}
+
+function combatInstanceForTab(state: RuntimeState, tabId: number): string | undefined {
+  return getCombatInstances(state)[String(tabId)];
 }
