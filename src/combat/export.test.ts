@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseRaidParseExport, serializeRaidParse } from './export.ts';
-import type { RaidHistoryRecord } from './types.ts';
+import type { NormalizedRaidParse, RaidHistoryRecord } from './types.ts';
 
 test('raid parse export round-trips normalized facts and excludes local/user/secret/internal identity fields', () => {
   const record: RaidHistoryRecord & Record<string, unknown> = {
@@ -21,4 +21,30 @@ test('raid parse export round-trips normalized facts and excludes local/user/sec
   assert.equal(parsed.finalization, 'observed');
   assert.equal(parsed.finalizedAt, 10);
   assert.equal(parsed.drops[0]?.itemId, 'item-1');
+});
+
+test('active raid state is exportable without pretending a terminal result was observed', () => {
+  const active: NormalizedRaidParse = {
+    schemaVersion: 1,
+    raidTechnicalId: 'raid-active',
+    instanceId: 'internal-instance',
+    raidName: 'Active Raid',
+    result: 'active',
+    resultQuality: 'unknown',
+    parserQuality: 'partial',
+    damageQuality: 'known',
+    partyDamage: 42,
+    characterDamage: [],
+    stats: { quality: 'partial' },
+    log: [],
+    drops: [],
+    dropsQuality: 'unknown',
+    coverage: { startObserved: true, terminalObserved: false, parseGapObserved: false },
+    lastObservedAt: 50,
+  };
+  const parsed = parseRaidParseExport(serializeRaidParse(active));
+  assert.equal(parsed.result, 'active');
+  assert.equal(parsed.partyDamage, 42);
+  assert.equal(parsed.coverage.terminalObserved, false);
+  assert.equal(parsed.instanceId, undefined);
 });
