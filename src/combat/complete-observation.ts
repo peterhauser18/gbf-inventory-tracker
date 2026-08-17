@@ -6,7 +6,7 @@ import {
   type CombatParseContext,
   type VerifiedCombatObservation,
 } from './multiraid.ts';
-import type { BossState, ParsedCombatAction, ParsedDamageHit, RaidResult } from './types.ts';
+import type { ParsedDamageHit } from './types.ts';
 
 type Obj = Record<string, unknown>;
 
@@ -20,6 +20,7 @@ export type {
 } from './multiraid.ts';
 
 const FATED_CHAIN_PATH = '/rest/multiraid/fatal_chain_result.json';
+const ABILITY_RESULT_PATH = '/rest/multiraid/ability_result.json';
 const BASE_DAMAGE_COMMANDS = new Set([
   'attack',
   'damage',
@@ -37,26 +38,48 @@ export function parseVerifiedMultiraidObservation(
   record: CapturedResponseRecord,
   context?: CombatParseContext,
 ): VerifiedCombatObservation | null {
-  if (responsePath(record.meta.url) === FATED_CHAIN_PATH) {
-    return context ? parseFatedChainObservation(record, context) : null;
-  }
-
-  const normalized = normalizeSpecialNpcRecord(record);
+  const fatedChain = responsePath(record.meta.url) === FATED_CHAIN_PATH;
+  const normalized = normalizeVerifiedRecord(record, fatedChain);
   const observation = parseBaseVerifiedMultiraidObservation(normalized, context);
   if (!observation) return null;
+
   repairScenarioDamageEvidence(record.body, observation, context);
+  if (fatedChain) labelFatedChainDamage(observation);
   return observation;
 }
 
-function normalizeSpecialNpcRecord(record: CapturedResponseRecord): CapturedResponseRecord {
-  if (!obj(record.body) || !Array.isArray(record.body.scenario)) return record;
+function normalizeVerifiedRecord(
+  record: CapturedResponseRecord,
+  fatedChain: boolean,
+): CapturedResponseRecord {
+  const body = normalizeSpecialNpcBody(record.body);
+  if (!fatedChain && body === record.body) return record;
+  return {
+    ...record,
+    meta: fatedChain
+      ? { ...record.meta, url: `${new URL(record.meta.url).origin}${ABILITY_RESULT_PATH}` }
+      : record.meta,
+    body,
+  };
+}
+
+function normalizeSpecialNpcBody(body: unknown): unknown {
+  if (!obj(body) || !Array.isArray(body.scenario)) return body;
   let changed = false;
-  const scenario = record.body.scenario.map((value) => {
+  const scenario = body.scenario.map((value) => {
     if (!obj(value) || str(value.cmd)?.toLowerCase() !== 'special_npc') return value;
     changed = true;
     return { ...value, cmd: 'special' };
   });
-  return changed ? { ...record, body: { ...record.body, scenario } } : record;
+  return changed ? { ...body, scenario } : body;
+}
+
+function labelFatedChainDamage(observation: VerifiedCombatObservation): void {
+  for (const action of observation.actions) {
+    if (!action.actorId && action.kind === 'other' && action.hits.length > 0) {
+      action.name ??= 'Fated Chain';
+    }
+  }
 }
 
 function repairScenarioDamageEvidence(
@@ -150,55 +173,6 @@ function repairScenarioDamageEvidence(
   observation.unparsedActionCount += extraGaps;
 }
 
-function parseFatedChainObservation(
-  record: CapturedResponseRecord,
-  context: CombatParseContext,
-): VerifiedCombatObservation | null {
-  if (!obj(record.body)) return null;
-  const scenario = Array.isArray(record.body.scenario) ? record.body.scenario : [];
-  const actions: ParsedCombatAction[] = [];
-  let gaps = 0;
-
-  for (const raw of scenario) {
-    if (!obj(raw) || str(raw.to, raw.target)?.toLowerCase() !== 'boss') continue;
-    const payload = raw.list ?? raw.damage;
-    if (payload === undefined) continue;
-    const hits = damageHits(payload, 'other');
-    if (!hits.length) {
-      gaps += 1;
-      continue;
-    }
-    actions.push({
-      observedAt: record.meta.capturedAt,
-      turn: context.turn,
-      kind: 'other',
-      name: 'Fated Chain',
-      hits,
-    });
-  }
-
-  const boss = scenarioBoss(scenario);
-  const contributionDelta = scenarioContribution(scenario);
-  const result = scenarioResult(scenario);
-  if (!scenario.length && !boss && contributionDelta === undefined && result === undefined) return null;
-
-  return {
-    raidTechnicalId: context.raidTechnicalId,
-    observedAt: record.meta.capturedAt,
-    observedTurn: context.turn,
-    startObserved: false,
-    result,
-    boss,
-    contributionDelta,
-    actions,
-    actionsFieldPresent: scenario.length > 0,
-    unparsedActionCount: gaps,
-    drops: [],
-    dropsQuality: 'unknown',
-    context: cloneContext(context),
-  };
-}
-
 function isUnknownBossDamageCommand(raw: Obj, cmd: string): boolean {
   if (BASE_DAMAGE_COMMANDS.has(cmd)) return false;
   if (str(raw.to, raw.target)?.toLowerCase() !== 'boss') return false;
@@ -253,64 +227,12 @@ function promoteBackline(slots: CombatActorContext[], pos: number): void {
   slots[5] = {};
 }
 
-function actorAt(slots: readonly CombatActorContext[], pos: number | undefined): CombatActorContext | undefined {
+function actorAt(
+  slots: readonly CombatActorContext[],
+  pos: number | undefined,
+): CombatActorContext | undefined {
   if (pos === undefined || !Number.isInteger(pos) || pos < 0) return undefined;
   return slots[pos];
-}
-
-function scenarioBoss(scenario: unknown[]): BossState | undefined {
-  let latest: BossState | undefined;
-  for (const value of scenario) {
-    if (!obj(value) || str(value.cmd)?.toLowerCase() !== 'boss_gauge') continue;
-    const hp = num(value.hp);
-    const maxHp = num(value.hpmax, value.max_hp);
-    const name = localizedText(value.name);
-    if (hp === undefined && maxHp === undefined && !name) continue;
-    latest = {
-      name,
-      hp,
-      maxHp,
-      hpPercent: hp !== undefined && maxHp !== undefined && maxHp > 0 ? hp / maxHp * 100 : undefined,
-      quality: hp !== undefined ? 'known' : 'partial',
-    };
-  }
-  return latest;
-}
-
-function scenarioContribution(scenario: unknown[]): number | undefined {
-  let total = 0;
-  let observed = false;
-  for (const value of scenario) {
-    if (!obj(value) || str(value.cmd)?.toLowerCase() !== 'contribution') continue;
-    const amount = num(value.amount);
-    if (amount === undefined) continue;
-    total += amount;
-    observed = true;
-  }
-  return observed ? total : undefined;
-}
-
-function scenarioResult(scenario: unknown[]): Exclude<RaidResult, 'active'> | undefined {
-  let bossDied = false;
-  let terminalDrop = false;
-  for (const value of scenario) {
-    if (!obj(value)) continue;
-    const cmd = str(value.cmd)?.toLowerCase();
-    if (cmd === 'win') return 'victory';
-    if (cmd === 'die' && str(value.to)?.toLowerCase() === 'boss') bossDied = true;
-    if (cmd === 'drop') terminalDrop = true;
-  }
-  return bossDied && terminalDrop ? 'victory' : undefined;
-}
-
-function cloneContext(context: CombatParseContext): CombatParseContext {
-  return {
-    ...context,
-    actorSlots: context.actorSlots.map((actor) => ({ ...actor })),
-    actors: context.actors?.map((actor) => ({ ...actor })),
-    summons: context.summons?.map((summon) => ({ ...summon })),
-    participants: context.participants?.map((participant) => ({ ...participant })),
-  };
 }
 
 function responsePath(url: string): string | undefined {
@@ -319,12 +241,6 @@ function responsePath(url: string): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-function localizedText(value: unknown): string | undefined {
-  if (typeof value === 'string') return str(value);
-  if (!obj(value)) return undefined;
-  return str(value.en, value.ja, ...Object.values(value));
 }
 
 function obj(value: unknown): value is Obj {
