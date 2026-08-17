@@ -165,6 +165,13 @@ export function raidBossIconAliasCacheKey(raidName: string): string {
   return new URL(`${CACHE_RAID_ALIAS_PREFIX}${encodeURIComponent(normalizedRaidName(raidName))}`, CACHE_KEY_ORIGIN).toString();
 }
 
+export function raidNameWithoutLevelPrefix(value: string): string {
+  return value
+    .trim()
+    .replace(/^(?:(?:lvl?|level)\.?\s*\d+)\s+/i, '')
+    .trim();
+}
+
 async function readCachedAssetAlias(cache: CacheLike, key: string): Promise<string | undefined> {
   const response = await cache.match(key);
   if (!response?.ok) return undefined;
@@ -181,7 +188,7 @@ async function responseBlob(response: Response | undefined): Promise<Blob | unde
 }
 
 function normalizedRaidName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 160);
+  return raidNameWithoutLevelPrefix(value).toLowerCase().replace(/\s+/g, ' ').slice(0, 160);
 }
 
 function decodeBase64(encoded: string): Uint8Array {
