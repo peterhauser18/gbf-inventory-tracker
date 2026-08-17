@@ -32,13 +32,7 @@ export function manualFinalizeRaid(
   raid: NormalizedRaidParse,
   finalizedAt: number,
 ): NormalizedRaidParse {
-  if (isTerminalRaid(raid)) {
-    return {
-      ...raid,
-      finalization: raid.finalization ?? 'observed',
-      finalizedAt: raid.finalizedAt ?? raid.observedEndedAt ?? finalizedAt,
-    };
-  }
+  if (isTerminalRaid(raid)) return observedFinalizeRaid(raid);
 
   return {
     ...raid,
@@ -57,13 +51,37 @@ export function manualFinalizeRaid(
 
 export function observedFinalizeRaid(raid: NormalizedRaidParse): NormalizedRaidParse {
   if (!isTerminalRaid(raid)) return raid;
+  const rewardVictory = hasObservedVictoryRewards(raid) && !isExplicitTerminalResult(raid.result);
+  const observedEndedAt = raid.observedEndedAt ?? (rewardVictory ? raid.lastObservedAt : undefined);
   return {
     ...raid,
+    result: rewardVictory ? 'victory' : raid.result,
+    resultQuality: rewardVictory ? 'known' : raid.resultQuality,
+    observedEndedAt,
+    durationMs: raid.observedStartedAt !== undefined && observedEndedAt !== undefined
+      ? Math.max(0, observedEndedAt - raid.observedStartedAt)
+      : raid.durationMs,
+    coverage: {
+      ...raid.coverage,
+      terminalObserved: true,
+    },
     finalization: 'observed',
-    finalizedAt: raid.observedEndedAt ?? raid.lastObservedAt,
+    finalizedAt: observedEndedAt ?? raid.lastObservedAt,
   };
 }
 
-export function isTerminalRaid(raid: Pick<NormalizedRaidParse, 'result'>): boolean {
-  return raid.result === 'victory' || raid.result === 'failure' || raid.result === 'left';
+export function isTerminalRaid(
+  raid: Pick<NormalizedRaidParse, 'result' | 'drops' | 'dropsQuality'>,
+): boolean {
+  return isExplicitTerminalResult(raid.result) || hasObservedVictoryRewards(raid);
+}
+
+function isExplicitTerminalResult(result: NormalizedRaidParse['result']): boolean {
+  return result === 'victory' || result === 'failure' || result === 'left';
+}
+
+function hasObservedVictoryRewards(
+  raid: Pick<NormalizedRaidParse, 'drops' | 'dropsQuality'>,
+): boolean {
+  return raid.dropsQuality === 'known' && raid.drops.length > 0;
 }
