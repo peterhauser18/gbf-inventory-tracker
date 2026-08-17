@@ -240,12 +240,18 @@ function ensureBossFallback(root: HTMLElement, raid: NormalizedRaidParse): void 
 async function hydrateWikiRaidIcon(image: HTMLImageElement, raidName: string): Promise<void> {
   const source = await resolveWikiRaidIcon(raidName).catch(() => undefined);
   if (!source || !image.isConnected) {
-    image.remove();
+    removeBossIconForRetry(image);
     return;
   }
   image.addEventListener('load', () => { image.hidden = false; }, { once: true });
-  image.addEventListener('error', () => image.remove(), { once: true });
+  image.addEventListener('error', () => removeBossIconForRetry(image), { once: true });
   image.src = source;
+}
+
+function removeBossIconForRetry(image: HTMLImageElement): void {
+  const title = image.closest<HTMLElement>('.combat-raid-title');
+  image.closest<HTMLElement>('.combat-boss-icon')?.remove();
+  title?.classList.remove('has-boss-icon');
 }
 
 function normalizeSummonPresentation(root: HTMLElement): void {
