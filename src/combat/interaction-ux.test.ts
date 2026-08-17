@@ -31,13 +31,15 @@ test('raid history removes notes, starts drops collapsed, and reuses cockpit cha
   assert.match(ux, /querySelector<HTMLElement>\('\.cockpit-inline-detail'\)/);
 });
 
-test('combat hydrates MC, retained dead actors, and boss fallbacks from passive visual ids through Wiki only', () => {
+test('combat hydrates MC and retained actors from passive ids and prefers locally observed boss images', () => {
   assert.match(storage, /enrichObservedActorVisuals\(record, observation\.context\)/);
   assert.match(storage, /retainActorVisualId\(actor,/);
   assert.match(ux, /getCombatLiveContext\(\)/);
   assert.match(ux, /getLatestCombatParse\(\)/);
   assert.match(ux, /\[data-character-select\], \[data-roster-actor-id\]/);
   assert.match(ux, /actorVisualImageId\(actor\)/);
+  assert.match(ux, /readObservedEnemyIconBlob\(enemyId\)/);
+  assert.match(ux, /if \(!container\.querySelector\('img'\)\) await hydrateImageContainerFromAsset\(container, 'boss', enemyId\)/);
   assert.match(ux, /resolveWikiCombatAssetImage\(kind, assetId\)/);
   assert.match(ux, /\.combat-boss-icon \.combat-image/);
   assert.doesNotMatch(ux, /fetch\(|XMLHttpRequest|webRequest|granbluefantasy|akamaized/);
