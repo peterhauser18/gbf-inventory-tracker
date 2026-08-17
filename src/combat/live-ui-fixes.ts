@@ -229,7 +229,7 @@ function ensureBossFallback(root: HTMLElement, raid: NormalizedRaidParse): void 
   const wikiImage = document.createElement('img');
   wikiImage.dataset.combatImage = 'true';
   wikiImage.alt = '';
-  wikiImage.loading = 'lazy';
+  wikiImage.loading = 'eager';
   wikiImage.decoding = 'async';
   wikiImage.referrerPolicy = 'no-referrer';
   wikiImage.hidden = true;
@@ -243,6 +243,15 @@ async function hydrateWikiRaidIcon(image: HTMLImageElement, raidName: string): P
     removeBossIconForRetry(image);
     return;
   }
+
+  if (source.startsWith('data:image/')) {
+    image.src = source;
+    image.hidden = false;
+    const fallback = image.parentElement?.querySelector<HTMLElement>(':scope > span');
+    fallback?.remove();
+    return;
+  }
+
   const reveal = () => revealBossIcon(image);
   image.addEventListener('load', reveal, { once: true });
   image.addEventListener('error', () => removeBossIconForRetry(image), { once: true });
