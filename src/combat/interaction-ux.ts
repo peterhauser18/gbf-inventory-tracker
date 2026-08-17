@@ -5,6 +5,7 @@ import {
   type EntityMetadata,
   type EntityMetadataIndex,
 } from '../dashboard/wiki-metadata.ts';
+import { readObservedEnemyIconBlob } from '../enemy-icon-cache.ts';
 import { buildCharacterAnalyses } from './analytics.ts';
 import { renderCombatLayout } from './layouts.ts';
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
@@ -198,7 +199,7 @@ async function hydrateCombatVisuals(section: HTMLElement): Promise<void> {
     await hydrateRaidDetailVisuals(section, metadata);
     const bossImage = section.querySelector<HTMLElement>('.combat-boss-icon .combat-image');
     if (bossImage && !bossImage.querySelector('img') && raid?.boss?.id) {
-      await hydrateImageContainerFromAsset(bossImage, 'boss', raid.boss.id);
+      await hydrateBossImage(bossImage, raid.boss.id);
     }
   } finally {
     combatVisualHydrationPending = false;
@@ -271,6 +272,16 @@ async function hydrateActorImage(
   if (imageId) await hydrateImageContainerFromAsset(container, 'character', imageId);
 }
 
+async function hydrateBossImage(container: HTMLElement, enemyId: string): Promise<void> {
+  if (container.querySelector('img')) return;
+  const observed = await readObservedEnemyIconBlob(enemyId);
+  if (observed) {
+    const source = URL.createObjectURL(observed);
+    appendCombatImage(container, source, true);
+  }
+  if (!container.querySelector('img')) await hydrateImageContainerFromAsset(container, 'boss', enemyId);
+}
+
 function actorForVisual(context: CombatParseContext, actorId: string): CombatActorContext | undefined {
   return context.actors?.find((actor) => actor.id === actorId)
     ?? context.actorSlots.find((actor) => actor.id === actorId);
@@ -286,15 +297,22 @@ async function hydrateImageContainerFromAsset(
   if (source) appendCombatImage(container, source);
 }
 
-function appendCombatImage(container: HTMLElement, source: string): void {
-  if (!container.isConnected || container.querySelector('img')) return;
+function appendCombatImage(container: HTMLElement, source: string, revokeObjectUrl = false): void {
+  if (!container.isConnected || container.querySelector('img')) {
+    if (revokeObjectUrl) URL.revokeObjectURL(source);
+    return;
+  }
   const image = document.createElement('img');
   image.dataset.combatImage = 'true';
   image.alt = '';
   image.loading = 'lazy';
   image.decoding = 'async';
   image.referrerPolicy = 'no-referrer';
-  image.addEventListener('error', () => image.remove(), { once: true });
+  if (revokeObjectUrl) image.addEventListener('load', () => URL.revokeObjectURL(source), { once: true });
+  image.addEventListener('error', () => {
+    if (revokeObjectUrl) URL.revokeObjectURL(source);
+    image.remove();
+  }, { once: true });
   image.src = source;
   container.append(image);
 }
