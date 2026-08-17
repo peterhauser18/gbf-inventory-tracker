@@ -5,16 +5,22 @@ import type { NormalizedRaidParse } from './types.ts';
 import {
   combatInitials,
   liveDurationLabel,
+  mergeObservedRosterHistory,
   missingRosterActors,
   participantSummary,
   type MissingRosterActor,
 } from './live-ui-state.ts';
+import { resolveWikiRaidIcon } from './wiki-raid-icons.ts';
 
 let liveRaids = new Map<string, ActiveCombatRaid>();
+const observedRosterByRaid = new Map<string, CombatActorContext[]>();
 
 export async function refreshCombatLiveUiState(): Promise<void> {
   const active = await getActiveCombatRaids();
   liveRaids = new Map(active.map((entry) => [entry.key, entry]));
+  for (const key of observedRosterByRaid.keys()) {
+    if (!liveRaids.has(key)) observedRosterByRaid.delete(key);
+  }
 }
 
 export function applyCombatLiveUiFixes(root: HTMLElement, now = Date.now()): void {
@@ -23,28 +29,41 @@ export function applyCombatLiveUiFixes(root: HTMLElement, now = Date.now()): voi
     for (const card of cards) {
       const key = card.dataset.activeCombatKey;
       const entry = key ? liveRaids.get(key) : undefined;
-      if (entry) applyRaidFixes(card, entry.parse, entry.context ?? null, now);
+      if (entry) applyRaidFixes(card, entry.key, entry.parse, entry.context ?? null, now);
     }
     return;
   }
 
   const first = liveRaids.values().next().value as ActiveCombatRaid | undefined;
-  if (first) applyRaidFixes(root, first.parse, first.context ?? null, now);
+  if (first) applyRaidFixes(root, first.key, first.parse, first.context ?? null, now);
 }
 
 function applyRaidFixes(
   root: HTMLElement,
+  key: string,
   raid: NormalizedRaidParse,
   context: CombatParseContext | null,
   now: number,
 ): void {
+  const stableContext = preserveObservedRoster(key, context);
   updateDuration(root, raid, now);
-  updateParticipants(root, raid, context);
-  keepSixRosterMembersVisible(root, context, raid);
+  updateParticipants(root, raid, stableContext);
+  keepSixRosterMembersVisible(root, stableContext, raid);
   improvePartyStateLabels(root);
-  ensureMainCharacterFallback(root, context);
+  correctPromotedMainSlotLabel(root, stableContext);
+  ensureMainCharacterFallback(root, stableContext);
   ensureBossFallback(root, raid);
   normalizeSummonPresentation(root);
+}
+
+function preserveObservedRoster(
+  key: string,
+  context: CombatParseContext | null,
+): CombatParseContext | null {
+  if (!context) return null;
+  const roster = mergeObservedRosterHistory(observedRosterByRaid.get(key) ?? [], context);
+  observedRosterByRaid.set(key, roster);
+  return { ...context, actors: roster };
 }
 
 function updateDuration(root: HTMLElement, raid: NormalizedRaidParse, now: number): void {
@@ -161,6 +180,21 @@ function improvePartyStateLabels(root: HTMLElement): void {
   }
 }
 
+function correctPromotedMainSlotLabel(root: HTMLElement, context: CombatParseContext | null): void {
+  const mainCharacterId = context?.mainCharacterId;
+  const accountName = context?.accountDisplayName?.trim();
+  if (!mainCharacterId || !accountName) return;
+  for (const target of root.querySelectorAll<HTMLElement>('[data-character-select]')) {
+    const actorId = target.dataset.characterSelect;
+    if (!actorId || actorId === mainCharacterId) continue;
+    const label = target.querySelector<HTMLElement>('.party-card-copy > strong, .cockpit-character strong');
+    if (label?.textContent?.trim() !== accountName) continue;
+    const actor = context.actors?.find((entry) => entry.id === actorId)
+      ?? context.actorSlots.find((entry) => entry.id === actorId);
+    if (actor?.name) label.textContent = actor.name;
+  }
+}
+
 function ensureMainCharacterFallback(root: HTMLElement, context: CombatParseContext | null): void {
   const id = context?.mainCharacterId;
   if (!id) return;
@@ -188,6 +222,57 @@ function ensureBossFallback(root: HTMLElement, raid: NormalizedRaidParse): void 
   icon.append(image);
   title.classList.add('has-boss-icon');
   title.prepend(icon);
+
+  const raidName = raid.raidName?.trim();
+  if (!raidName) return;
+  icon.dataset.bossRaidName = raidName;
+  const wikiImage = document.createElement('img');
+  wikiImage.dataset.combatImage = 'true';
+  wikiImage.alt = '';
+  wikiImage.loading = 'eager';
+  wikiImage.decoding = 'async';
+  wikiImage.referrerPolicy = 'no-referrer';
+  wikiImage.hidden = true;
+  image.append(wikiImage);
+  void hydrateWikiRaidIcon(wikiImage, raidName);
+}
+
+async function hydrateWikiRaidIcon(image: HTMLImageElement, raidName: string): Promise<void> {
+  const source = await resolveWikiRaidIcon(raidName).catch(() => undefined);
+  if (!source || !image.isConnected) {
+    removeBossIconForRetry(image);
+    return;
+  }
+
+  if (source.startsWith('data:image/')) {
+    image.src = source;
+    image.hidden = false;
+    const fallback = image.parentElement?.querySelector<HTMLElement>(':scope > span');
+    fallback?.remove();
+    return;
+  }
+
+  const reveal = () => revealBossIcon(image);
+  image.addEventListener('load', reveal, { once: true });
+  image.addEventListener('error', () => removeBossIconForRetry(image), { once: true });
+  image.src = source;
+  if (image.complete) {
+    if (image.naturalWidth > 0) reveal();
+    else removeBossIconForRetry(image);
+  }
+}
+
+function revealBossIcon(image: HTMLImageElement): void {
+  if (!image.isConnected || image.naturalWidth <= 0) return;
+  image.hidden = false;
+  const fallback = image.parentElement?.querySelector<HTMLElement>(':scope > span');
+  fallback?.remove();
+}
+
+function removeBossIconForRetry(image: HTMLImageElement): void {
+  const title = image.closest<HTMLElement>('.combat-raid-title');
+  image.closest<HTMLElement>('.combat-boss-icon')?.remove();
+  title?.classList.remove('has-boss-icon');
 }
 
 function normalizeSummonPresentation(root: HTMLElement): void {

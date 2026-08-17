@@ -81,6 +81,21 @@ test('missing roster history retains dead frontliners after two backline promoti
   ]);
 });
 
+test('cached local boss data image is shown immediately instead of remaining hidden behind initials', () => {
+  const source = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
+  assert.match(source, /wikiImage\.loading = 'eager'/);
+  assert.match(source, /source\.startsWith\('data:image\/'\)/);
+  assert.match(source, /image\.src = source;\s*image\.hidden = false;/);
+  assert.match(source, /fallback\?\.remove\(\);\s*return;/);
+});
+
+test('failed boss icon hydration removes the shell so the next live refresh retries local CJS cache', () => {
+  const source = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
+  assert.match(source, /if \(!title \|\| title\.querySelector\('\.combat-boss-icon'\)\) return/);
+  assert.match(source, /removeBossIconForRetry\(image\)/);
+  assert.match(source, /image\.closest<HTMLElement>\('\.combat-boss-icon'\)\?\.remove\(\)/);
+});
+
 test('live UI fix remains local/read-only and applies state per active raid wrapper', () => {
   const source = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('./live-ui-fixes.css', import.meta.url), 'utf8');
@@ -96,4 +111,6 @@ test('live UI fix remains local/read-only and applies state per active raid wrap
   assert.match(styles, /repeat\(6, minmax\(0, 1fr\)\)/);
   assert.match(styles, /aspect-ratio: 1 \/ 1/);
   assert.match(styles, /object-fit: contain/);
+  assert.match(styles, /\.party-card\.inactive\.reserve \.state-tag/);
+  assert.match(styles, /background: transparent/);
 });

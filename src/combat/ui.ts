@@ -2,6 +2,8 @@ import './raids-v2.css';
 import './ui-v2.css';
 import { CombatDashboardControllerV2 } from './dashboard-multi-active.ts';
 import { COMBAT_LAYOUT_PRESETS, type CombatLayoutPreset } from './layouts.ts';
+import { installCombatRaidInteractionUx } from './interaction-ux.ts';
+import { installCombatMultiActiveCompat } from './multi-active-compat.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
@@ -13,6 +15,8 @@ let lastSectionMarkup = '';
 const controller = new CombatDashboardControllerV2(() => renderSectionIfChanged());
 
 if (app) {
+  installCombatMultiActiveCompat(app);
+  installCombatRaidInteractionUx(app);
   app.addEventListener('click', (event) => {
     const button = (event.target as Element | null)?.closest<HTMLButtonElement>('.nav-item[data-section]');
     if (!button || button.dataset.section === 'combat' || button.dataset.section === 'raids') return;
@@ -100,7 +104,7 @@ function renderSelectedShell(): void {
   const title = selected === 'combat' ? 'Combat' : 'Raids';
   const description = selected === 'combat'
     ? 'Live read-only raid analytics from already-received supported combat responses.'
-    : 'Local raid history, global pinned drops, personal observed rates, public wiki references, notes and normalized import/export.';
+    : 'Local raid history, global pinned drops, personal observed rates, public wiki references and normalized import/export.';
   const controls = selected === 'combat'
     ? `<label class="search combat-layout-control"><span>Layout</span><select id="combat-layout-select">${COMBAT_LAYOUT_PRESETS.map(([value, label]) => `<option value="${value}"${value === layout ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>`
     : `<label class="search"><span>Search</span><input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" /></label>`;
@@ -156,9 +160,9 @@ function renderSectionIfChanged(force = false): void {
 
 function loadLayoutPreference(): CombatLayoutPreset {
   try {
-    return parseLayout(localStorage.getItem(LAYOUT_KEY)) ?? 'cypher-modern';
+    return parseLayout(localStorage.getItem(LAYOUT_KEY)) ?? 'combat-cockpit';
   } catch {
-    return 'cypher-modern';
+    return 'combat-cockpit';
   }
 }
 
