@@ -10,7 +10,7 @@ import {
   type CombatParticipantDisplay,
   type CombatSummonContext,
   type VerifiedCombatObservation,
-} from './multiraid.ts';
+} from './complete-observation.ts';
 import type { NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord } from './types.ts';
 import { enrichVerifiedScenarioSemantics, preserveVerifiedNormalFacts } from './verified-combat-semantics.ts';
 
