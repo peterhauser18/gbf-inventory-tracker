@@ -24,7 +24,7 @@ test('clicking an already selected combat character suppresses and restores shar
 test('raid history removes notes, starts drops collapsed, and reuses cockpit character detail rendering', () => {
   assert.match(ux, /querySelectorAll<HTMLElement>\('\.raid-note'\)/);
   assert.match(ux, /raidDropOpenById/);
-  assert.match(ux, /data\.raidCharacterActorId/);
+  assert.match(ux, /dataset\.raidCharacterActorId/);
   assert.match(ux, /selectedRaidActorById/);
   assert.match(ux, /renderCombatLayout\('combat-cockpit', \{/);
   assert.match(ux, /querySelector<HTMLElement>\('\.cockpit-inline-detail'\)/);
