@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const popup = readFileSync(new URL('./popup.ts', import.meta.url), 'utf8');
+const popupCombat = readFileSync(new URL('./popup-combat.ts', import.meta.url), 'utf8');
 const popupHtml = readFileSync(new URL('../popup.html', import.meta.url), 'utf8');
 const manifest = JSON.parse(readFileSync(new URL('../public/manifest.json', import.meta.url), 'utf8')) as {
   name?: string;
@@ -23,6 +24,19 @@ test('automatic observation still targets only an explicitly selected GBF tab', 
   assert.match(popup, /findActiveGbfTabId\(\)/);
   assert.match(popup, /isGbfPageUrl\(tab\.url\)/);
   assert.match(popup, /sendMessage\(\{ type: 'gbfit:start-observation', tabId \}\)/);
+});
+
+test('popup exposes a standalone Combat Tracker launcher without opening the dashboard', () => {
+  assert.match(popupHtml, /src="\/src\/popup-combat\.ts"/);
+  assert.match(popupCombat, /Open Combat Tracker/);
+  assert.match(popupCombat, /chrome\.runtime\.getURL\('combat\.html'\)/);
+  assert.doesNotMatch(popupCombat, /dashboard\.html/);
+});
+
+test('Combat Tracker launcher reuses the existing explicit GBF-tab observation boundary', () => {
+  assert.match(popupCombat, /isGbfPageUrl\(tab\.url\)/);
+  assert.match(popupCombat, /type: 'gbfit:start-observation', tabId: tab\.id/);
+  assert.doesNotMatch(popupCombat, /fetch\(|XMLHttpRequest|webRequest/);
 });
 
 test('diagnostic capture storage is not imported during popup startup', () => {
