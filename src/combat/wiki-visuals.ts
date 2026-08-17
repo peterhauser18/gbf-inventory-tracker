@@ -2,7 +2,7 @@ import { deferWikiImageUrl } from '../dashboard/wiki-image-loader.ts';
 
 const WIKI_API = 'https://gbf.wiki/api.php';
 const WIKI_ORIGIN = 'https://gbf.wiki';
-const CACHE_KEY = 'gbfit:wiki-combat-visuals:v1';
+const CACHE_KEY = 'gbfit:wiki-combat-visuals:v2';
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type CombatWikiAssetKind = 'character' | 'boss';
@@ -30,6 +30,9 @@ export function combatWikiAssetCandidateFilenames(
   if (!safeId) return [];
   if (kind === 'boss') {
     return [
+      `Enemy_Icon_${safeId}_S.png`,
+      `Enemy_Icon_${safeId}_M.png`,
+      `Enemy_Icon_${safeId}_L.png`,
       `Quest_l_${safeId}.jpg`,
       `Quest_l_${safeId}.png`,
       `Enemy_s_${safeId}.png`,
