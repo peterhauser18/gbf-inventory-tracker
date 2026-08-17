@@ -4,6 +4,7 @@ import type { CapturedResponseRecord } from '../capture/types.ts';
 import type { CombatParseContext } from './multiraid.ts';
 import {
   actorVisualImageId,
+  bossImageAssetIdFromCjs,
   enrichObservedActorVisuals,
   retainActorVisualId,
 } from './visual-context.ts';
@@ -43,6 +44,13 @@ test('verified start keeps pid_image on matching actors without changing actor i
   assert.equal(context.actorSlots[0]?.id, 'mc');
   assert.equal(actorVisualImageId(context.actorSlots[0]), '450301');
   assert.equal(actorVisualImageId(context.actors?.[1]), '3040001000');
+});
+
+test('boss cjs values expose the image asset id independently from enemy_id', () => {
+  assert.equal(bossImageAssetIdFromCjs('enemy_4200263'), '4200263');
+  assert.equal(bossImageAssetIdFromCjs('enemy_8103533_form_a'), '8103533');
+  assert.equal(bossImageAssetIdFromCjs('9900010'), undefined);
+  assert.equal(bossImageAssetIdFromCjs('../enemy_4200263'), undefined);
 });
 
 test('retaining a dead/history actor copy preserves only a safe visual asset id', () => {
