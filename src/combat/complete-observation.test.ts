@@ -105,6 +105,35 @@ test('C.A.-adjacent damage and loop_damage keep the actor and land in Skill dama
   assert.equal(mc?.breakdown.skill, 90);
 });
 
+test('non-action scenario noise does not expire a proven C.A. follow-up source', () => {
+  const observation = parse(record(ATTACK, { scenario: [
+    {
+      cmd: 'special',
+      target: 'boss',
+      pos: 1,
+      name: 'Synthetic C.A.',
+      list: [{ damage: [{ value: 100 }] }],
+    },
+    { cmd: 'message' },
+    { cmd: 'message' },
+    { cmd: 'boss_gauge', hp: 900, hpmax: 1000 },
+    { cmd: 'message' },
+    { cmd: 'message' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 50 }] },
+  ] }));
+
+  assert.equal(observation.actions.length, 2);
+  assert.equal(observation.actions[1]?.actorId, 'front-a');
+  assert.equal(observation.actions[1]?.name, 'C.A. follow-up');
+  assert.deepEqual(observation.actions[1]?.hits.map((hit) => hit.kind), ['skill']);
+
+  const raid = mergeVerifiedMultiraidObservation(null, observation);
+  const actor = raid.characterDamage.find((row) => row.actorId === 'front-a');
+  assert.equal(raid.partyDamage, 150);
+  assert.equal(actor?.breakdown.ougi, 100);
+  assert.equal(actor?.breakdown.skill, 50);
+});
+
 test('ability-scoped loop damage remains one attributed skill action', () => {
   const observation = parse(record(ABILITY, { scenario: [
     { cmd: 'ability', pos: 1, name: 'Synthetic Skill' },
@@ -170,6 +199,57 @@ test('chain_cutin reclassifies already-attributed damage instead of double-count
   assert.equal(mc?.total, 75);
   assert.equal(mc?.breakdown.other, 75);
   assert.equal(raid.characterDamage.find((row) => row.actorId === 'front-c'), undefined);
+});
+
+test('chain_cutin extracts Chain Burst hits from a larger stale pending ability action', () => {
+  const observation = parse(record(ATTACK, { scenario: [
+    { cmd: 'ability', pos: 2, name: 'Synthetic Skill' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 10 }] },
+    { cmd: 'chain_cutin' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 75 }] },
+  ] }));
+
+  assert.equal(observation.actions.length, 2);
+  assert.equal(observation.actions[0]?.actorId, 'front-b');
+  assert.equal(observation.actions[0]?.kind, 'skill');
+  assert.equal(observation.actions[0]?.hits.reduce((sum, hit) => sum + hit.amount, 0), 10);
+  assert.equal(observation.actions[1]?.actorId, 'mc-tech');
+  assert.equal(observation.actions[1]?.kind, 'other');
+  assert.equal(observation.actions[1]?.name, 'Chain Burst');
+  assert.equal(observation.actions[1]?.hits.reduce((sum, hit) => sum + hit.amount, 0), 75);
+
+  const raid = mergeVerifiedMultiraidObservation(null, observation);
+  const source = raid.characterDamage.find((row) => row.actorId === 'front-b');
+  const mc = raid.characterDamage.find((row) => row.actorId === 'mc-tech');
+  assert.equal(raid.partyDamage, 85);
+  assert.equal(source?.breakdown.skill, 10);
+  assert.equal(mc?.breakdown.other, 75);
+});
+
+test('wait boundary keeps later damage party-level instead of stealing the pending ability actor', () => {
+  const observation = parse(record(ATTACK, { scenario: [
+    { cmd: 'ability', pos: 2, name: 'Synthetic Skill' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 10 }] },
+    { cmd: 'wait' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 25 }] },
+  ] }));
+
+  assert.equal(observation.actions.length, 2);
+  assert.equal(observation.actions[0]?.actorId, 'front-b');
+  assert.equal(observation.actions[0]?.kind, 'skill');
+  assert.equal(observation.actions[0]?.hits.reduce((sum, hit) => sum + hit.amount, 0), 10);
+  assert.equal(observation.actions[1]?.actorId, undefined);
+  assert.equal(observation.actions[1]?.kind, 'other');
+  assert.equal(observation.actions[1]?.name, 'Unclassified damage');
+  assert.equal(observation.actions[1]?.hits.reduce((sum, hit) => sum + hit.amount, 0), 25);
+  assert.equal(observation.unparsedActionCount, 1);
+
+  const raid = mergeVerifiedMultiraidObservation(null, observation);
+  const source = raid.characterDamage.find((row) => row.actorId === 'front-b');
+  assert.equal(raid.partyDamage, 35);
+  assert.equal(source?.total, 10);
+  assert.equal(raid.coverage.parseGapObserved, true);
+  assert.equal(raid.damageQuality, 'partial');
 });
 
 test('Fated Chain damage that carries an observed MC actor is retained on MC but classified Other', () => {
