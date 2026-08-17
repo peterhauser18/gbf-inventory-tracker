@@ -107,6 +107,19 @@ test('known non-empty result rewards prove observed victory when the scenario wi
   assert.equal(finalized.finalizedAt, 8_000);
 });
 
+test('manual finalize uses already-observed non-empty result rewards instead of downgrading them to unknown', () => {
+  const completed = raid({
+    drops: [{ itemId: '10:612', quantity: 1 }],
+    dropsQuality: 'known',
+    lastObservedAt: 8_000,
+  });
+  const finalized = manualFinalizeRaid(completed, 10_000);
+  assert.equal(finalized.result, 'victory');
+  assert.equal(finalized.resultQuality, 'known');
+  assert.equal(finalized.finalization, 'observed');
+  assert.equal(finalized.finalizedAt, 8_000);
+});
+
 test('known empty rewards alone do not invent victory', () => {
   const emptyRewards = raid({ drops: [], dropsQuality: 'known' });
   assert.equal(isTerminalRaid(emptyRewards), false);
