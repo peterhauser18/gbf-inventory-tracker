@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { classifyObservedResponseUrl } from '../capture/route.ts';
 import type { CapturedResponseRecord } from '../capture/types.ts';
 import {
   isVerifiedCombatResponseUrl,
   parseVerifiedMultiraidObservation,
-  type CombatParseContext,
 } from './multiraid.ts';
 
 const ORIGIN = 'https://game.granbluefantasy.jp';
@@ -50,15 +50,20 @@ function parseStart(prefix: 'raid' | 'multiraid') {
 
 test('verified shared battle families accept both raid and multiraid exact paths', () => {
   for (const family of SHARED_FAMILIES) {
-    assert.equal(isVerifiedCombatResponseUrl(`${ORIGIN}/rest/raid/${family}`), true, `raid ${family}`);
-    assert.equal(isVerifiedCombatResponseUrl(`${ORIGIN}/rest/multiraid/${family}`), true, `multiraid ${family}`);
+    const raidUrl = `${ORIGIN}/rest/raid/${family}`;
+    const multiraidUrl = `${ORIGIN}/rest/multiraid/${family}`;
+    assert.equal(isVerifiedCombatResponseUrl(raidUrl), true, `raid ${family}`);
+    assert.equal(isVerifiedCombatResponseUrl(multiraidUrl), true, `multiraid ${family}`);
+    assert.equal(classifyObservedResponseUrl(raidUrl), 'combat', `routed raid ${family}`);
+    assert.equal(classifyObservedResponseUrl(multiraidUrl), 'combat', `routed multiraid ${family}`);
   }
 
   assert.equal(isVerifiedCombatResponseUrl(`${ORIGIN}/rest/multiraid/multi_member_info`), true);
   assert.equal(isVerifiedCombatResponseUrl(`${ORIGIN}/rest/raid/multi_member_info`), false);
-  assert.equal(isVerifiedCombatResponseUrl(`${ORIGIN}/rest/raid/unknown_result.json`), false);
-  assert.equal(isVerifiedCombatResponseUrl(`${ORIGIN}/rest/multiraid/unknown_result.json`), false);
-  assert.equal(isVerifiedCombatResponseUrl(`${ORIGIN}/rest/raid/nested/ability_result.json`), false);
+  assert.equal(classifyObservedResponseUrl(`${ORIGIN}/rest/raid/multi_member_info`), null);
+  assert.equal(classifyObservedResponseUrl(`${ORIGIN}/rest/raid/unknown_result.json`), null);
+  assert.equal(classifyObservedResponseUrl(`${ORIGIN}/rest/multiraid/unknown_result.json`), null);
+  assert.equal(classifyObservedResponseUrl(`${ORIGIN}/rest/raid/nested/ability_result.json`), null);
 });
 
 test('raid start initializes the same normalized context as multiraid start', () => {
@@ -80,7 +85,6 @@ test('raid start initializes the same normalized context as multiraid start', ()
 test('raid action responses reuse the existing scenario parser', () => {
   const start = parseStart('raid');
   assert.ok(start?.context);
-  const context: CombatParseContext = start.context;
 
   const ability = parseVerifiedMultiraidObservation(record(`${ORIGIN}/rest/raid/ability_result.json`, {
     scenario: [
@@ -88,7 +92,7 @@ test('raid action responses reuse the existing scenario parser', () => {
       { cmd: 'damage', to: 'boss', list: [{ value: 123 }] },
       { cmd: 'boss_gauge', hp: 877, hpmax: 1000 },
     ],
-  }, 20), context);
+  }, 20), start.context);
 
   assert.ok(ability);
   assert.equal(ability.actions.length, 1);
