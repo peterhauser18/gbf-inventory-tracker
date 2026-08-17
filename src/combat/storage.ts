@@ -6,6 +6,7 @@ import {
   isTerminalRaid,
   manualFinalizeRaid,
   observedFinalizeRaid,
+  selectCombatContextKey,
 } from './lifecycle.ts';
 import { mergeCombatObservation, parseCombatObservation } from './parser.ts';
 import {
@@ -43,12 +44,17 @@ export interface ActiveCombatRaid {
   context?: CombatParseContext;
 }
 
-// Background reads this immediately after ingest to maintain its passive tab lock.
-// Extension pages run in a separate JS context and therefore fall back to stored active state.
+// Background reads this immediately after ingest for compatibility with older
+// callers. Extension pages run in a separate JS context and fall back to stored active state.
 let lastIngestedContext: CombatParseContext | undefined;
 
-export async function ingestCapturedCombatRecord(record: CapturedResponseRecord): Promise<NormalizedRaidParse | null> {
-  if (isVerifiedCombatResponseUrl(record.meta.url)) return await ingestVerifiedCombatRecord(record);
+export async function ingestCapturedCombatRecord(
+  record: CapturedResponseRecord,
+  preferredInstanceId?: string,
+): Promise<NormalizedRaidParse | null> {
+  if (isVerifiedCombatResponseUrl(record.meta.url)) {
+    return await ingestVerifiedCombatRecord(record, preferredInstanceId);
+  }
 
   lastIngestedContext = undefined;
   const observation = parseCombatObservation(record);
@@ -69,9 +75,12 @@ export async function ingestCapturedCombatRecord(record: CapturedResponseRecord)
   return next;
 }
 
-async function ingestVerifiedCombatRecord(record: CapturedResponseRecord): Promise<NormalizedRaidParse | null> {
+async function ingestVerifiedCombatRecord(
+  record: CapturedResponseRecord,
+  preferredInstanceId?: string,
+): Promise<NormalizedRaidParse | null> {
   const state = await getCombatContextState();
-  const routed = await routeVerifiedObservation(record, state);
+  const routed = await routeVerifiedObservation(record, state, preferredInstanceId);
   if (!routed) return null;
 
   const { key, observation, startObserved } = routed;
@@ -126,6 +135,7 @@ async function ingestVerifiedCombatRecord(record: CapturedResponseRecord): Promi
 async function routeVerifiedObservation(
   record: CapturedResponseRecord,
   state: CombatContextState,
+  preferredInstanceId?: string,
 ): Promise<{ key: string; observation: VerifiedCombatObservation; startObserved: boolean } | null> {
   if (isVerifiedStart(record.meta.url)) {
     const probe = parseVerifiedMultiraidObservation(record);
@@ -143,25 +153,21 @@ async function routeVerifiedObservation(
   }
 
   const directInstanceId = observedInstanceId(record);
-  let key: string | undefined;
-  let context: CombatParseContext | undefined;
+  let key = selectCombatContextKey(state.contexts, state.currentKey, directInstanceId, preferredInstanceId);
+  let context = key ? state.contexts[key] : undefined;
+  const scopedInstanceId = directInstanceId ?? preferredInstanceId;
 
-  if (directInstanceId) {
-    const match = Object.entries(state.contexts).find(([, value]) => value.instanceId === directInstanceId);
-    if (match) [key, context] = match;
-    if (!context) {
-      const active = (await getActiveCombatRaids()).find((entry) => entry.parse.instanceId === directInstanceId);
-      if (active) {
-        key = active.key;
-        context = active.context ?? minimalContext(active.parse);
-      }
+  if (!context && scopedInstanceId) {
+    const active = (await getActiveCombatRaids()).find((entry) => entry.parse.instanceId === scopedInstanceId);
+    if (active) {
+      key = active.key;
+      context = active.context ?? minimalContext(active.parse);
     }
-  } else if (state.currentKey) {
-    key = state.currentKey;
-    context = state.contexts[key];
-    if (!context) {
-      const active = await getActiveParseByKey(key);
-      if (active) context = minimalContext(active);
+  } else if (!context && !scopedInstanceId && state.currentKey) {
+    const active = await getActiveParseByKey(state.currentKey);
+    if (active) {
+      key = state.currentKey;
+      context = minimalContext(active);
     }
   }
 
