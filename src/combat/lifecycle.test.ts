@@ -52,6 +52,7 @@ test('direct identity wins, then the observed tab instance, then the current rai
     'instance:instance-a',
   );
   assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', undefined), 'instance:instance-b');
+  assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', undefined, null), undefined);
   assert.equal(selectCombatContextKey(contexts, 'instance:instance-b', 'unknown', 'instance-a'), undefined);
 });
 
