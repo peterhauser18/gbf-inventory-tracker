@@ -15,11 +15,12 @@ export function selectCombatContextKey(
   contexts: Readonly<Record<string, CombatContextIdentity>>,
   currentKey: string | undefined,
   directInstanceId: string | undefined,
-  preferredInstanceId?: string,
+  preferredInstanceId?: string | null,
 ): string | undefined {
   if (directInstanceId) {
     return Object.entries(contexts).find(([, context]) => context.instanceId === directInstanceId)?.[0];
   }
+  if (preferredInstanceId === null) return undefined;
   if (preferredInstanceId) {
     return Object.entries(contexts).find(([, context]) => context.instanceId === preferredInstanceId)?.[0];
   }
