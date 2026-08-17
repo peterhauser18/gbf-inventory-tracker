@@ -1,4 +1,8 @@
 import type { CapturedResponseRecord } from '../capture/types.ts';
+import {
+  rememberObservedEnemyIconAlias,
+  rememberObservedRaidBossIcon,
+} from '../enemy-icon-cache.ts';
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
 
 type Obj = Record<string, unknown>;
@@ -11,6 +15,9 @@ export function enrichObservedActorVisuals(
   if (!context || !isVerifiedStart(record.meta.url)) return;
   const body = record.body;
   if (!isObject(body)) return;
+
+  rememberObservedBossVisualAliases(body);
+
   const params = at(body, 'player', 'param');
   if (!Array.isArray(params)) return;
 
@@ -40,6 +47,29 @@ export function retainActorVisualId(
   return target;
 }
 
+export function bossImageAssetIdFromCjs(value: unknown): string | undefined {
+  const cjs = text(value);
+  if (!cjs) return undefined;
+  return /^enemy_(\d+)(?:_[A-Za-z0-9_-]+)?$/i.exec(cjs)?.[1];
+}
+
+function rememberObservedBossVisualAliases(body: Obj): void {
+  const params = at(body, 'boss', 'param');
+  if (!Array.isArray(params)) return;
+  for (const value of params) {
+    if (!isObject(value)) continue;
+    const assetId = bossImageAssetIdFromCjs(value.cjs);
+    if (!assetId) continue;
+    const enemyId = text(value.enemy_id);
+    const bossName = localizedText(value.name);
+    const questName = text(body.quest_name);
+    if (enemyId) void rememberObservedEnemyIconAlias(enemyId, assetId);
+    if (bossName) void rememberObservedRaidBossIcon(bossName, assetId);
+    if (questName && questName !== bossName) void rememberObservedRaidBossIcon(questName, assetId);
+    return;
+  }
+}
+
 function attachObservedActorVisual(actor: CombatActorContext, imageId: string | undefined): void {
   if (imageId) (actor as ActorWithVisual).imageId = imageId;
 }
@@ -56,6 +86,11 @@ function safeAssetId(value: unknown): string | undefined {
   if (typeof value !== 'string' && typeof value !== 'number') return undefined;
   const textValue = String(value).trim();
   return textValue && textValue.length <= 80 && /^[A-Za-z0-9_-]+$/.test(textValue) ? textValue : undefined;
+}
+
+function localizedText(value: unknown): string | undefined {
+  if (isObject(value)) return text(value.en) ?? text(value.ja);
+  return text(value);
 }
 
 function text(value: unknown): string | undefined {
