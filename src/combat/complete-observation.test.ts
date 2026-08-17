@@ -216,7 +216,7 @@ test('observed heals are not misclassified as party-to-boss damage', () => {
 
   assert.equal(observation.actions.some((action) => action.name === 'Unclassified heal'), false);
   const raid = mergeVerifiedMultiraidObservation(null, observation);
-  assert.equal(raid.partyDamage, 0);
+  assert.equal(raid.partyDamage, undefined);
 });
 
 test('unknown damage-bearing boss commands are retained and mark parsing partial', () => {
