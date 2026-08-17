@@ -224,24 +224,28 @@ function ensureBossFallback(root: HTMLElement, raid: NormalizedRaidParse): void 
   title.prepend(icon);
 
   const raidName = raid.raidName?.trim();
-  if (raidName) {
-    icon.dataset.bossRaidName = raidName;
-    void hydrateWikiRaidIcon(image, raidName);
-  }
+  if (!raidName) return;
+  icon.dataset.bossRaidName = raidName;
+  const wikiImage = document.createElement('img');
+  wikiImage.dataset.combatImage = 'true';
+  wikiImage.alt = '';
+  wikiImage.loading = 'lazy';
+  wikiImage.decoding = 'async';
+  wikiImage.referrerPolicy = 'no-referrer';
+  wikiImage.hidden = true;
+  image.append(wikiImage);
+  void hydrateWikiRaidIcon(wikiImage, raidName);
 }
 
-async function hydrateWikiRaidIcon(container: HTMLElement, raidName: string): Promise<void> {
+async function hydrateWikiRaidIcon(image: HTMLImageElement, raidName: string): Promise<void> {
   const source = await resolveWikiRaidIcon(raidName).catch(() => undefined);
-  if (!source || !container.isConnected || container.querySelector('img')) return;
-  const image = document.createElement('img');
-  image.dataset.combatImage = 'true';
-  image.alt = '';
-  image.loading = 'lazy';
-  image.decoding = 'async';
-  image.referrerPolicy = 'no-referrer';
+  if (!source || !image.isConnected) {
+    image.remove();
+    return;
+  }
+  image.addEventListener('load', () => { image.hidden = false; }, { once: true });
   image.addEventListener('error', () => image.remove(), { once: true });
   image.src = source;
-  container.append(image);
 }
 
 function normalizeSummonPresentation(root: HTMLElement): void {
