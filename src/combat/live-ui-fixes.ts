@@ -5,16 +5,21 @@ import type { NormalizedRaidParse } from './types.ts';
 import {
   combatInitials,
   liveDurationLabel,
+  mergeObservedRosterHistory,
   missingRosterActors,
   participantSummary,
   type MissingRosterActor,
 } from './live-ui-state.ts';
 
 let liveRaids = new Map<string, ActiveCombatRaid>();
+const observedRosterByRaid = new Map<string, CombatActorContext[]>();
 
 export async function refreshCombatLiveUiState(): Promise<void> {
   const active = await getActiveCombatRaids();
   liveRaids = new Map(active.map((entry) => [entry.key, entry]));
+  for (const key of observedRosterByRaid.keys()) {
+    if (!liveRaids.has(key)) observedRosterByRaid.delete(key);
+  }
 }
 
 export function applyCombatLiveUiFixes(root: HTMLElement, now = Date.now()): void {
@@ -23,28 +28,40 @@ export function applyCombatLiveUiFixes(root: HTMLElement, now = Date.now()): voi
     for (const card of cards) {
       const key = card.dataset.activeCombatKey;
       const entry = key ? liveRaids.get(key) : undefined;
-      if (entry) applyRaidFixes(card, entry.parse, entry.context ?? null, now);
+      if (entry) applyRaidFixes(card, entry.key, entry.parse, entry.context ?? null, now);
     }
     return;
   }
 
   const first = liveRaids.values().next().value as ActiveCombatRaid | undefined;
-  if (first) applyRaidFixes(root, first.parse, first.context ?? null, now);
+  if (first) applyRaidFixes(root, first.key, first.parse, first.context ?? null, now);
 }
 
 function applyRaidFixes(
   root: HTMLElement,
+  key: string,
   raid: NormalizedRaidParse,
   context: CombatParseContext | null,
   now: number,
 ): void {
+  const stableContext = preserveObservedRoster(key, context);
   updateDuration(root, raid, now);
-  updateParticipants(root, raid, context);
-  keepSixRosterMembersVisible(root, context, raid);
+  updateParticipants(root, raid, stableContext);
+  keepSixRosterMembersVisible(root, stableContext, raid);
   improvePartyStateLabels(root);
-  ensureMainCharacterFallback(root, context);
+  ensureMainCharacterFallback(root, stableContext);
   ensureBossFallback(root, raid);
   normalizeSummonPresentation(root);
+}
+
+function preserveObservedRoster(
+  key: string,
+  context: CombatParseContext | null,
+): CombatParseContext | null {
+  if (!context) return null;
+  const roster = mergeObservedRosterHistory(observedRosterByRaid.get(key) ?? [], context);
+  observedRosterByRaid.set(key, roster);
+  return { ...context, actors: roster };
 }
 
 function updateDuration(root: HTMLElement, raid: NormalizedRaidParse, now: number): void {
