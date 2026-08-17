@@ -1,8 +1,9 @@
 import './raids-v2.css';
 import './ui-v2.css';
-import { CombatDashboardControllerV2 } from './dashboard-v2.ts';
+import { CombatDashboardControllerV2 } from './dashboard-multi-active.ts';
 import { COMBAT_LAYOUT_PRESETS, type CombatLayoutPreset } from './layouts.ts';
 import { installCombatRaidInteractionUx } from './interaction-ux.ts';
+import { installCombatMultiActiveCompat } from './multi-active-compat.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
@@ -15,6 +16,7 @@ const controller = new CombatDashboardControllerV2(() => renderSectionIfChanged(
 
 if (app) {
   installCombatRaidInteractionUx(app);
+  installCombatMultiActiveCompat(app);
   app.addEventListener('click', (event) => {
     const button = (event.target as Element | null)?.closest<HTMLButtonElement>('.nav-item[data-section]');
     if (!button || button.dataset.section === 'combat' || button.dataset.section === 'raids') return;

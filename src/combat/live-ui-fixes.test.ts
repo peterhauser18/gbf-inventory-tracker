@@ -81,11 +81,12 @@ test('missing roster history retains dead frontliners after two backline promoti
   ]);
 });
 
-test('live UI fix remains local/read-only and caps the rendered summon surface at six', () => {
+test('live UI fix remains local/read-only and applies state per active raid wrapper', () => {
   const source = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('./live-ui-fixes.css', import.meta.url), 'utf8');
-  assert.match(source, /getCombatLiveContext/);
-  assert.match(source, /getLatestCombatParse/);
+  assert.match(source, /getActiveCombatRaids/);
+  assert.match(source, /data-active-combat-key/);
+  assert.match(source, /liveRaids\.get\(key\)/);
   assert.match(source, /cards\.slice\(6\)/);
   assert.match(source, /supporter-slot/);
   assert.match(source, /raid\.characterDamage\.find/);

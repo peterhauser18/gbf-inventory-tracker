@@ -1,5 +1,5 @@
 import './live-ui-fixes.css';
-import { getCombatLiveContext, getLatestCombatParse } from './storage.ts';
+import { getActiveCombatRaids, type ActiveCombatRaid } from './storage.ts';
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
 import type { NormalizedRaidParse } from './types.ts';
 import {
@@ -10,23 +10,40 @@ import {
   type MissingRosterActor,
 } from './live-ui-state.ts';
 
-let liveRaid: NormalizedRaidParse | null = null;
-let liveContext: CombatParseContext | null = null;
+let liveRaids = new Map<string, ActiveCombatRaid>();
 
 export async function refreshCombatLiveUiState(): Promise<void> {
-  const [raid, context] = await Promise.all([getLatestCombatParse(), getCombatLiveContext()]);
-  liveRaid = raid;
-  liveContext = raid && context?.raidTechnicalId === raid.raidTechnicalId ? context : null;
+  const active = await getActiveCombatRaids();
+  liveRaids = new Map(active.map((entry) => [entry.key, entry]));
 }
 
 export function applyCombatLiveUiFixes(root: HTMLElement, now = Date.now()): void {
-  if (!liveRaid) return;
-  updateDuration(root, liveRaid, now);
-  updateParticipants(root, liveRaid, liveContext);
-  keepSixRosterMembersVisible(root, liveContext, liveRaid);
+  const cards = [...root.querySelectorAll<HTMLElement>('[data-active-combat-key]')];
+  if (cards.length > 0) {
+    for (const card of cards) {
+      const key = card.dataset.activeCombatKey;
+      const entry = key ? liveRaids.get(key) : undefined;
+      if (entry) applyRaidFixes(card, entry.parse, entry.context ?? null, now);
+    }
+    return;
+  }
+
+  const first = liveRaids.values().next().value as ActiveCombatRaid | undefined;
+  if (first) applyRaidFixes(root, first.parse, first.context ?? null, now);
+}
+
+function applyRaidFixes(
+  root: HTMLElement,
+  raid: NormalizedRaidParse,
+  context: CombatParseContext | null,
+  now: number,
+): void {
+  updateDuration(root, raid, now);
+  updateParticipants(root, raid, context);
+  keepSixRosterMembersVisible(root, context, raid);
   improvePartyStateLabels(root);
-  ensureMainCharacterFallback(root, liveContext);
-  ensureBossFallback(root, liveRaid);
+  ensureMainCharacterFallback(root, context);
+  ensureBossFallback(root, raid);
   normalizeSummonPresentation(root);
 }
 

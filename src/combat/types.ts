@@ -2,6 +2,7 @@ import type { DataQuality } from '../types/account.ts';
 
 export type RaidResult = 'active' | 'victory' | 'failure' | 'left' | 'unknown';
 export type RaidRole = 'host' | 'joined';
+export type RaidFinalization = 'observed' | 'manual';
 export type DamageKind = 'normal' | 'skill' | 'ougi' | 'echo' | 'supplemental' | 'other';
 export type CombatActionKind = 'normal' | 'skill' | 'ougi' | 'summon' | 'other';
 
@@ -79,6 +80,7 @@ export interface CoverageState {
 export interface NormalizedRaidParse {
   schemaVersion: 1;
   raidTechnicalId: string;
+  instanceId?: string;
   raidName?: string;
   role?: RaidRole;
   observedStartedAt?: number;
@@ -99,6 +101,8 @@ export interface NormalizedRaidParse {
   dropsQuality: DataQuality;
   coverage: CoverageState;
   lastObservedAt: number;
+  finalization?: RaidFinalization;
+  finalizedAt?: number;
 }
 
 export interface RaidHistoryRecord extends NormalizedRaidParse {

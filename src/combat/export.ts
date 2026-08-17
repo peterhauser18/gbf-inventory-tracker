@@ -89,6 +89,8 @@ function sanitizeRaidParse(value: NormalizedRaidParse | RaidHistoryRecord): Norm
       parseGapObserved: value.coverage?.parseGapObserved === true,
     },
     lastObservedAt: finiteNumber(value.lastObservedAt) ?? 0,
+    finalization: value.finalization === 'observed' || value.finalization === 'manual' ? value.finalization : undefined,
+    finalizedAt: finiteNumber(value.finalizedAt),
   };
 }
 
