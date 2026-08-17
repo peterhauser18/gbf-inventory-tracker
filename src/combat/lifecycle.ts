@@ -1,10 +1,25 @@
 import type { NormalizedRaidParse } from './types.ts';
 
+export interface CombatContextIdentity {
+  instanceId?: string;
+}
+
 export function combatRaidKey(
   raidTechnicalId: string,
   instanceId: string | undefined,
 ): string {
   return instanceId ? `instance:${instanceId}` : `raid:${raidTechnicalId}`;
+}
+
+export function selectCombatContextKey(
+  contexts: Readonly<Record<string, CombatContextIdentity>>,
+  currentKey: string | undefined,
+  directInstanceId: string | undefined,
+): string | undefined {
+  if (directInstanceId) {
+    return Object.entries(contexts).find(([, context]) => context.instanceId === directInstanceId)?.[0];
+  }
+  return currentKey && contexts[currentKey] ? currentKey : undefined;
 }
 
 export function capturedRaidLocalId(raid: NormalizedRaidParse): string {
