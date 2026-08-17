@@ -13,6 +13,7 @@ import {
 } from './multiraid.ts';
 import type { NormalizedRaidParse, RaidDropPreferences, RaidHistoryRecord } from './types.ts';
 import { enrichVerifiedScenarioSemantics, preserveVerifiedNormalFacts } from './verified-combat-semantics.ts';
+import { enrichObservedActorVisuals, retainActorVisualId } from './visual-context.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-combat';
 const DB_VERSION = 1;
@@ -30,6 +31,7 @@ export async function ingestCapturedCombatRecord(record: CapturedResponseRecord)
     const context = await getCombatParseContext();
     const parsed = parseVerifiedMultiraidObservation(record, context);
     if (!parsed) return null;
+    enrichObservedActorVisuals(record, parsed.context);
     enrichVerifiedScenarioSemantics(record.body, parsed);
     const turn = directlyObservedTurn(record);
     const parsedWithTurn: VerifiedCombatObservation = turn === undefined ? parsed : { ...parsed, observedTurn: turn };
@@ -96,13 +98,13 @@ function sanitizeCombatParseContext(context: CombatParseContext): CombatParseCon
 }
 
 function sanitizeActorContext(actor: CombatActorContext): CombatActorContext {
-  return {
+  return retainActorVisualId(actor, {
     id: actor.id,
     name: actor.id && /^30[234]\d{7}$/.test(actor.id) ? actor.name : undefined,
     hp: safeNumber(actor.hp),
     maxHp: safeNumber(actor.maxHp),
     alive: typeof actor.alive === 'boolean' ? actor.alive : undefined,
-  };
+  });
 }
 
 function sanitizeSummonContext(summon: CombatSummonContext): CombatSummonContext {
