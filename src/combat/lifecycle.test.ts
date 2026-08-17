@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   capturedRaidLocalId,
   combatRaidKey,
+  isTerminalRaid,
   manualFinalizeRaid,
   observedFinalizeRaid,
   selectCombatContextKey,
@@ -86,4 +87,30 @@ test('observed terminal finalization retains terminal evidence', () => {
   assert.equal(finalized.coverage.terminalObserved, true);
   assert.equal(finalized.finalization, 'observed');
   assert.equal(finalized.finalizedAt, 9_000);
+});
+
+test('known non-empty result rewards prove observed victory when the scenario win event was missed', () => {
+  const completed = raid({
+    drops: [{ itemId: '10:612', name: 'Immortal Fragment', quantity: 1, chest: '3' }],
+    dropsQuality: 'known',
+    lastObservedAt: 8_000,
+  });
+  assert.equal(isTerminalRaid(completed), true);
+
+  const finalized = observedFinalizeRaid(completed);
+  assert.equal(finalized.result, 'victory');
+  assert.equal(finalized.resultQuality, 'known');
+  assert.equal(finalized.coverage.terminalObserved, true);
+  assert.equal(finalized.observedEndedAt, 8_000);
+  assert.equal(finalized.durationMs, 7_000);
+  assert.equal(finalized.finalization, 'observed');
+  assert.equal(finalized.finalizedAt, 8_000);
+});
+
+test('known empty rewards alone do not invent victory', () => {
+  const emptyRewards = raid({ drops: [], dropsQuality: 'known' });
+  assert.equal(isTerminalRaid(emptyRewards), false);
+  const manual = manualFinalizeRaid(emptyRewards, 10_000);
+  assert.equal(manual.result, 'unknown');
+  assert.equal(manual.finalization, 'manual');
 });
