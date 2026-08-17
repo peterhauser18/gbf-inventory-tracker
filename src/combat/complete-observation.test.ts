@@ -28,6 +28,7 @@ function context(): CombatParseContext {
     raidTechnicalId: '777001',
     instanceId: 'instance-a',
     turn: 3,
+    mainCharacterId: 'mc-tech',
     actorSlots: [
       { id: 'mc-tech', name: 'MC' },
       { id: 'front-a', name: 'Front A' },
@@ -150,42 +151,58 @@ test('death promotion changes later slot attribution without stealing a pre-deat
   assert.equal(promoted?.breakdown.ougi, 200);
 });
 
-test('chain_cutin breaks C.A. actor inheritance and keeps Chain Burst party-only', () => {
+test('chain_cutin reclassifies already-attributed damage instead of double-counting Chain Burst', () => {
   const observation = parse(record(ATTACK, { scenario: [
-    {
-      cmd: 'special',
-      target: 'boss',
-      pos: 1,
-      name: 'Synthetic C.A.',
-      list: [{ damage: [{ value: 100 }] }],
-    },
+    { cmd: 'ability', pos: 3, name: 'Misleading pending skill' },
     { cmd: 'chain_cutin' },
     { cmd: 'damage', to: 'boss', list: [{ value: 75 }] },
   ] }));
 
-  assert.equal(observation.actions.length, 2);
-  assert.equal(observation.actions[0]?.actorId, 'front-a');
-  assert.equal(observation.actions[1]?.actorId, undefined);
-  assert.equal(observation.actions[1]?.name, 'Chain Burst');
-  assert.deepEqual(observation.actions[1]?.hits.map((hit) => hit.kind), ['other']);
+  assert.equal(observation.actions.length, 1);
+  assert.equal(observation.actions[0]?.actorId, 'mc-tech');
+  assert.equal(observation.actions[0]?.kind, 'other');
+  assert.equal(observation.actions[0]?.name, 'Chain Burst');
+  assert.deepEqual(observation.actions[0]?.hits.map((hit) => hit.kind), ['other']);
 
   const raid = mergeVerifiedMultiraidObservation(null, observation);
-  assert.equal(raid.partyDamage, 175);
-  assert.equal(raid.characterDamage.find((row) => row.actorId === 'front-a')?.total, 100);
+  const mc = raid.characterDamage.find((row) => row.actorId === 'mc-tech');
+  assert.equal(raid.partyDamage, 75);
+  assert.equal(mc?.total, 75);
+  assert.equal(mc?.breakdown.other, 75);
+  assert.equal(raid.characterDamage.find((row) => row.actorId === 'front-c'), undefined);
 });
 
-test('Fated Chain keeps observed boss damage as party-only named evidence', () => {
+test('Fated Chain damage that carries an observed MC actor is retained on MC but classified Other', () => {
   const observation = parse(record(FATED_CHAIN, { scenario: [
-    { cmd: 'chain_cutin' },
-    { cmd: 'loop_damage', to: 'boss', list: [[{ value: 60 }, { value: 40 }]] },
+    { cmd: 'ability', pos: 0, name: 'Fated Rending' },
+    { cmd: 'damage', to: 'boss', list: [{ value: 1_500_000 }] },
     { cmd: 'boss_gauge', hp: 900, hpmax: 1000 },
   ] }));
 
   assert.equal(observation.actions.length, 1);
-  assert.equal(observation.actions[0]?.actorId, undefined);
-  assert.equal(observation.actions[0]?.name, 'Fated Chain');
-  assert.equal(observation.actions[0]?.hits.reduce((sum, hit) => sum + hit.amount, 0), 100);
+  assert.equal(observation.actions[0]?.actorId, 'mc-tech');
+  assert.equal(observation.actions[0]?.kind, 'other');
+  assert.equal(observation.actions[0]?.name, 'Fated Rending');
+  assert.deepEqual(observation.actions[0]?.hits.map((hit) => hit.kind), ['other']);
   assert.equal(observation.boss?.hp, 900);
+
+  const raid = mergeVerifiedMultiraidObservation(null, observation);
+  const mc = raid.characterDamage.find((row) => row.actorId === 'mc-tech');
+  assert.equal(raid.partyDamage, 1_500_000);
+  assert.equal(mc?.total, 1_500_000);
+  assert.equal(mc?.breakdown.other, 1_500_000);
+});
+
+test('Fated Chain without an observed individual actor stays party-only', () => {
+  const observation = parse(record(FATED_CHAIN, { scenario: [
+    { cmd: 'chain_cutin' },
+    { cmd: 'loop_damage', to: 'boss', list: [[{ value: 60 }, { value: 40 }]] },
+  ] }));
+
+  assert.equal(observation.actions.length, 1);
+  assert.equal(observation.actions[0]?.actorId, undefined);
+  assert.equal(observation.actions[0]?.kind, 'other');
+  assert.equal(observation.actions[0]?.name, 'Fated Chain');
 
   const raid = mergeVerifiedMultiraidObservation(null, observation);
   assert.equal(raid.partyDamage, 100);
