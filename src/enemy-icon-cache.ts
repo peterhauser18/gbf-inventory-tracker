@@ -6,7 +6,7 @@ const CACHE_KEY_PREFIX = '/observed-enemy-icons/';
 const CACHE_ALIAS_PREFIX = '/observed-enemy-icon-aliases/';
 const CACHE_RAID_ALIAS_PREFIX = '/observed-raid-boss-icons/';
 const ENEMY_ICON_HOST = 'prd-game-a-granbluefantasy.akamaized.net';
-const ENEMY_ICON_PATH = /^\/assets(?:_en)?\/img\/sp\/assets\/enemy\/(?:s|m)\/(\d+)(?:_[^/.]+)?\.(?:png|jpe?g|webp)$/i;
+const ENEMY_ICON_PATH = /^\/assets(?:_en)?(?:\/\d+)?\/img\/sp\/assets\/enemy\/(?:s|m)\/(\d+)(?:_[^/.]+)?\.(?:png|jpe?g|webp)$/i;
 const SUPPORTED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 type CacheLike = Pick<Cache, 'match' | 'put'>;
