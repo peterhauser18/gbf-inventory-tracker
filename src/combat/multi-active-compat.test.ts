@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const compat = readFileSync(new URL('./multi-active-compat.ts', import.meta.url), 'utf8');
+const liveUi = readFileSync(new URL('./live-ui-fixes.ts', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 
 test('multi-active compat starts Participants collapsed independently per active raid', () => {
@@ -36,6 +37,15 @@ test('retained dead or replaced roster cards toggle shared analysis without bloc
   assert.match(compat, /combat-retained-character-detail/);
   assert.match(compat, /card\.closest<HTMLElement>\('\.party-cards, \.combat-roster-history'\)/);
   assert.match(compat, /insertAdjacentElement\('afterend', detail\)/);
+});
+
+test('death/promotion UI preserves observed roster and does not relabel a promoted slot-zero actor as MC', () => {
+  assert.match(liveUi, /const observedRosterByRaid = new Map<string, CombatActorContext\[]>\(\)/);
+  assert.match(liveUi, /mergeObservedRosterHistory\(observedRosterByRaid\.get\(key\) \?\? \[], context\)/);
+  assert.match(liveUi, /correctPromotedMainSlotLabel\(root, stableContext\)/);
+  assert.match(liveUi, /actorId === mainCharacterId/);
+  assert.match(liveUi, /label\?\.textContent\?\.trim\(\) !== accountName/);
+  assert.match(liveUi, /if \(actor\?\.name\) label\.textContent = actor\.name/);
 });
 
 test('compat resolves missing fallback visuals per active raid without GBF requests', () => {
