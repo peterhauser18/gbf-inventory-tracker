@@ -80,6 +80,9 @@ function isExplicitTerminalResult(result: NormalizedRaidParse['result']): boolea
   return result === 'victory' || result === 'failure' || result === 'left';
 }
 
+// The verified result endpoint is only considered victory evidence when it
+// produced a complete, non-empty reward list. Known-empty rewards stay
+// non-terminal so we do not guess victory for an ambiguous result page.
 function hasObservedVictoryRewards(
   raid: Pick<NormalizedRaidParse, 'drops' | 'dropsQuality'>,
 ): boolean {
