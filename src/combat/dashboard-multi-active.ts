@@ -90,6 +90,7 @@ export class CombatDashboardControllerV2 {
     const collapsed = this.collapsedByRaid.get(entry.key) ?? new Set<string>();
     const selectedActorId = this.selectedActorByRaid.get(entry.key) ?? null;
     const label = this.active.length > 1 ? `Active raid ${index + 1} of ${this.active.length}` : 'Active raid';
+    const role = entry.parse.role === 'host' ? 'Hosted' : entry.parse.role === 'joined' ? 'Joined' : 'Active';
     const layoutMarkup = renderCombatLayout(layout, {
       raid: entry.parse,
       context: entry.context ?? null,
@@ -99,7 +100,7 @@ export class CombatDashboardControllerV2 {
     });
 
     return `<article class="active-combat-card" data-active-combat-key="${escapeAttribute(entry.key)}">
-      <div class="active-combat-card-label"><span>${label}</span><span>${escapeHtml(entry.parse.instanceId ? `Instance ${shortInstance(entry.parse.instanceId)}` : 'Instance id not observed')}</span></div>
+      <div class="active-combat-card-label"><span>${label}</span><span>${role}</span></div>
       ${layoutMarkup}
       <div class="active-combat-footer">
         <span class="muted">Local parser state only. Manual finalization sends no GBF request.</span>
@@ -147,10 +148,6 @@ export class CombatDashboardControllerV2 {
       })
       .catch(() => {});
   }
-}
-
-function shortInstance(value: string): string {
-  return value.length <= 12 ? value : `${value.slice(0, 6)}…${value.slice(-4)}`;
 }
 
 function safeFilename(value: string): string {
