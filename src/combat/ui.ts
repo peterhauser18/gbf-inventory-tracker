@@ -15,8 +15,8 @@ let lastSectionMarkup = '';
 const controller = new CombatDashboardControllerV2(() => renderSectionIfChanged());
 
 if (app) {
-  installCombatRaidInteractionUx(app);
   installCombatMultiActiveCompat(app);
+  installCombatRaidInteractionUx(app);
   app.addEventListener('click', (event) => {
     const button = (event.target as Element | null)?.closest<HTMLButtonElement>('.nav-item[data-section]');
     if (!button || button.dataset.section === 'combat' || button.dataset.section === 'raids') return;
