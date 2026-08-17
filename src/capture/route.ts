@@ -1,5 +1,5 @@
 import { isVerifiedAccountResponseUrl } from '../account/ingest.ts';
-import { isVerifiedCombatResponseUrl } from '../combat/complete-observation.ts';
+import { isVerifiedCombatResponseUrl } from '../combat/multiraid.ts';
 import type { CaptureResourceType } from './types.ts';
 
 export type ObservedResponseRoute = 'account' | 'combat';

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GBF Tracker Combat</title>
+    <link rel="stylesheet" href="/src/dashboard/brand.css" />
+  </head>
+  <body>
+    <main id="dashboard-app" class="combat-standalone-root">
+      <div class="combat-standalone-shell">
+        <nav class="nav combat-standalone-tabs" aria-label="Combat tracker views">
+          <button class="nav-item" type="button" data-section="combat" data-external-section="true">
+            <span class="nav-marker" aria-hidden="true"></span>
+            <span>Combat Tracker</span>
+          </button>
+          <button class="nav-item" type="button" data-section="raids" data-external-section="true">
+            <span class="nav-marker" aria-hidden="true"></span>
+            <span>Raid History</span>
+          </button>
+        </nav>
+        <section class="content combat-standalone-content" aria-live="polite"></section>
+      </div>
+    </main>
+    <script type="module" src="/src/brand-runtime.ts"></script>
+    <script type="module" src="/src/combat-entry.ts"></script>
+  </body>
+</html>
