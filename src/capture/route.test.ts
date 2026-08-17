@@ -14,16 +14,11 @@ test('debugger capture accepts only verified GBF account and combat response fam
   assert.equal(classifyObservedResponseUrl('https://example.com/npc/list/2'), null);
 });
 
-test('response bodies stay XHR/fetch-only except the exact verified combat result document', () => {
+test('response bodies are eligible only for allowlisted XHR/fetch responses', () => {
   const accountUrl = 'https://game.granbluefantasy.jp/item/article_list_by_filter_mode';
-  const resultUrl = 'https://game.granbluefantasy.jp/resultmulti/content/index/run-123';
   assert.equal(shouldReadObservedResponse(accountUrl, 'xhr'), true);
   assert.equal(shouldReadObservedResponse(accountUrl, 'fetch'), true);
   assert.equal(shouldReadObservedResponse(accountUrl, 'document'), false);
-  assert.equal(shouldReadObservedResponse(resultUrl, 'xhr'), true);
-  assert.equal(shouldReadObservedResponse(resultUrl, 'document'), true);
-  assert.equal(shouldReadObservedResponse('https://game.granbluefantasy.jp/resultmulti/content/index/', 'document'), false);
-  assert.equal(shouldReadObservedResponse('https://game.granbluefantasy.jp/quest/start', 'document'), false);
-  assert.equal(shouldReadObservedResponse('https://example.com/resultmulti/content/index/run-123', 'document'), false);
   assert.equal(shouldReadObservedResponse(accountUrl, 'other'), false);
+  assert.equal(shouldReadObservedResponse('https://game.granbluefantasy.jp/quest/start', 'fetch'), false);
 });
