@@ -351,7 +351,8 @@ function observedInstanceId(record: CapturedResponseRecord): string | undefined 
 
 function isVerifiedStart(url: string): boolean {
   try {
-    return new URL(url).pathname === '/rest/multiraid/start.json';
+    const pathname = new URL(url).pathname;
+    return pathname === '/rest/multiraid/start.json' || pathname === '/rest/raid/start.json';
   } catch {
     return false;
   }
