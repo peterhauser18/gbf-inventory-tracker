@@ -1,7 +1,7 @@
 import './loadout.css';
 import { normalizeWikiTitle } from '../dashboard/farming.ts';
 import { loadWikiMaterialThumbnails } from '../dashboard/wiki-assets.ts';
-import { readActiveRaidLoadout, readHistoryRaidLoadout } from './loadout.ts';
+import { readPersistedRaidLoadouts } from './loadout-read.ts';
 import type { RaidLoadoutSnapshot, RaidLoadoutWeapon, RaidWeaponSkillBoost } from './loadout-types.ts';
 
 type RenderTarget = {
@@ -38,7 +38,9 @@ export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
     next.dataset.loadoutFingerprint = fingerprint;
     next.innerHTML = renderLoadout(target.loadout, thumbnails);
     current?.remove();
-    target.mount.prepend(next);
+    const activeLabel = target.mount.querySelector<HTMLElement>(':scope > .active-combat-card-label');
+    if (activeLabel) activeLabel.after(next);
+    else target.mount.prepend(next);
     next.querySelectorAll<HTMLImageElement>('[data-loadout-image]').forEach((image) => {
       image.addEventListener('error', () => image.remove(), { once: true });
     });
@@ -46,17 +48,18 @@ export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
 }
 
 async function collectTargets(root: HTMLElement): Promise<RenderTarget[]> {
+  const persisted = await readPersistedRaidLoadouts();
   const targets: RenderTarget[] = [];
   for (const card of root.querySelectorAll<HTMLElement>('[data-active-combat-key]')) {
     const key = card.dataset.activeCombatKey;
     if (!key) continue;
-    targets.push({ owner: `active:${key}`, mount: card, loadout: await readActiveRaidLoadout(key) });
+    targets.push({ owner: `active:${key}`, mount: card, loadout: persisted.active.get(key) });
   }
   for (const card of root.querySelectorAll<HTMLElement>('.raid-card')) {
     const localId = card.querySelector<HTMLButtonElement>('[data-raid-export]')?.dataset.raidExport;
     const mount = card.querySelector<HTMLElement>('[data-raid-combat-collapse] .raid-section-body');
     if (!localId || !mount) continue;
-    targets.push({ owner: `history:${localId}`, mount, loadout: await readHistoryRaidLoadout(localId) });
+    targets.push({ owner: `history:${localId}`, mount, loadout: persisted.history.get(localId) });
   }
   return targets;
 }

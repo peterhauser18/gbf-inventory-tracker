@@ -64,6 +64,8 @@ export interface RaidLoadoutSnapshot {
   summons: RaidLoadoutSummon[];
   mainWeaponId?: string;
   auxiliaryWeaponId?: string;
+  jobId?: string;
+  jobName?: string;
   weaponGridQuality: DataQuality;
   weapons: RaidLoadoutWeapon[];
   additionalWeaponsActive?: boolean;

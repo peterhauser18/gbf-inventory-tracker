@@ -1,3 +1,4 @@
+import { persistObservedDeckJob } from '../combat/loadout-job.ts';
 import { ingestObservedLoadoutRecord } from '../combat/loadout.ts';
 import { buildCapturedResponse } from './policy.ts';
 import { shouldReadObservedResponse } from './route.ts';
@@ -44,6 +45,7 @@ export async function processObservedResponse(
   await save(record);
   try {
     await ingestObservedLoadoutRecord(record);
+    await persistObservedDeckJob(record);
   } catch {
     // Loadout enrichment is optional and must never interrupt the core passive capture path.
   }
