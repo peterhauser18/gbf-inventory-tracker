@@ -39,6 +39,16 @@ export interface CombatLogEntry {
   damageInstances?: ParsedDamageHit[];
 }
 
+export interface CombatParseDiagnostic {
+  observedAt: number;
+  turn?: number;
+  cmd: string;
+  name?: string;
+  pos?: number;
+  target?: string;
+  damage?: number;
+}
+
 export interface BossState {
   id?: string;
   name?: string;
@@ -97,6 +107,7 @@ export interface NormalizedRaidParse {
   participants?: ParticipantState;
   stats: CombatStats;
   log: CombatLogEntry[];
+  parseDiagnostics?: CombatParseDiagnostic[];
   drops: RaidDrop[];
   dropsQuality: DataQuality;
   coverage: CoverageState;
@@ -154,6 +165,7 @@ export interface CombatObservation {
   actions: ParsedCombatAction[];
   actionsFieldPresent: boolean;
   unparsedActionCount: number;
+  parseDiagnostics?: CombatParseDiagnostic[];
   drops: RaidDrop[];
   dropsQuality: DataQuality;
 }
