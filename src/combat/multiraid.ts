@@ -130,9 +130,9 @@ function parseVerifiedStart(
   observedAt: number,
   previous?: CombatParseContext,
 ): VerifiedCombatObservation | null {
-  const raidTechnicalId = str(body.quest_id);
-  if (!raidTechnicalId) return null;
   const instanceId = str(body.raid_id);
+  const raidTechnicalId = str(body.quest_id) ?? instanceId;
+  if (!raidTechnicalId) return null;
   const parsedActors = verifiedActorSlots(body);
   const sameRaid =
     previous?.raidTechnicalId === raidTechnicalId &&
