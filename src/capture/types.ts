@@ -57,6 +57,26 @@ export interface CaptureParser<T> {
   parse(context: ParserContext): T | null;
 }
 
+export type CombatCaptureTraceStage =
+  | 'response-seen'
+  | 'route-rejected'
+  | 'allowlisted'
+  | 'state-rejected'
+  | 'queued'
+  | 'body-read'
+  | 'record-built'
+  | 'ingest-start'
+  | 'ingest-null'
+  | 'ingest-success'
+  | 'completed'
+  | 'error';
+
+export interface CombatCaptureTraceEntry {
+  at: number;
+  path: string;
+  stage: CombatCaptureTraceStage;
+}
+
 export type CaptureControlMessage =
   | { type: 'gbfit:get-status' }
   | { type: 'gbfit:start-observation'; tabId?: number }
@@ -73,5 +93,6 @@ export interface CaptureStatusResponse {
   active: boolean;
   message: string;
   scan: CaptureScanSummary | null;
+  combatTrace?: CombatCaptureTraceEntry[];
   error?: string;
 }
