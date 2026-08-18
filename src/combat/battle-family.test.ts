@@ -42,6 +42,12 @@ function startBody(): Record<string, unknown> {
   };
 }
 
+function raidIdOnlyStartBody(): Record<string, unknown> {
+  const body = startBody();
+  delete body.quest_id;
+  return body;
+}
+
 function parseStart(prefix: 'raid' | 'multiraid') {
   return parseVerifiedMultiraidObservation(
     record(`${ORIGIN}/rest/${prefix}/start.json`, startBody()),
@@ -79,6 +85,37 @@ test('raid start initializes the same normalized context as multiraid start', ()
   assert.equal(raid.context?.instanceId, 'trial-instance');
   assert.equal(raid.context?.actorSlots[0]?.id, 'mc-tech');
   assert.deepEqual(raid, multi);
+});
+
+test('raid start can initialize from a verified raid_id when quest_id is absent', () => {
+  const start = parseVerifiedMultiraidObservation(
+    record(`${ORIGIN}/rest/raid/start.json`, raidIdOnlyStartBody()),
+  );
+  assert.ok(start);
+  assert.equal(start.raidTechnicalId, 'trial-instance');
+  assert.equal(start.context?.instanceId, 'trial-instance');
+  assert.equal(start.context?.actorSlots[0]?.id, 'mc-tech');
+
+  const ability = parseVerifiedMultiraidObservation(
+    record(`${ORIGIN}/rest/raid/ability_result.json`, {
+      scenario: [
+        { cmd: 'ability', pos: 0, name: 'Synthetic Trial Battle Skill' },
+        { cmd: 'damage', to: 'boss', list: [{ value: 321 }] },
+      ],
+    }, 20),
+    start.context,
+  );
+  assert.ok(ability);
+  assert.equal(ability.raidTechnicalId, 'trial-instance');
+  assert.equal(ability.actions[0]?.actorId, 'mc-tech');
+  assert.equal(ability.actions[0]?.hits[0]?.amount, 321);
+
+  const missingIds = raidIdOnlyStartBody();
+  delete missingIds.raid_id;
+  assert.equal(
+    parseVerifiedMultiraidObservation(record(`${ORIGIN}/rest/raid/start.json`, missingIds)),
+    null,
+  );
 });
 
 test('raid action families reuse the same complete-observation parser as multiraid', () => {
