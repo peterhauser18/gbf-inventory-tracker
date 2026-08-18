@@ -6,6 +6,7 @@ import { installCombatRaidInteractionUx } from './interaction-ux.ts';
 import { installCombatMultiActiveCompat } from './multi-active-compat.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 import { decorateCombatLoadouts } from './loadout-ui.ts';
+import { detachCombatLoadouts, restoreCombatLoadouts } from './loadout-dom-preservation.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 const LAYOUT_KEY = 'gbfit:combat-layout';
@@ -153,10 +154,12 @@ function renderSectionIfChanged(force = false): void {
     void decorateCombatLoadouts(section);
     return;
   }
+  const preservedLoadouts = detachCombatLoadouts(section);
   lastSectionMarkup = markup;
   section.innerHTML = markup;
   controller.bind(section);
   if (selected === 'combat') applyCombatLiveUiFixes(section);
+  restoreCombatLoadouts(section, preservedLoadouts);
   void decorateCombatLoadouts(section);
 }
 
