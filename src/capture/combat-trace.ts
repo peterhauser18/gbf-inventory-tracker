@@ -1,5 +1,6 @@
 import type { CombatCaptureTraceEntry, CombatCaptureTraceStage } from './types.ts';
 
+const STORAGE_KEY = 'gbfit:combat-capture-trace-v1';
 const TRACE_LIMIT = 40;
 const TRACKED_PATHS = new Set<string>([
   '/rest/raid/start.json',
@@ -29,6 +30,7 @@ const TRACKED_STAGES = new Set<CombatCaptureTraceStage>([
   'completed',
   'error',
 ]);
+let writeQueue: Promise<void> = Promise.resolve();
 
 export function combatCaptureTracePath(url: string): string | undefined {
   try {
@@ -63,4 +65,33 @@ export function sanitizeCombatCaptureTrace(value: unknown): CombatCaptureTraceEn
     });
   }
   return sanitized.slice(-TRACE_LIMIT);
+}
+
+export async function recordCombatCaptureTrace(
+  url: string,
+  stage: CombatCaptureTraceStage,
+  at = Date.now(),
+): Promise<void> {
+  const path = combatCaptureTracePath(url);
+  if (!path) return;
+  writeQueue = writeQueue
+    .catch(() => {})
+    .then(async () => {
+      const stored = await chrome.storage.session.get(STORAGE_KEY);
+      const current = sanitizeCombatCaptureTrace(stored[STORAGE_KEY]);
+      const next = appendCombatCaptureTrace(current, { at, path, stage });
+      await chrome.storage.session.set({ [STORAGE_KEY]: next });
+    });
+  await writeQueue;
+}
+
+export async function getCombatCaptureTrace(): Promise<CombatCaptureTraceEntry[]> {
+  await writeQueue.catch(() => {});
+  const stored = await chrome.storage.session.get(STORAGE_KEY);
+  return sanitizeCombatCaptureTrace(stored[STORAGE_KEY]);
+}
+
+export async function clearCombatCaptureTrace(): Promise<void> {
+  await writeQueue.catch(() => {});
+  await chrome.storage.session.remove(STORAGE_KEY);
 }
