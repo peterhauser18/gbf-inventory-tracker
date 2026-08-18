@@ -1,3 +1,4 @@
+import { ingestObservedLoadoutRecord } from '../combat/loadout.ts';
 import { buildCapturedResponse } from './policy.ts';
 import { shouldReadObservedResponse } from './route.ts';
 import type {
@@ -41,6 +42,11 @@ export async function processObservedResponse(
   if (!record) return null;
 
   await save(record);
+  try {
+    await ingestObservedLoadoutRecord(record);
+  } catch {
+    // Loadout enrichment is optional and must never interrupt the core passive capture path.
+  }
   return record;
 }
 

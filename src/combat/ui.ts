@@ -5,6 +5,7 @@ import { COMBAT_LAYOUT_PRESETS, type CombatLayoutPreset } from './layouts.ts';
 import { installCombatRaidInteractionUx } from './interaction-ux.ts';
 import { installCombatMultiActiveCompat } from './multi-active-compat.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
+import { decorateCombatLoadouts } from './loadout-ui.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 const LAYOUT_KEY = 'gbfit:combat-layout';
@@ -147,15 +148,16 @@ function renderSectionIfChanged(force = false): void {
   const section = app.querySelector<HTMLElement>('[data-combat-section]');
   if (!section) return;
   const markup = selected === 'combat' ? controller.renderCombat(layout) : controller.renderRaids(query);
-  if (!force && markup === lastSectionMarkup && selected === 'combat') {
-    applyCombatLiveUiFixes(section);
+  if (!force && markup === lastSectionMarkup) {
+    if (selected === 'combat') applyCombatLiveUiFixes(section);
+    void decorateCombatLoadouts(section);
     return;
   }
-  if (!force && markup === lastSectionMarkup) return;
   lastSectionMarkup = markup;
   section.innerHTML = markup;
   controller.bind(section);
   if (selected === 'combat') applyCombatLiveUiFixes(section);
+  void decorateCombatLoadouts(section);
 }
 
 function loadLayoutPreference(): CombatLayoutPreset {
