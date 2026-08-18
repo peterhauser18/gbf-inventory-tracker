@@ -57,19 +57,6 @@ export interface CaptureParser<T> {
   parse(context: ParserContext): T | null;
 }
 
-export type CombatCaptureTraceStage =
-  | 'response-seen'
-  | 'queued'
-  | 'loading-finished'
-  | 'record-built'
-  | 'ingest-success';
-
-export interface CombatCaptureTraceEntry {
-  at: number;
-  path: string;
-  stage: CombatCaptureTraceStage;
-}
-
 export type CaptureControlMessage =
   | { type: 'gbfit:get-status' }
   | { type: 'gbfit:start-observation'; tabId?: number }
