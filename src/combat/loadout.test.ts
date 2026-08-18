@@ -22,6 +22,7 @@ function deckBody(count = 10, priority = 84) {
       priority,
       npc: Object.fromEntries(Array.from({ length: 5 }, (_, index) => [String(index + 1), { master: { id: String(3040000001 + index), name: `NPC ${index + 1}` } }])),
       pc: {
+        job: { master: { id: '140401', name: 'Synthetic Job' } },
         weapons,
         summons: Object.fromEntries(Array.from({ length: 5 }, (_, index) => [String(index + 1), { master: { id: String(2040000001 + index), name: `Summon ${index + 1}` } }])),
         is_use_additional_weapon: count > 10,
@@ -48,19 +49,24 @@ function deckBody(count = 10, priority = 84) {
 
 function startBody() {
   return {
+    viewer_id: 'synthetic-viewer',
     raid_id: 'raid-instance',
     quest_id: '305211',
     formation: ['0', '1', '2', '3'],
     back_formation: ['4', '5'],
     player: {
       param: [
-        { name: 'Private MC' },
+        { name: 'Synthetic MC' },
         ...Array.from({ length: 5 }, (_, index) => ({ name: `NPC ${index + 1}`, setting_id: String(3040000001 + index) })),
       ],
     },
     summon: Array.from({ length: 5 }, (_, index) => ({ id: String(2040000001 + index), name: `Summon ${index + 1}` })),
     supporter: { id: '2040999999', name: 'Support' },
     weapon: { weapon: '1040000001', weapon2: '1040999999' },
+    multi_raid_member_info: [
+      { viewer_id: 'someone-else', job_id: '999999' },
+      { viewer_id: 'synthetic-viewer', job_id: '140401' },
+    ],
   };
 }
 
@@ -72,6 +78,8 @@ test('normal party deck normalizes an ordered known 10-slot grid and observed ca
   assert.equal(loadout.weapons.length, 10);
   assert.deepEqual(loadout.weapons.map((weapon) => weapon.slot), [1,2,3,4,5,6,7,8,9,10]);
   assert.equal(loadout.additionalWeaponsActive, false);
+  assert.equal(loadout.jobId, '140401');
+  assert.equal(loadout.jobName, 'Synthetic Job');
   assert.equal(loadout.calculator.quality, 'known');
   assert.equal(loadout.calculator.estimatedDamage, 953933);
   assert.equal(loadout.calculator.estimatedAdvantageDamage, 1372486);
@@ -103,7 +111,7 @@ test('incomplete party deck stays partial instead of inventing a complete grid',
   assert.equal(loadout.weapons.some((weapon) => weapon.slot === 6), false);
 });
 
-test('battle start seeds party/summons but leaves the full weapon grid unknown', () => {
+test('battle start seeds authoritative party/summons/job while leaving the full weapon grid unknown', () => {
   const loadout = normalizeBattleStartLoadout(startBody(), 2000);
   assert.ok(loadout);
   assert.equal(loadout.weaponGridQuality, 'unknown');
@@ -114,6 +122,8 @@ test('battle start seeds party/summons but leaves the full weapon grid unknown',
   assert.equal(loadout.summons[5]?.support, true);
   assert.equal(loadout.mainWeaponId, '1040000001');
   assert.equal(loadout.auxiliaryWeaponId, '1040999999');
+  assert.equal(loadout.jobId, '140401');
+  assert.equal(loadout.jobName, undefined);
   assert.deepEqual(loadout.signature.npcIds, ['3040000001','3040000002','3040000003','3040000004','3040000005']);
 });
 
@@ -134,16 +144,45 @@ test('ambiguous matching decks never select or overwrite a raid grid', () => {
   assert.equal(selectMatchingDeck(start.signature, [one, two]), undefined);
 });
 
-test('late enrichment is monotonic once a known grid is attached', () => {
+test('late enrichment attaches a known grid/calculator and preserves authoritative battle facts', () => {
   const start = normalizeBattleStartLoadout(startBody(), 2000)!;
   const known = normalizePartyDeckLoadout(deckBody(), 2100)!;
   const enriched = enrichRaidLoadout(start, known);
   assert.equal(enriched.weaponGridQuality, 'known');
   assert.equal(enriched.deckId, '84');
+  assert.equal(enriched.jobId, '140401');
+  assert.equal(enriched.jobName, 'Synthetic Job');
+  assert.equal(enriched.calculator.quality, 'known');
+  assert.equal(enriched.party[0]?.name, 'MC');
+  assert.equal(enriched.summons.at(-1)?.support, true);
+});
+
+test('known grid does not block a later stronger calculator snapshot from the same correlated deck', () => {
+  const start = normalizeBattleStartLoadout(startBody(), 2000)!;
+  const gridOnly = normalizePartyDeckLoadout(deckBody(), 2100)!;
+  gridOnly.calculator = { quality: 'unknown', enhancement: {}, boosts: [] };
+  const gridKnown = enrichRaidLoadout(start, gridOnly);
+  assert.equal(gridKnown.weaponGridQuality, 'known');
+  assert.equal(gridKnown.calculator.quality, 'unknown');
+  const complete = normalizePartyDeckLoadout(deckBody(), 2200)!;
+  const enriched = enrichRaidLoadout(gridKnown, complete);
+  assert.equal(enriched.weaponGridQuality, 'known');
+  assert.equal(enriched.calculator.quality, 'known');
+  assert.equal(enriched.calculator.estimatedDamage, 953933);
+});
+
+test('equal partial quality never downgrades a stronger partial grid', () => {
+  const start = normalizeBattleStartLoadout(startBody(), 2000)!;
+  const stronger = normalizePartyDeckLoadout(deckBody(), 2100)!;
+  stronger.weaponGridQuality = 'partial';
+  stronger.weapons = stronger.weapons.slice(0, 9);
+  const partial = enrichRaidLoadout(start, stronger);
+  assert.equal(partial.weapons.length, 9);
   const weaker = normalizePartyDeckLoadout(deckBody(), 2200)!;
   weaker.weaponGridQuality = 'partial';
-  weaker.weapons = weaker.weapons.slice(0, 5);
-  assert.equal(enrichRaidLoadout(enriched, weaker), enriched);
+  weaker.weapons = weaker.weapons.slice(0, 4);
+  const unchanged = enrichRaidLoadout(partial, weaker);
+  assert.equal(unchanged.weapons.length, 9);
 });
 
 test('boost labels preserve known semantics and keep unknown identifiers readable', () => {

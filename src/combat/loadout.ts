@@ -115,6 +115,7 @@ export function normalizeBattleStartLoadout(body: unknown, observedAt: number): 
   const weapon = obj(body.weapon) ? body.weapon : undefined;
   const mainWeaponId = safeText(weapon?.weapon, 80);
   const auxiliaryWeaponId = safeText(weapon?.weapon2, 80);
+  const jobId = observedOwnJobId(body);
   const partyQuality = listQuality(party.length, 6);
   const summonQuality = ownSummons.length >= 5 && summons.some((summon) => summon.support) ? 'known' : summons.length ? 'partial' : 'unknown';
 
@@ -130,6 +131,7 @@ export function normalizeBattleStartLoadout(body: unknown, observedAt: number): 
     summons,
     mainWeaponId,
     auxiliaryWeaponId,
+    jobId,
     weaponGridQuality: 'unknown',
     weapons: [],
     calculator: unknownCalculator(),
@@ -164,6 +166,9 @@ export function normalizePartyDeckLoadout(body: unknown, observedAt: number): Ra
   const calculator = normalizeCalculator(pc.damage_info);
   const party = normalizeDeckParty(deck.npc);
   const summons = normalizeDeckSummons(pc.summons);
+  const job = obj(pc.job) && obj(pc.job.master) ? pc.job.master : undefined;
+  const jobId = safeText(job?.id, 80);
+  const jobName = safeText(job?.name, 120);
   const partyQuality = listQuality(party.length, 5);
   const summonQuality = listQuality(summons.length, 5);
   const quality = strongestQuality(weaponGridQuality, calculator.quality, partyQuality, summonQuality);
@@ -180,6 +185,8 @@ export function normalizePartyDeckLoadout(body: unknown, observedAt: number): Ra
     summonQuality,
     summons,
     mainWeaponId,
+    jobId,
+    jobName,
     weaponGridQuality,
     weapons,
     additionalWeaponsActive,
@@ -204,23 +211,23 @@ export function loadoutSignaturesMatch(left: RaidLoadoutSignature, right: RaidLo
 
 export function enrichRaidLoadout(base: RaidLoadoutSnapshot, deck: RaidLoadoutSnapshot): RaidLoadoutSnapshot {
   if (!loadoutSignaturesMatch(base.signature, deck.signature)) return base;
-  if (base.weaponGridQuality === 'known') return base;
-  const nextGrid = strongerQuality(base.weaponGridQuality, deck.weaponGridQuality) === deck.weaponGridQuality
-    ? deck.weapons
-    : base.weapons;
-  const nextCalculator = strongerQuality(base.calculator.quality, deck.calculator.quality) === deck.calculator.quality
-    ? deck.calculator
-    : base.calculator;
+  if (base.deckId && deck.deckId && base.deckId !== deck.deckId) return base;
+
+  const useGrid = shouldUseIncomingGrid(base, deck);
+  const useCalculator = shouldUseIncomingCalculator(base.calculator, deck.calculator);
   return {
     ...base,
     quality: strongestQuality(base.quality, deck.quality),
     updatedAt: Math.max(base.updatedAt, deck.updatedAt),
     correlation: 'signature',
-    deckId: deck.deckId ?? base.deckId,
-    weaponGridQuality: strongerQuality(base.weaponGridQuality, deck.weaponGridQuality),
-    weapons: nextGrid,
-    additionalWeaponsActive: deck.additionalWeaponsActive ?? base.additionalWeaponsActive,
-    calculator: nextCalculator,
+    deckId: base.deckId ?? deck.deckId,
+    mainWeaponId: base.mainWeaponId ?? deck.mainWeaponId,
+    jobId: base.jobId ?? deck.jobId,
+    jobName: base.jobName ?? deck.jobName,
+    weaponGridQuality: useGrid ? deck.weaponGridQuality : base.weaponGridQuality,
+    weapons: useGrid ? deck.weapons : base.weapons,
+    additionalWeaponsActive: useGrid ? deck.additionalWeaponsActive : base.additionalWeaponsActive,
+    calculator: useCalculator ? deck.calculator : base.calculator,
   };
 }
 
@@ -229,23 +236,29 @@ export function mergeRaidLoadout(
   incoming: RaidLoadoutSnapshot,
 ): RaidLoadoutSnapshot {
   if (!current) return incoming;
-  if (current.weaponGridQuality === 'known') return current;
-  if (incoming.weaponGridQuality === 'known' && loadoutSignaturesMatch(current.signature, incoming.signature)) {
-    return enrichRaidLoadout(current, incoming);
+  if (loadoutSignaturesMatch(current.signature, incoming.signature)) {
+    const party = preferList(current.partyQuality, current.party.length, incoming.partyQuality, incoming.party.length)
+      ? incoming.party
+      : current.party;
+    const summons = preferList(current.summonQuality, current.summons.length, incoming.summonQuality, incoming.summons.length)
+      ? incoming.summons
+      : current.summons;
+    const merged: RaidLoadoutSnapshot = {
+      ...current,
+      quality: strongestQuality(current.quality, incoming.quality),
+      updatedAt: Math.max(current.updatedAt, incoming.updatedAt),
+      partyQuality: strongerQuality(current.partyQuality, incoming.partyQuality),
+      party,
+      summonQuality: strongerQuality(current.summonQuality, incoming.summonQuality),
+      summons,
+      mainWeaponId: current.mainWeaponId ?? incoming.mainWeaponId,
+      auxiliaryWeaponId: current.auxiliaryWeaponId ?? incoming.auxiliaryWeaponId,
+      jobId: current.jobId ?? incoming.jobId,
+      jobName: current.jobName ?? incoming.jobName,
+    };
+    return enrichRaidLoadout(merged, incoming);
   }
-  const party = strongerQuality(current.partyQuality, incoming.partyQuality) === incoming.partyQuality ? incoming.party : current.party;
-  const summons = strongerQuality(current.summonQuality, incoming.summonQuality) === incoming.summonQuality ? incoming.summons : current.summons;
-  return {
-    ...current,
-    quality: strongestQuality(current.quality, incoming.quality),
-    updatedAt: Math.max(current.updatedAt, incoming.updatedAt),
-    partyQuality: strongerQuality(current.partyQuality, incoming.partyQuality),
-    party,
-    summonQuality: strongerQuality(current.summonQuality, incoming.summonQuality),
-    summons,
-    mainWeaponId: current.mainWeaponId ?? incoming.mainWeaponId,
-    auxiliaryWeaponId: current.auxiliaryWeaponId ?? incoming.auxiliaryWeaponId,
-  };
+  return current;
 }
 
 export async function readActiveRaidLoadout(key: string): Promise<RaidLoadoutSnapshot | undefined> {
@@ -266,12 +279,48 @@ async function enrichObservedRaids(state: DeckObservationState): Promise<void> {
   const observedInstances = new Set(state.raidInstanceIds);
   const decks = Object.values(state.decks);
   if (!observedInstances.size || !decks.length) return;
+
+  const stored = await readStoredRaidParses();
+  const rowsByInstance = new Map<string, NormalizedRaidParse[]>();
+  for (const parse of stored) {
+    if (!parse.instanceId || !observedInstances.has(parse.instanceId) || !parse.loadout) continue;
+    const rows = rowsByInstance.get(parse.instanceId) ?? [];
+    rows.push(parse);
+    rowsByInstance.set(parse.instanceId, rows);
+  }
+
+  const candidateByInstance = new Map<string, RaidLoadoutSnapshot>();
+  for (const [instanceId, rows] of rowsByInstance) {
+    if (rows.some((row) => row.loadout?.weaponGridQuality === 'known')) continue;
+    const exemplar = rows
+      .filter((row) => row.loadout)
+      .sort((left, right) => right.lastObservedAt - left.lastObservedAt)[0];
+    if (!exemplar?.loadout) continue;
+    const candidate = selectMatchingDeck(exemplar.loadout.signature, decks);
+    if (candidate) candidateByInstance.set(instanceId, candidate);
+  }
+
+  const instancesByDeck = new Map<string, string[]>();
+  for (const [instanceId, candidate] of candidateByInstance) {
+    if (!candidate.deckId) continue;
+    const instances = instancesByDeck.get(candidate.deckId) ?? [];
+    instances.push(instanceId);
+    instancesByDeck.set(candidate.deckId, instances);
+  }
+
+  const updates = new Map<string, RaidLoadoutSnapshot>();
+  for (const [instanceId, candidate] of candidateByInstance) {
+    if (!candidate.deckId || instancesByDeck.get(candidate.deckId)?.length !== 1) continue;
+    const exemplar = rowsByInstance.get(instanceId)?.find((row) => row.loadout)?.loadout;
+    if (!exemplar) continue;
+    updates.set(instanceId, enrichRaidLoadout(exemplar, candidate));
+  }
+  if (!updates.size) return;
+
   await updateStoredRaidLoadouts((parse) => {
-    if (!parse.instanceId || !observedInstances.has(parse.instanceId) || !parse.loadout) return parse;
-    if (parse.loadout.weaponGridQuality === 'known') return parse;
-    const match = selectMatchingDeck(parse.loadout.signature, decks);
-    if (!match) return parse;
-    return { ...parse, loadout: enrichRaidLoadout(parse.loadout, match) };
+    if (!parse.instanceId || !parse.loadout) return parse;
+    const updated = updates.get(parse.instanceId);
+    return updated ? { ...parse, loadout: mergeRaidLoadout(parse.loadout, updated) } : parse;
   });
 }
 
@@ -297,6 +346,17 @@ async function saveDeckState(state: DeckObservationState): Promise<void> {
 function trimDecks(state: DeckObservationState): void {
   const entries = Object.entries(state.decks).sort((left, right) => right[1].updatedAt - left[1].updatedAt);
   state.decks = Object.fromEntries(entries.slice(0, MAX_OBSERVED_DECKS));
+}
+
+async function readStoredRaidParses(): Promise<NormalizedRaidParse[]> {
+  const db = await openCombatDatabase();
+  const tx = db.transaction([ACTIVE_STORE, HISTORY_STORE], 'readonly');
+  const [active, history] = await Promise.all([
+    requestValue<ActiveRow[]>(tx.objectStore(ACTIVE_STORE).getAll()),
+    requestValue<RaidHistoryRecord[]>(tx.objectStore(HISTORY_STORE).getAll()),
+  ]);
+  db.close();
+  return [...active.map((row) => row.parse), ...history];
 }
 
 async function updateStoredRaidLoadouts(
@@ -490,6 +550,16 @@ function unknownCalculator(): RaidWeaponSkillSnapshot {
   return { quality: 'unknown', enhancement: {}, boosts: [] };
 }
 
+function observedOwnJobId(body: Obj): string | undefined {
+  const viewerId = safeText(body.viewer_id, 80);
+  if (!viewerId || !Array.isArray(body.multi_raid_member_info)) return undefined;
+  for (const entry of body.multi_raid_member_info) {
+    if (!obj(entry) || safeText(entry.viewer_id, 80) !== viewerId) continue;
+    return safeText(entry.job_id, 80);
+  }
+  return undefined;
+}
+
 function characterMasterId(value: Obj): string | undefined {
   const settingId = safeText(value.setting_id, 80);
   if (settingId && /^30[234]\d{7}$/.test(settingId)) return settingId;
@@ -509,6 +579,47 @@ function isVerifiedBattleStartResponseUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+function shouldUseIncomingGrid(base: RaidLoadoutSnapshot, incoming: RaidLoadoutSnapshot): boolean {
+  const quality = compareQuality(base.weaponGridQuality, incoming.weaponGridQuality);
+  if (quality < 0) return true;
+  if (quality > 0 || incoming.weaponGridQuality !== 'partial') return false;
+  return gridEvidenceScore(incoming) > gridEvidenceScore(base);
+}
+
+function shouldUseIncomingCalculator(base: RaidWeaponSkillSnapshot, incoming: RaidWeaponSkillSnapshot): boolean {
+  const quality = compareQuality(base.quality, incoming.quality);
+  if (quality < 0) return true;
+  if (quality > 0 || incoming.quality !== 'partial') return false;
+  return calculatorEvidenceScore(incoming) > calculatorEvidenceScore(base);
+}
+
+function gridEvidenceScore(loadout: RaidLoadoutSnapshot): number {
+  return loadout.weapons.reduce((score, weapon) => score + (weapon.masterId ? 2 : 0) + (weapon.hp !== undefined ? 1 : 0) + (weapon.attack !== undefined ? 1 : 0), 0);
+}
+
+function calculatorEvidenceScore(calculator: RaidWeaponSkillSnapshot): number {
+  const major = [calculator.estimatedDamage, calculator.estimatedAdvantageDamage, calculator.maxHp, calculator.advantageAttribute]
+    .filter((value) => value !== undefined).length;
+  const enhancement = [calculator.enhancement.normal, calculator.enhancement.magna, calculator.enhancement.other]
+    .filter((value) => value !== undefined).length;
+  return major * 4 + enhancement * 2 + calculator.boosts.length;
+}
+
+function preferList(
+  currentQuality: DataQuality,
+  currentLength: number,
+  incomingQuality: DataQuality,
+  incomingLength: number,
+): boolean {
+  const quality = compareQuality(currentQuality, incomingQuality);
+  return quality < 0 || (quality === 0 && incomingQuality === 'partial' && incomingLength > currentLength);
+}
+
+function compareQuality(left: DataQuality, right: DataQuality): number {
+  const rank: Record<DataQuality, number> = { unknown: 0, partial: 1, known: 2 };
+  return rank[left] - rank[right];
 }
 
 function orderedObjectValues(value: unknown): unknown[] {
@@ -532,8 +643,7 @@ function strongestQuality(...values: DataQuality[]): DataQuality {
 }
 
 function strongerQuality(left: DataQuality, right: DataQuality): DataQuality {
-  const rank: Record<DataQuality, number> = { unknown: 0, partial: 1, known: 2 };
-  return rank[right] > rank[left] ? right : left;
+  return compareQuality(left, right) < 0 ? right : left;
 }
 
 function safeText(value: unknown, maxLength: number): string | undefined {
