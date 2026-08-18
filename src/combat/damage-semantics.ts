@@ -61,7 +61,12 @@ function isVerifiedConcurrentNormalPattern(hits: readonly ParsedDamageHit[]): bo
     if ((multiplicities[0] ?? 0) >= 2) repeatedSingleAttackPattern = true;
   }
 
-  return grouped.size >= 2 || repeatedSingleAttackPattern;
+  const singleAttackWideLanePattern =
+    grouped.size === 1 &&
+    (expectedLaneCount ?? 0) >= 4 &&
+    hits.every((hit) => hit.isRandomAttack !== true);
+
+  return grouped.size >= 2 || repeatedSingleAttackPattern || singleAttackWideLanePattern;
 }
 
 function isVerifiedFlurryEchoPattern(hits: readonly ParsedDamageHit[]): boolean {
