@@ -31,10 +31,11 @@ test('last directly observed payload turn is usable without inventing per-turn d
   });
 });
 
-test('combat storage limits direct top-level turn evidence to verified start.json', () => {
+test('combat storage limits direct top-level turn evidence to verified raid and multiraid start.json', () => {
   const source = readFileSync(new URL('./storage.ts', import.meta.url), 'utf8');
   assert.match(source, /if \(!isVerifiedStart\(record\.meta\.url\)\) return undefined/);
   assert.match(source, /pathname === '\/rest\/multiraid\/start\.json'/);
+  assert.match(source, /pathname === '\/rest\/raid\/start\.json'/);
   assert.match(source, /\(body as Record<string, unknown>\)\.turn/);
   assert.match(source, /Number\.isInteger\(parsed\)/);
   assert.match(source, /next\.lastObservedTurn = Math\.max/);
