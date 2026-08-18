@@ -59,17 +59,10 @@ export interface CaptureParser<T> {
 
 export type CombatCaptureTraceStage =
   | 'response-seen'
-  | 'route-rejected'
-  | 'allowlisted'
-  | 'state-rejected'
   | 'queued'
-  | 'body-read'
+  | 'loading-finished'
   | 'record-built'
-  | 'ingest-start'
-  | 'ingest-null'
-  | 'ingest-success'
-  | 'completed'
-  | 'error';
+  | 'ingest-success';
 
 export interface CombatCaptureTraceEntry {
   at: number;
@@ -93,6 +86,5 @@ export interface CaptureStatusResponse {
   active: boolean;
   message: string;
   scan: CaptureScanSummary | null;
-  combatTrace?: CombatCaptureTraceEntry[];
   error?: string;
 }
