@@ -1,13 +1,21 @@
+.combat-loadout-side-column {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  align-content: start;
+}
+
+.combat-loadout-section { min-width: 0; }
+.combat-loadout-section > div { padding: 0 10px 10px; }
+
 .combat-loadout-panel {
-  margin: 0 0 18px;
+  margin: 0;
   padding: 16px;
   border: 1px solid rgba(108, 195, 224, .28);
-  border-radius: 14px;
+  border-radius: 12px;
   background: linear-gradient(180deg, rgba(13, 27, 38, .94), rgba(9, 17, 27, .96));
   box-shadow: inset 0 1px rgba(255, 255, 255, .035);
 }
-
-.active-combat-card > .combat-loadout-panel { margin: 12px 14px 16px; }
 
 .combat-loadout-unknown,
 .combat-loadout-head,
@@ -75,7 +83,7 @@
 
 .combat-grid-label {
   position: absolute;
-  z-index: 2;
+  z-index: 3;
   top: 8px;
   left: 8px;
   padding: 3px 7px;
@@ -120,7 +128,14 @@
 
 .combat-weapon-card.main .combat-weapon-art { flex: 1; min-height: 148px; }
 
+.combat-weapon-art img,
+.combat-weapon-art > [data-loadout-fallback] {
+  grid-area: 1 / 1;
+}
+
 .combat-weapon-art img {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   height: 84px;
@@ -129,10 +144,11 @@
 }
 
 .combat-weapon-card.main .combat-weapon-art img { height: 176px; }
-.combat-weapon-art > span:not(.weapon-plus) { color: rgba(255,255,255,.25); font-size: 28px; font-weight: 800; }
+.combat-weapon-art > [data-loadout-fallback] { color: rgba(255,255,255,.25); font-size: 28px; font-weight: 800; }
 
 .weapon-plus {
   position: absolute;
+  z-index: 2;
   right: 5px;
   bottom: 3px;
   color: #fff4aa;

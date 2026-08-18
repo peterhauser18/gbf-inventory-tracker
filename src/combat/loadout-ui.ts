@@ -1,6 +1,5 @@
 import './loadout.css';
-import { normalizeWikiTitle } from '../dashboard/farming.ts';
-import { loadWikiMaterialThumbnails } from '../dashboard/wiki-assets.ts';
+import { wikiEntityImageUrl } from '../dashboard/wiki-metadata.ts';
 import { readPersistedRaidLoadouts } from './loadout-read.ts';
 import type { RaidLoadoutSnapshot, RaidLoadoutWeapon, RaidWeaponSkillBoost } from './loadout-types.ts';
 
@@ -12,38 +11,20 @@ type RenderTarget = {
 
 export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
   const targets = await collectTargets(root);
-  const pending = targets.filter((target) => {
-    const current = target.mount.querySelector<HTMLElement>(':scope > .combat-loadout-panel');
-    return current?.dataset.loadoutFingerprint !== loadoutFingerprint(target.loadout);
-  });
-  if (!pending.length) return;
-  const weaponNames = [...new Set(pending.flatMap((target) => target.loadout?.weapons.flatMap((weapon) => weapon.name ? [weapon.name] : []) ?? []))];
-  let thumbnails: ReadonlyMap<string, string | undefined> = new Map();
-  if (weaponNames.length) {
-    try {
-      thumbnails = await loadWikiMaterialThumbnails(weaponNames);
-    } catch {
-      // Public wiki artwork is optional; observed loadout facts remain usable without it.
-    }
-  }
-
-  for (const target of pending) {
+  for (const target of targets) {
     if (!target.mount.isConnected) continue;
-    const current = target.mount.querySelector<HTMLElement>(':scope > .combat-loadout-panel');
+    const current = findCurrentLoadout(target.mount, target.owner);
     const fingerprint = loadoutFingerprint(target.loadout);
     if (current?.dataset.loadoutFingerprint === fingerprint) continue;
-    const next = document.createElement('section');
-    next.className = 'combat-loadout-panel';
+
+    const next = document.createElement('details');
+    next.className = 'combat-accordion combat-loadout-section';
     next.dataset.loadoutOwner = target.owner;
     next.dataset.loadoutFingerprint = fingerprint;
-    next.innerHTML = renderLoadout(target.loadout, thumbnails);
+    next.open = current?.open ?? false;
+    next.innerHTML = `<summary>${escapeHtml(loadoutSummary(target.loadout))}</summary><div><section class="combat-loadout-panel">${renderLoadout(target.loadout)}</section></div>`;
     current?.remove();
-    const activeLabel = target.mount.querySelector<HTMLElement>(':scope > .active-combat-card-label');
-    if (activeLabel) activeLabel.after(next);
-    else target.mount.prepend(next);
-    next.querySelectorAll<HTMLImageElement>('[data-loadout-image]').forEach((image) => {
-      image.addEventListener('error', () => image.remove(), { once: true });
-    });
+    placeLoadout(target, next);
   }
 }
 
@@ -64,10 +45,59 @@ async function collectTargets(root: HTMLElement): Promise<RenderTarget[]> {
   return targets;
 }
 
-function renderLoadout(
-  loadout: RaidLoadoutSnapshot | undefined,
-  thumbnails: ReadonlyMap<string, string | undefined>,
-): string {
+function findCurrentLoadout(mount: HTMLElement, owner: string): HTMLDetailsElement | undefined {
+  return [...mount.querySelectorAll<HTMLDetailsElement>('.combat-loadout-section')]
+    .find((candidate) => candidate.dataset.loadoutOwner === owner);
+}
+
+function placeLoadout(target: RenderTarget, next: HTMLDetailsElement): void {
+  if (!target.owner.startsWith('active:')) {
+    target.mount.prepend(next);
+    return;
+  }
+
+  const summons = target.mount.querySelector<HTMLDetailsElement>('.combat-accordion[data-combat-collapse="summons"]');
+  if (summons) {
+    const parent = summons.parentElement;
+    if (parent?.classList.contains('preset-cypher-grid') || parent?.classList.contains('party-first-row')) {
+      let side = parent.querySelector<HTMLElement>(':scope > .combat-loadout-side-column');
+      if (!side) {
+        side = document.createElement('div');
+        side.className = 'combat-loadout-side-column';
+        summons.replaceWith(side);
+        side.append(summons);
+      }
+      side.append(next);
+    } else {
+      summons.after(next);
+    }
+    return;
+  }
+
+  const compactPartySummons = target.mount.querySelector<HTMLElement>('.compact-party-summons');
+  if (compactPartySummons) {
+    compactPartySummons.after(next);
+    return;
+  }
+
+  const preset = target.mount.querySelector<HTMLElement>('.combat-preset');
+  const liveStats = preset?.querySelector<HTMLElement>('.combat-live-stats');
+  if (liveStats) {
+    liveStats.after(next);
+    return;
+  }
+  const activeLabel = target.mount.querySelector<HTMLElement>(':scope > .active-combat-card-label');
+  if (activeLabel) activeLabel.after(next);
+  else target.mount.prepend(next);
+}
+
+function loadoutSummary(loadout: RaidLoadoutSnapshot | undefined): string {
+  if (!loadout || loadout.weaponGridQuality === 'unknown') return 'Weapon Grid · Unknown';
+  const kind = loadout.weapons.some((weapon) => weapon.slot > 10) ? 'EX' : 'Normal';
+  return `Weapon Grid · ${kind} · ${loadout.weapons.length} weapons`;
+}
+
+function renderLoadout(loadout: RaidLoadoutSnapshot | undefined): string {
   if (!loadout || loadout.weaponGridQuality === 'unknown') {
     return `<div class="combat-loadout-unknown">
       <div><p class="eyebrow">BATTLE LOADOUT</p><h3>Weapon Grid — Unknown</h3></div>
@@ -87,30 +117,27 @@ function renderLoadout(
       <div class="combat-loadout-totals"><div><span>Total HP</span><strong>${formatNumber(totalHp)}</strong></div><div><span>Total ATK</span><strong>${formatNumber(totalAttack)}</strong></div></div>
     </div>
     <div class="combat-weapon-grid-shell">
-      <div class="combat-main-weapon"><span class="combat-grid-label">MAIN WEAPON</span>${main ? renderWeapon(main, thumbnails, true) : renderMissingWeapon(1)}</div>
-      <div class="combat-regular-weapons">${regular.map((weapon) => renderWeapon(weapon, thumbnails, false)).join('')}</div>
+      <div class="combat-main-weapon"><span class="combat-grid-label">MAIN WEAPON</span>${main ? renderWeapon(main, true) : renderMissingWeapon(1)}</div>
+      <div class="combat-regular-weapons">${regular.map((weapon) => renderWeapon(weapon, false)).join('')}</div>
     </div>
-    ${additional.length ? `<div class="combat-additional-weapons"><div class="combat-additional-label"><strong>Additional Weapons</strong><span>EX Party</span></div><div class="combat-additional-grid">${additional.map((weapon) => renderWeapon(weapon, thumbnails, false)).join('')}</div></div>` : ''}
+    ${additional.length ? `<div class="combat-additional-weapons"><div class="combat-additional-label"><strong>Additional Weapons</strong><span>EX Party</span></div><div class="combat-additional-grid">${additional.map((weapon) => renderWeapon(weapon, false)).join('')}</div></div>` : ''}
     ${renderCalculator(loadout)}
   `;
 }
 
-function renderWeapon(
-  weapon: RaidLoadoutWeapon,
-  thumbnails: ReadonlyMap<string, string | undefined>,
-  main: boolean,
-): string {
-  const imageUrl = weapon.name ? thumbnails.get(normalizeWikiTitle(weapon.name)) : undefined;
+function renderWeapon(weapon: RaidLoadoutWeapon, main: boolean): string {
+  const imageId = weapon.masterId ?? weapon.imageId;
+  const imageUrl = imageId ? wikiEntityImageUrl('weapon', imageId) : undefined;
   const plus = weapon.plus && weapon.plus > 0 ? `<span class="weapon-plus">+${formatNumber(weapon.plus)}</span>` : '';
   return `<article class="combat-weapon-card${main ? ' main' : ''}" title="${escapeAttribute(weapon.name ?? weapon.masterId ?? `Weapon slot ${weapon.slot}`)}">
-    <div class="combat-weapon-art">${imageUrl ? `<img data-loadout-image src="${escapeAttribute(imageUrl)}" alt="" referrerpolicy="no-referrer" />` : `<span>${weapon.slot}</span>`}${plus}</div>
+    <div class="combat-weapon-art"><span data-loadout-fallback>${weapon.slot}</span>${imageUrl ? `<img data-loadout-image src="${escapeAttribute(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />` : ''}${plus}</div>
     <div class="combat-weapon-name"><span>Slot ${weapon.slot}</span><strong>${escapeHtml(weapon.name ?? weapon.masterId ?? 'Observed weapon')}</strong></div>
     <div class="combat-weapon-stats"><span>◆ ${optionalNumber(weapon.hp)}</span><span>⚔ ${optionalNumber(weapon.attack)}</span></div>
   </article>`;
 }
 
 function renderMissingWeapon(slot: number): string {
-  return `<article class="combat-weapon-card main missing"><div class="combat-weapon-art"><span>${slot}</span></div><div class="combat-weapon-name"><span>Slot ${slot}</span><strong>Unknown</strong></div></article>`;
+  return `<article class="combat-weapon-card main missing"><div class="combat-weapon-art"><span data-loadout-fallback>${slot}</span></div><div class="combat-weapon-name"><span>Slot ${slot}</span><strong>Unknown</strong></div></article>`;
 }
 
 function renderCalculator(loadout: RaidLoadoutSnapshot): string {
