@@ -1,6 +1,7 @@
 import './loadout.css';
 import { wikiEntityImageUrl } from '../dashboard/wiki-metadata.ts';
 import { readPersistedRaidLoadouts } from './loadout-read.ts';
+import { CombatLoadoutOpenState } from './loadout-open-state.ts';
 import type { RaidLoadoutSnapshot, RaidLoadoutWeapon, RaidWeaponSkillBoost } from './loadout-types.ts';
 
 type RenderTarget = {
@@ -8,6 +9,8 @@ type RenderTarget = {
   mount: HTMLElement;
   loadout?: RaidLoadoutSnapshot;
 };
+
+const openState = new CombatLoadoutOpenState();
 
 export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
   const targets = await collectTargets(root);
@@ -21,8 +24,9 @@ export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
     next.className = 'combat-accordion combat-loadout-section';
     next.dataset.loadoutOwner = target.owner;
     next.dataset.loadoutFingerprint = fingerprint;
-    next.open = current?.open ?? false;
+    next.open = openState.resolve(target.owner, current?.open);
     next.innerHTML = `<summary>${escapeHtml(loadoutSummary(target.loadout))}</summary><div><section class="combat-loadout-panel">${renderLoadout(target.loadout)}</section></div>`;
+    next.addEventListener('toggle', () => openState.remember(target.owner, next.open));
     current?.remove();
     placeLoadout(target, next);
   }
