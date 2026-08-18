@@ -55,6 +55,16 @@ test('classifies a complete repeated concurrent lane grid as normal', () => {
   assert.deepEqual(classified.map((entry) => entry.kind), ['normal', 'normal', 'normal', 'normal', 'normal', 'normal']);
 });
 
+test('classifies a complete four-lane single attack as normal for the N.A./Counter bucket', () => {
+  const classified = classifyVerifiedNormalDamage([
+    hit(600, 0, { attackCount: 0 }),
+    hit(120, 1, { attackCount: 0 }),
+    hit(60, 2, { attackCount: 0 }),
+    hit(320, 3, { attackCount: 0 }),
+  ]);
+  assert.deepEqual(classified.map((entry) => entry.kind), ['normal', 'normal', 'normal', 'normal']);
+});
+
 test('does not classify Flurry plus Echo when attack_count evidence is partial', () => {
   const classified = classifyVerifiedNormalDamage([
     hit(588476, 0, { critical: false, attackCount: 0, isRandomAttack: true }),
