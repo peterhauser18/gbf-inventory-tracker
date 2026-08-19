@@ -7,7 +7,6 @@ import { installCombatMultiActiveCompat } from './multi-active-compat.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 import { decorateCombatLoadouts } from './loadout-ui.ts';
 import { detachCombatLoadouts, restoreCombatLoadouts } from './loadout-dom-preservation.ts';
-import { decorateHistoricalRaidLayouts } from './raid-history-layout-ui.ts';
 import { applySharedCombatPresentationFixes } from './shared-presentation-fixes.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
@@ -151,10 +150,11 @@ function renderSectionIfChanged(force = false): void {
   if (!app || !selected) return;
   const section = app.querySelector<HTMLElement>('[data-combat-section]');
   if (!section) return;
-  const markup = selected === 'combat' ? controller.renderCombat(layout) : controller.renderRaids(query);
+  const markup = selected === 'combat' ? controller.renderCombat(layout) : controller.renderRaids(query, layout);
   if (!force && markup === lastSectionMarkup) {
     if (selected === 'combat') applyCombatLiveUiFixes(section);
-    decorateSection(section, selected, layout);
+    applySharedCombatPresentationFixes(section);
+    void decorateCombatLoadouts(section);
     return;
   }
   const preservedLoadouts = detachCombatLoadouts(section);
@@ -162,21 +162,9 @@ function renderSectionIfChanged(force = false): void {
   section.innerHTML = markup;
   controller.bind(section);
   if (selected === 'combat') applyCombatLiveUiFixes(section);
+  applySharedCombatPresentationFixes(section);
   restoreCombatLoadouts(section, preservedLoadouts);
-  decorateSection(section, selected, layout);
-}
-
-function decorateSection(
-  section: HTMLElement,
-  sectionKind: 'combat' | 'raids',
-  selectedLayout: CombatLayoutPreset,
-): void {
-  void (async () => {
-    if (sectionKind === 'raids') await decorateHistoricalRaidLayouts(section, selectedLayout);
-    if (!section.isConnected) return;
-    applySharedCombatPresentationFixes(section);
-    await decorateCombatLoadouts(section);
-  })();
+  void decorateCombatLoadouts(section);
 }
 
 function loadLayoutPreference(): CombatLayoutPreset {
