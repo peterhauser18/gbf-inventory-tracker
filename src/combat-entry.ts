@@ -43,7 +43,7 @@ async function installRawCaptureMode(): Promise<void> {
     <div class="raw-capture-copy">
       <strong>RAW CAPTURE MODE</strong>
       <span id="raw-capture-status">Starting local raw combat capture…</span>
-      <small>Stores verified combat JSON response bodies locally for parser debugging. Credential-like field values are replaced with [redacted] while the rest of each response is retained.</small>
+      <small>Stores verified combat JSON response bodies locally for parser debugging. Credential-like field values are replaced with [redacted]; failed body reads retain only sanitized path, time, and a fixed failure reason.</small>
     </div>
     <div class="raw-capture-actions">
       <button id="raw-capture-export" type="button" disabled>Export Raw JSON</button>
@@ -65,9 +65,15 @@ async function installRawCaptureMode(): Promise<void> {
 
   const refresh = async (): Promise<void> => {
     const current = await getRawCombatCaptureStatus();
-    exportButton.disabled = current.count === 0;
+    exportButton.disabled = current.count === 0 && current.readFailureCount === 0;
+    const redactions = current.redactedSensitiveFields
+      ? `; ${current.redactedSensitiveFields} credential-like field${current.redactedSensitiveFields === 1 ? '' : 's'} redacted`
+      : '';
+    const failures = current.readFailureCount
+      ? `; ${current.readFailureCount} response-body read failure${current.readFailureCount === 1 ? '' : 's'} retained`
+      : '';
     status.textContent = current.enabled
-      ? `${current.count} raw combat response${current.count === 1 ? '' : 's'} retained locally${current.redactedSensitiveFields ? `; ${current.redactedSensitiveFields} credential-like field${current.redactedSensitiveFields === 1 ? '' : 's'} redacted` : ''}.`
+      ? `${current.count} raw combat response${current.count === 1 ? '' : 's'} retained locally${redactions}${failures}.`
       : 'Raw capture is inactive. Re-open this mode from the extension popup to start a fresh session.';
   };
 
@@ -77,7 +83,7 @@ async function installRawCaptureMode(): Promise<void> {
       const exportedAt = Date.now();
       const bundle = await getRawCombatCaptureExport(exportedAt);
       downloadJson(rawCombatCaptureFilename(exportedAt), serializeRawCombatCaptureExport(bundle));
-      status.textContent = `Exported ${bundle.records.length} raw combat response${bundle.records.length === 1 ? '' : 's'} locally.`;
+      status.textContent = `Exported ${bundle.records.length} raw combat response${bundle.records.length === 1 ? '' : 's'} and ${bundle.readFailures.length} body-read failure${bundle.readFailures.length === 1 ? '' : 's'} locally.`;
     } catch (error) {
       status.textContent = error instanceof Error ? error.message : String(error);
     } finally {
@@ -86,7 +92,7 @@ async function installRawCaptureMode(): Promise<void> {
   });
 
   clearButton.addEventListener('click', async () => {
-    if (!window.confirm('Clear all locally retained raw combat responses from this capture session?')) return;
+    if (!window.confirm('Clear all locally retained raw combat responses and read-failure diagnostics from this capture session?')) return;
     clearButton.disabled = true;
     try {
       await clearRawCombatCapture();
