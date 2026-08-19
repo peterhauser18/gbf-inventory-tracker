@@ -55,6 +55,13 @@ function findCurrentLoadout(mount: HTMLElement, owner: string): HTMLDetailsEleme
 }
 
 function placeLoadout(target: RenderTarget, next: HTMLDetailsElement): void {
+  const cockpitWeaponSlot = target.mount.querySelector<HTMLElement>('[data-cockpit-weapon-slot]');
+  if (cockpitWeaponSlot) {
+    next.open = true;
+    cockpitWeaponSlot.replaceChildren(next);
+    return;
+  }
+
   if (!target.owner.startsWith('active:')) {
     target.mount.prepend(next);
     return;
