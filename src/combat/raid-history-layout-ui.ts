@@ -2,39 +2,11 @@ import { buildCharacterAnalyses, type CharacterCombatAnalysis } from './analytic
 import { renderCombatLayout, type CombatLayoutPreset } from './layouts.ts';
 import type { RaidLoadoutMember, RaidLoadoutSnapshot } from './loadout-types.ts';
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
-import { getRaidHistory } from './storage.ts';
 import type { RaidHistoryRecord } from './types.ts';
-import {
-  EMPTY_ENTITY_METADATA,
-  loadWikiEntityMetadata,
-  type EntityMetadataIndex,
-} from '../dashboard/wiki-metadata.ts';
-import { applySharedCombatPresentationFixes, isTechnicalMainCharacterLabel } from './shared-presentation-fixes.ts';
+import { EMPTY_ENTITY_METADATA, type EntityMetadataIndex } from '../dashboard/wiki-metadata.ts';
+import { isTechnicalMainCharacterLabel } from './shared-presentation-fixes.ts';
 
-type RaidWithLoadout = RaidHistoryRecord & { loadout?: RaidLoadoutSnapshot };
-
-const selectedActorByRaid = new Map<string, string>();
-const collapsedSectionsByRaid = new Map<string, Set<string>>();
-let metadataPromise: Promise<EntityMetadataIndex> | undefined;
-
-export async function decorateHistoricalRaidLayouts(
-  root: HTMLElement,
-  layout: CombatLayoutPreset,
-): Promise<void> {
-  const [history, metadata] = await Promise.all([
-    getRaidHistory() as Promise<RaidWithLoadout[]>,
-    getMetadata(),
-  ]);
-  const byLocalId = new Map(history.map((raid) => [raid.localId, raid]));
-
-  for (const card of root.querySelectorAll<HTMLElement>('.raid-card')) {
-    const localId = card.querySelector<HTMLButtonElement>('[data-raid-export]')?.dataset.raidExport;
-    if (!localId) continue;
-    const raid = byLocalId.get(localId);
-    if (!raid) continue;
-    renderHistoryCard(card, raid, layout, metadata);
-  }
-}
+export type RaidWithLoadout = RaidHistoryRecord & { loadout?: RaidLoadoutSnapshot };
 
 export function buildHistoricalCombatContext(raid: RaidWithLoadout): CombatParseContext | null {
   const loadout = raid.loadout;
@@ -78,69 +50,14 @@ export function renderHistoricalRaidLayout(
   collapsedSections: ReadonlySet<string> = new Set(),
 ): string {
   const quality = renderHistoricalQuality(raid.loadout);
-  return `${quality}${renderCombatLayout(layout, {
+  const rendered = renderCombatLayout(layout, {
     raid,
     context: buildHistoricalCombatContext(raid),
     metadata,
     selectedActorId,
     collapsedSections,
-  })}`;
-}
-
-function renderHistoryCard(
-  card: HTMLElement,
-  raid: RaidWithLoadout,
-  layout: CombatLayoutPreset,
-  metadata: EntityMetadataIndex,
-): void {
-  const mount = card.querySelector<HTMLElement>('[data-raid-combat-collapse] .raid-section-body');
-  if (!mount) return;
-
-  let host = mount.querySelector<HTMLElement>(':scope > [data-history-layout-host]');
-  if (!host) {
-    const preservedLoadouts = [...mount.children]
-      .filter((child): child is HTMLElement => child instanceof HTMLElement && child.classList.contains('combat-loadout-section'));
-    host = document.createElement('div');
-    host.dataset.historyLayoutHost = raid.localId;
-    mount.replaceChildren(...preservedLoadouts, host);
-  }
-
-  const collapsed = collapsedSectionsByRaid.get(raid.localId) ?? new Set<string>();
-  const selectedActorId = selectedActorByRaid.get(raid.localId) ?? null;
-  const fingerprint = [
-    layout,
-    raid.lastObservedAt,
-    raid.loadout?.updatedAt ?? 0,
-    selectedActorId ?? '',
-    [...collapsed].sort().join(','),
-  ].join(':');
-  if (host.dataset.historyLayoutFingerprint === fingerprint) return;
-
-  host.dataset.historyLayoutFingerprint = fingerprint;
-  host.innerHTML = renderHistoricalRaidLayout(raid, layout, metadata, selectedActorId, collapsed);
-  annotateHistoricalSummons(host, raid.loadout);
-  applySharedCombatPresentationFixes(host);
-
-  host.querySelectorAll<HTMLButtonElement>('[data-character-select]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const actorId = button.dataset.characterSelect;
-      if (!actorId) return;
-      selectedActorByRaid.set(raid.localId, actorId);
-      host!.dataset.historyLayoutFingerprint = '';
-      renderHistoryCard(card, raid, layout, metadata);
-    });
   });
-
-  host.querySelectorAll<HTMLDetailsElement>('[data-combat-collapse]').forEach((details) => {
-    details.addEventListener('toggle', () => {
-      const section = details.dataset.combatCollapse;
-      if (!section) return;
-      const current = collapsedSectionsByRaid.get(raid.localId) ?? new Set<string>();
-      if (details.open) current.delete(section);
-      else current.add(section);
-      collapsedSectionsByRaid.set(raid.localId, current);
-    });
-  });
+  return `${quality}${annotateHistoricalSummons(rendered, raid.loadout)}`;
 }
 
 function matchHistoricalAnalyses(
@@ -166,7 +83,7 @@ function matchHistoricalAnalyses(
   const main = members.find((member) => member.position === 0);
   if (!main) return matches;
   const mainName = normalizedName(humanFacingPlayerName(main.name));
-  let candidates = analyses.filter((analysis) => !used.has(analysis.actorId));
+  const candidates = analyses.filter((analysis) => !used.has(analysis.actorId));
   let match = mainName
     ? candidates.find((analysis) => normalizedName(humanFacingPlayerName(analysis.actorName)) === mainName)
     : undefined;
@@ -191,18 +108,15 @@ function renderHistoricalQuality(loadout: RaidLoadoutSnapshot | undefined): stri
   return `<p class="muted history-data-quality">Historical data: ${escapeHtml(notices.join(' · '))}. Missing slots are not inferred.</p>`;
 }
 
-function annotateHistoricalSummons(host: HTMLElement, loadout: RaidLoadoutSnapshot | undefined): void {
-  if (!loadout?.summons.length) return;
-  const cards = [...host.querySelectorAll<HTMLElement>('.summon-card')];
-  loadout.summons.forEach((summon, index) => {
-    if (!summon.support) return;
-    const card = cards[index];
-    if (!card || card.querySelector('[data-support-summon]')) return;
-    const badge = document.createElement('span');
-    badge.className = 'state-tag';
-    badge.dataset.supportSummon = 'true';
-    badge.textContent = 'Support';
-    card.append(badge);
+function annotateHistoricalSummons(markup: string, loadout: RaidLoadoutSnapshot | undefined): string {
+  if (!loadout?.summons.some((summon) => summon.support)) return markup;
+  let index = 0;
+  return markup.replace(/<article class="summon-card">[\s\S]*?<\/article>/g, (card) => {
+    const summon = loadout.summons[index++];
+    if (!summon?.support) return card;
+    return card
+      .replace('<article class="summon-card">', '<article class="summon-card support-summon">')
+      .replace('</article>', '<span class="state-tag" data-support-summon="true">Support</span></article>');
   });
 }
 
@@ -221,11 +135,6 @@ function humanFacingCharacterName(value: string | undefined): string | undefined
 function normalizedName(value: string | undefined): string | undefined {
   const text = value?.trim().toLocaleLowerCase();
   return text || undefined;
-}
-
-async function getMetadata(): Promise<EntityMetadataIndex> {
-  metadataPromise ??= loadWikiEntityMetadata().catch(() => EMPTY_ENTITY_METADATA);
-  return metadataPromise;
 }
 
 function escapeHtml(value: string): string {
