@@ -10,4 +10,6 @@
 .active-combat-actions { margin-left: auto; flex-wrap: wrap; }
 .active-combat-actions button { border: 1px solid var(--border, #d0d1ca); border-radius: 10px; background: transparent; color: inherit; padding: 9px 12px; cursor: pointer; }
 .active-combat-actions .danger-outline { border-color: #a85b5b; }
+.attack-modes-compact { grid-column: span 4; }
+@media (max-width: 850px) { .attack-modes-compact { grid-column: span 1; } }
 @media (max-width: 760px) { .active-combat-footer { align-items: stretch; } .active-combat-actions { width: 100%; margin-left: 0; } .active-combat-actions button { flex: 1; } }

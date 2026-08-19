@@ -63,8 +63,8 @@ test('settings, collection and farming surfaces avoid raw quality-state wording'
 
 test('combat surfaces keep uncertainty without raw partial or unknown labels', () => {
   assert.doesNotMatch(combatDashboard, /Unknown actor|unavailable or partial/);
-  assert.match(combatDashboard, /Actor unavailable/);
   assert.doesNotMatch(combatLayouts, /\(partial\)|Unknown actor/);
+  assert.match(combatLayouts, /Actor unavailable/);
   assert.match(combatLayouts, /\(estimated\)/);
   assert.doesNotMatch(combatCompare, />\$\{comparison\.contributors\.quality\}<|partial\/unknown/);
   assert.match(combatCompare, /Missing attribution remains incomplete or unavailable/);
