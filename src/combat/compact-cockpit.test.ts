@@ -11,6 +11,9 @@ const sharedPresentation = readFileSync(new URL('./shared-presentation-fixes.ts'
 const stableDom = readFileSync(new URL('./live-dom-preservation.ts', import.meta.url), 'utf8');
 const loadoutUi = readFileSync(new URL('./loadout-ui.ts', import.meta.url), 'utf8');
 const loadoutPreservation = readFileSync(new URL('./loadout-dom-preservation.ts', import.meta.url), 'utf8');
+const raidHistoryCompact = readFileSync(new URL('./raid-history-compact.ts', import.meta.url), 'utf8');
+const attackModes = readFileSync(new URL('./cockpit-attack-modes.ts', import.meta.url), 'utf8');
+const attackModesCss = readFileSync(new URL('./cockpit-attack-modes.css', import.meta.url), 'utf8');
 
 test('Combat Cockpit is a bounded compact dashboard instead of stacked long sections', () => {
   assert.match(layouts, /class="cockpit-summary"/);
@@ -34,12 +37,13 @@ test('aggressive live refresh preserves loaded visuals and expanded state instea
   assert.match(stableDom, /\.cockpit-loadout-panel\[data-cockpit-loadout-panel\]/);
 });
 
-test('selected character details move inline directly below the selected combat row', () => {
-  assert.match(sharedPresentation, /moveCockpitSelectedAnalysisInline\(root\)/);
-  assert.match(sharedPresentation, /button\.cockpit-row\.selected/);
-  assert.match(sharedPresentation, /selected\.insertAdjacentElement\('afterend', detail\)/);
-  assert.match(sharedPresentation, /detail\.open = true/);
-  assert.match(uiV2Css, /\.cockpit-inline-analysis \.analysis-character\s*\{\s*display:\s*none;/s);
+test('character drill-down is removed and SA DA TA counts with percentages are added to the overview', () => {
+  assert.match(sharedPresentation, /removeCockpitSelectedAnalysis\(root\)/);
+  assert.match(sharedPresentation, /\.cockpit-selected-analysis/);
+  assert.match(attackModes, /for \(const label of \['SA', 'DA', 'TA'\]\)/);
+  assert.match(attackModes, /mode\.count \/ total \* 100/);
+  assert.match(attackModes, /`\$\{mode\.count\} \(\$\{formatPercent\(percent\)\}%\)`/);
+  assert.match(attackModesCss, /repeat\(8, minmax\(54px,/);
 });
 
 test('Combat Cockpit shares one lower slot between characters, summons, and weapons', () => {
@@ -73,6 +77,18 @@ test('compact Weapons view mirrors the game grid and keeps skill boosts visible'
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-calculator\s*\{[^}]*display:\s*block/s);
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-calculator-summary,[\s\S]*combat-enhancement-row\s*\{\s*display:\s*none;/s);
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-skill-boosts\s*\{[^}]*display:\s*block/s);
+});
+
+test('Raid History uses a compact fixed cockpit shell with five records per page', () => {
+  assert.match(ui, /const layout: CombatLayoutPreset = 'combat-cockpit'/);
+  assert.doesNotMatch(ui, /combat-layout-select|COMBAT_LAYOUT_PRESETS|loadLayoutPreference/);
+  assert.match(ui, /class="content-header raids-compact-header"/);
+  assert.doesNotMatch(ui, /<h2>Raids<\/h2>/);
+  assert.match(raidHistoryCompact, /const RAIDS_PER_PAGE = 5/);
+  assert.match(raidHistoryCompact, /card\.hidden = index < start \|\| index >= end/);
+  assert.match(raidHistoryCompact, /list\.insertAdjacentElement\('afterend', pagination\)/);
+  assert.match(raidHistoryCompact, /toolbar\.classList\.add\('raid-toolbar-bottom'\)/);
+  assert.match(raidHistoryCompact, /root\.append\(toolbar\)/);
 });
 
 test('Participants and Combat Log stay collapsed and open in bounded overlay panels', () => {
