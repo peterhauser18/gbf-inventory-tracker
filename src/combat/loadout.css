@@ -1,0 +1,261 @@
+.combat-loadout-side-column {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  align-content: start;
+}
+
+.combat-loadout-section { min-width: 0; }
+.combat-loadout-section > div { padding: 0 10px 10px; }
+
+.combat-loadout-panel {
+  margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(108, 195, 224, .28);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(13, 27, 38, .94), rgba(9, 17, 27, .96));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .035);
+}
+
+.combat-loadout-unknown,
+.combat-loadout-head,
+.combat-calculator-summary,
+.combat-enhancement-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.combat-loadout-unknown span { color: var(--muted, #92a2af); }
+.combat-loadout-panel h3 { margin: 2px 0 0; }
+
+.combat-loadout-totals {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.combat-loadout-totals > div,
+.combat-calculator-summary > div,
+.combat-enhancement-row > div {
+  min-width: 116px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .035);
+}
+
+.combat-loadout-totals span,
+.combat-calculator-summary span,
+.combat-enhancement-row span {
+  display: block;
+  color: var(--muted, #92a2af);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.combat-loadout-totals strong,
+.combat-calculator-summary strong,
+.combat-enhancement-row strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.combat-loadout-totals > div:first-child strong { color: #a8e45a; }
+.combat-loadout-totals > div:last-child strong { color: #ff9b58; }
+
+.combat-weapon-grid-shell {
+  display: grid;
+  grid-template-columns: minmax(150px, .75fr) minmax(300px, 2.25fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.combat-main-weapon {
+  position: relative;
+  min-width: 0;
+}
+
+.combat-grid-label {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  left: 8px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(4, 12, 18, .82);
+  color: #dbe8ef;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.combat-regular-weapons,
+.combat-additional-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.combat-weapon-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .025);
+}
+
+.combat-weapon-card.main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.combat-weapon-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 70px;
+  background:
+    radial-gradient(circle at 50% 25%, rgba(229, 197, 103, .14), transparent 55%),
+    rgba(255, 255, 255, .025);
+}
+
+.combat-weapon-card.main .combat-weapon-art { flex: 1; min-height: 148px; }
+
+.combat-weapon-art img,
+.combat-weapon-art > [data-loadout-fallback] {
+  grid-area: 1 / 1;
+}
+
+.combat-weapon-art img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 84px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, .08);
+}
+
+.combat-weapon-card.main .combat-weapon-art img { height: 176px; }
+.combat-weapon-art > [data-loadout-fallback] { color: rgba(255,255,255,.25); font-size: 28px; font-weight: 800; }
+
+.weapon-plus {
+  position: absolute;
+  z-index: 2;
+  right: 5px;
+  bottom: 3px;
+  color: #fff4aa;
+  font-weight: 800;
+  text-shadow: 0 1px 4px #000;
+}
+
+.combat-weapon-name { padding: 6px 8px 4px; }
+.combat-weapon-name span { display: block; color: var(--muted, #92a2af); font-size: 10px; }
+.combat-weapon-name strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+
+.combat-weapon-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid rgba(255,255,255,.06);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.combat-weapon-stats span { padding: 4px 6px; text-align: center; }
+.combat-weapon-stats span:first-child { color: #a8e45a; border-right: 1px solid rgba(255,255,255,.05); }
+.combat-weapon-stats span:last-child { color: #ff9b58; }
+
+.combat-additional-weapons {
+  display: grid;
+  grid-template-columns: minmax(150px, .75fr) minmax(300px, 2.25fr);
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(88, 146, 205, .28);
+}
+
+.combat-additional-label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(40, 83, 132, .24), rgba(43, 34, 88, .22));
+}
+.combat-additional-label strong { color: #d8e9ff; }
+.combat-additional-label span { color: var(--muted, #92a2af); font-size: 11px; }
+
+.combat-calculator {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+.combat-calculator-summary { align-items: stretch; }
+.combat-calculator-summary > div { flex: 1; }
+.combat-calculator-summary strong { color: #a8e45a; font-size: 20px; }
+
+.combat-enhancement-row {
+  margin-top: 10px;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.combat-boost-heading {
+  color: #dce8ee;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.combat-enhancement-row > .combat-boost-heading { margin-right: auto; }
+.combat-enhancement-row > div { min-width: 92px; }
+
+.combat-skill-boosts { margin-top: 12px; }
+.combat-skill-boosts.unknown { display: flex; gap: 10px; color: var(--muted, #92a2af); }
+.combat-skill-boosts.unknown strong { color: #dce8ee; }
+
+.combat-boost-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+
+.combat-boost-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 999px;
+  background: rgba(255,255,255,.035);
+}
+.combat-boost-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.combat-boost-chip strong { font-variant-numeric: tabular-nums; }
+.combat-boost-chip.offense { border-color: rgba(196, 82, 82, .3); background: rgba(106, 35, 35, .18); }
+.combat-boost-chip.health { border-color: rgba(75, 164, 86, .28); background: rgba(34, 91, 43, .17); }
+.combat-boost-chip.defense { border-color: rgba(72, 138, 196, .3); background: rgba(28, 70, 108, .17); }
+.combat-boost-chip.cap { border-color: rgba(190, 144, 60, .3); background: rgba(100, 69, 20, .17); }
+.combat-boost-chip.maxed strong { color: #ffae37; }
+
+@media (max-width: 860px) {
+  .combat-loadout-head,
+  .combat-loadout-unknown,
+  .combat-calculator-summary { align-items: stretch; flex-direction: column; }
+  .combat-loadout-totals { justify-content: flex-start; }
+  .combat-weapon-grid-shell,
+  .combat-additional-weapons { grid-template-columns: 1fr; }
+  .combat-main-weapon .combat-weapon-card.main { min-height: 0; }
+  .combat-weapon-card.main .combat-weapon-art { min-height: 100px; }
+  .combat-boost-grid { grid-template-columns: 1fr; }
+}
