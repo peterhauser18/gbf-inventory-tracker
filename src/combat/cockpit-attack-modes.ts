@@ -49,7 +49,7 @@ function decorateTable(scope: HTMLElement, raid: NormalizedRaidParse): void {
 
 function normalizeHeader(head: HTMLElement): void {
   for (const cell of [...head.children] as HTMLElement[]) {
-    if (cell.textContent?.trim() === 'Echo' || cell.textContent?.trim() === 'Supp.') cell.remove();
+    if (cell.textContent?.trim() === 'Supp.') cell.remove();
   }
   if (head.querySelector('.cockpit-attack-mode-head')) return;
 
@@ -65,10 +65,7 @@ function normalizeHeader(head: HTMLElement): void {
 function normalizeRow(row: HTMLElement, analysis: CharacterCombatAnalysis | undefined): void {
   if (!row.dataset.attackModesNormalized) {
     const cells = [...row.children] as HTMLElement[];
-    if (cells.length >= 8) {
-      cells[6]?.remove();
-      cells[5]?.remove();
-    }
+    if (cells.length >= 8) cells[6]?.remove();
     row.dataset.attackModesNormalized = 'true';
   }
 
