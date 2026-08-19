@@ -15,7 +15,7 @@ export function applyCompactRaidHistory(root: HTMLElement, query: string): void 
 
   const toolbar = root.querySelector<HTMLElement>('.raid-toolbar');
   const list = root.querySelector<HTMLElement>('.raid-list');
-  root.querySelector('[data-raid-pagination]')?.remove();
+  root.parentElement?.querySelector<HTMLElement>('[data-raid-pagination]')?.remove();
 
   if (list) {
     const cards = [...list.querySelectorAll<HTMLElement>(':scope > .raid-card')];
@@ -29,10 +29,8 @@ export function applyCompactRaidHistory(root: HTMLElement, query: string): void 
     });
 
     if (cards.length > RAIDS_PER_PAGE) {
-      const pagination = renderPagination(totalPages);
-      const lastVisibleRaid = cards[Math.min(end, cards.length) - 1];
-      if (lastVisibleRaid) list.insertBefore(pagination, lastVisibleRaid);
-      else list.append(pagination);
+      const pagination = renderPagination(totalPages, root);
+      root.before(pagination);
     }
   }
 
@@ -53,21 +51,28 @@ function flattenRaidCards(root: HTMLElement): void {
   }
 }
 
-function renderPagination(totalPages: number): HTMLElement {
+function renderPagination(totalPages: number, root: HTMLElement): HTMLElement {
   const nav = document.createElement('nav');
   nav.className = 'raid-pagination';
   nav.dataset.raidPagination = 'true';
   nav.setAttribute('aria-label', 'Raid history pages');
 
-  nav.append(pageButton('‹', currentPage - 1, currentPage <= 1, 'Previous page'));
+  nav.append(pageButton('‹', currentPage - 1, currentPage <= 1, 'Previous page', root));
   for (const page of visiblePages(totalPages)) {
-    nav.append(pageButton(String(page), page, false, `Page ${page}`, page === currentPage));
+    nav.append(pageButton(String(page), page, false, `Page ${page}`, root, page === currentPage));
   }
-  nav.append(pageButton('›', currentPage + 1, currentPage >= totalPages, 'Next page'));
+  nav.append(pageButton('›', currentPage + 1, currentPage >= totalPages, 'Next page', root));
   return nav;
 }
 
-function pageButton(label: string, page: number, disabled: boolean, ariaLabel: string, active = false): HTMLButtonElement {
+function pageButton(
+  label: string,
+  page: number,
+  disabled: boolean,
+  ariaLabel: string,
+  root: HTMLElement,
+  active = false,
+): HTMLButtonElement {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = `raid-page-button${active ? ' active' : ''}`;
@@ -77,8 +82,7 @@ function pageButton(label: string, page: number, disabled: boolean, ariaLabel: s
   if (active) button.setAttribute('aria-current', 'page');
   button.addEventListener('click', () => {
     currentPage = page;
-    const root = button.closest<HTMLElement>('[data-combat-section]');
-    if (root) applyCompactRaidHistory(root, lastQuery);
+    if (root.isConnected) applyCompactRaidHistory(root, lastQuery);
   });
   return button;
 }
