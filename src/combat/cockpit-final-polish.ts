@@ -47,6 +47,7 @@ function removeAverageTurnFromCockpit(root: HTMLElement): void {
 function normalizeCompactBacklineLabels(root: HTMLElement): void {
   for (const card of root.querySelectorAll<HTMLElement>('.preset-combat-cockpit .party-cards-compact .party-card')) {
     card.querySelector('.party-card-history-note')?.remove();
+    movePartyOverlaysIntoVisual(card);
     const slot = card.querySelector<HTMLElement>('.party-slot')?.textContent?.trim();
     if (!slot?.startsWith('B')) continue;
     const number = slot.slice(1) || '?';
@@ -123,6 +124,7 @@ function normalizeCockpitPartyCards(
     }
     updatePartyCardSlotAndState(partyCard, actor, index, context);
     partyCard.querySelector('.party-card-history-note')?.remove();
+    movePartyOverlaysIntoVisual(partyCard);
     party.append(partyCard);
   });
 
@@ -188,7 +190,9 @@ function createPartyCard(
 
   const visual = document.createElement('span');
   visual.className = 'party-card-visual';
-  visual.append(createCombatImage(key, actor, actorLabel(actor, index, context)));
+  const slot = document.createElement('span');
+  slot.className = 'party-slot';
+  visual.append(createCombatImage(key, actor, actorLabel(actor, index, context)), slot);
 
   const copy = document.createElement('span');
   copy.className = 'party-card-copy';
@@ -203,9 +207,7 @@ function createPartyCard(
   damage.textContent = total === undefined ? 'Damage —' : `${formatNumber(total)} dmg`;
   copy.append(name, hp, damage);
 
-  const slot = document.createElement('span');
-  slot.className = 'party-slot';
-  card.append(visual, copy, slot);
+  card.append(visual, copy);
   return card;
 }
 
@@ -219,6 +221,7 @@ function updatePartyCardSlotAndState(
   applyActorStateClasses(card, state);
   const slot = card.querySelector<HTMLElement>('.party-slot');
   if (slot) slot.textContent = index >= 4 ? `B${index - 3}` : String(index + 1);
+  movePartyOverlaysIntoVisual(card);
 
   const tagRequired = state !== 'active' || index >= 4;
   const existingTag = card.querySelector<HTMLElement>('.state-tag');
@@ -232,16 +235,27 @@ function updatePartyCardSlotAndState(
   else if (state === 'replacement') tag.textContent = `Backline ${index - 3} · Active`;
   else if (index >= 4) tag.textContent = `Backline ${index - 3}`;
   else tag.textContent = 'Inactive';
+  movePartyOverlaysIntoVisual(card);
 }
 
 function ensureStateTag(card: HTMLElement): HTMLElement {
+  const visual = card.querySelector<HTMLElement>('.party-card-visual');
   let tag = card.querySelector<HTMLElement>('.state-tag');
-  if (tag) return tag;
-  tag = document.createElement('span');
-  tag.className = 'state-tag';
-  const copy = card.querySelector<HTMLElement>('.party-card-copy');
-  (copy ?? card).append(tag);
+  if (!tag) {
+    tag = document.createElement('span');
+    tag.className = 'state-tag';
+  }
+  (visual ?? card).append(tag);
   return tag;
+}
+
+function movePartyOverlaysIntoVisual(card: HTMLElement): void {
+  const visual = card.querySelector<HTMLElement>('.party-card-visual');
+  if (!visual) return;
+  for (const selector of ['.party-slot', '.state-tag']) {
+    const overlay = card.querySelector<HTMLElement>(selector);
+    if (overlay && overlay.parentElement !== visual) visual.append(overlay);
+  }
 }
 
 function actorState(
@@ -293,11 +307,20 @@ async function hydrateObservedRosterImages(scope: HTMLElement, context: CombatPa
   const roster = (context.actors ?? context.actorSlots).slice(0, 6);
   await Promise.all(roster.map(async (actor) => {
     if (!actor.id) return;
-    const source = await observedActorImageSource(actorVisualImageId(actor) ?? actor.id)
-      ?? await observedActorImageSource(actor.id);
+    const source = await observedActorImageSourceForActor(actor);
     if (!source || !scope.isConnected) return;
     replaceActorImages(scope, actor.id, source);
   }));
+}
+
+async function observedActorImageSourceForActor(actor: CombatActorContext): Promise<string | undefined> {
+  const ids = [actor.id, actorVisualImageId(actor)]
+    .filter((value): value is string => Boolean(value));
+  for (const assetId of [...new Set(ids)]) {
+    const source = await observedActorImageSource(assetId);
+    if (source) return source;
+  }
+  return undefined;
 }
 
 async function hydrateVisibleActorImages(scope: HTMLElement): Promise<void> {
