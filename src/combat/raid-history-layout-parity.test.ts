@@ -30,6 +30,12 @@ test('historical party, summons, and interaction state are scoped to the selecte
   assert.match(dashboard, /data-history-layout-owner/);
 });
 
+test('historical MC identity prefers proven display text but rejects technical resource labels', () => {
+  assert.match(historyLayout, /isTechnicalMainCharacterLabel\(mainAnalysis\.actorId\)/);
+  assert.match(historyLayout, /humanFacingPlayerName\(mainAnalysis\.actorName\)/);
+  assert.match(historyLayout, /const accountDisplayName = persistedMainName \?\? observedMainName/);
+});
+
 test('shared presentation fixes disambiguate Ougi uses and hide technical MC resource labels', () => {
   assert.match(presentationFixes, /label\.textContent = 'Ougi uses'/);
   assert.match(presentationFixes, /label\.textContent = 'Main Character'/);
