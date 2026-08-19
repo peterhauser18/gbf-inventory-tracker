@@ -14,6 +14,7 @@ import { applySharedCombatPresentationFixes } from './shared-presentation-fixes.
 import { applyCompactRaidHistory } from './raid-history-compact.ts';
 import { decorateCockpitAttackModes } from './cockpit-attack-modes.ts';
 import { applyCockpitFinalPolish, decorateCockpitRosterPresentation } from './cockpit-final-polish.ts';
+import { applyCockpitViewportLayout } from './cockpit-viewport-layout.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 const layout: CombatLayoutPreset = 'combat-cockpit';
@@ -147,6 +148,7 @@ function renderSectionIfChanged(force = false): void {
     applySharedCombatPresentationFixes(section);
     if (selected === 'raids') applyCompactRaidHistory(section, query);
     applyCockpitFinalPolish(section);
+    applyCockpitViewportLayout(section);
     decorateRosterAndAttackModes(section);
     decorateLoadouts(section);
     return;
@@ -162,6 +164,7 @@ function renderSectionIfChanged(force = false): void {
   applySharedCombatPresentationFixes(section);
   if (selected === 'raids') applyCompactRaidHistory(section, query);
   applyCockpitFinalPolish(section);
+  applyCockpitViewportLayout(section);
   decorateRosterAndAttackModes(section);
   decorateLoadouts(section);
 }
