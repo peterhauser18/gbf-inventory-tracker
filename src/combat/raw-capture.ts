@@ -1,6 +1,5 @@
 import { isSensitiveJsonKey, sanitizeResponseUrl } from '../capture/policy.ts';
 import type { ObservedResponse } from '../capture/types.ts';
-import { isVerifiedCombatResponseUrl } from './complete-observation.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-raw-combat';
 const DB_VERSION = 1;
@@ -51,13 +50,14 @@ export function shouldPersistRawCombatResponse(
   state: RawCombatCaptureModeState,
   ownerUrl: string | undefined,
   expectedOwnerUrl: string,
-  meta: Pick<ObservedResponse, 'url' | 'resourceType'>,
+  meta: Pick<ObservedResponse, 'resourceType'>,
+  verifiedCombat: boolean,
 ): boolean {
   return state.enabled
     && state.ownerTabId !== undefined
     && isRawCombatCaptureOwnerUrl(ownerUrl, expectedOwnerUrl)
     && (meta.resourceType === 'xhr' || meta.resourceType === 'fetch')
-    && isVerifiedCombatResponseUrl(meta.url);
+    && verifiedCombat;
 }
 
 export function buildRawCombatCaptureRecord(
@@ -65,8 +65,6 @@ export function buildRawCombatCaptureRecord(
   rawBody: string,
   capturedAt: number,
 ): RawCombatCaptureRecord | null {
-  if (!isVerifiedCombatResponseUrl(meta.url)) return null;
-
   let body: unknown;
   try {
     body = JSON.parse(rawBody);
@@ -149,11 +147,10 @@ export async function maybeStoreRawCombatResponse(
   meta: ObservedResponse,
   rawBody: string,
   capturedAt: number,
+  verifiedCombat: boolean,
 ): Promise<boolean> {
   if (typeof chrome === 'undefined' || !chrome.storage?.local || !chrome.tabs) return false;
-  if ((meta.resourceType !== 'xhr' && meta.resourceType !== 'fetch') || !isVerifiedCombatResponseUrl(meta.url)) {
-    return false;
-  }
+  if ((meta.resourceType !== 'xhr' && meta.resourceType !== 'fetch') || !verifiedCombat) return false;
 
   const state = await loadModeState();
   if (!state.enabled || state.ownerTabId === undefined) return false;
@@ -167,7 +164,7 @@ export async function maybeStoreRawCombatResponse(
   }
 
   const expectedOwnerUrl = chrome.runtime.getURL('combat.html');
-  if (!shouldPersistRawCombatResponse(state, ownerUrl, expectedOwnerUrl, meta)) {
+  if (!shouldPersistRawCombatResponse(state, ownerUrl, expectedOwnerUrl, meta, verifiedCombat)) {
     await expireRawCombatCapture(state);
     return false;
   }
