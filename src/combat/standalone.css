@@ -11,6 +11,40 @@ body,
   grid-template-rows: auto minmax(0, 1fr);
 }
 
+.combat-standalone-shell.raw-capture-shell {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.raw-capture-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 1px solid #5a4221;
+  background: #241d13;
+}
+
+.raw-capture-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.raw-capture-copy strong {
+  letter-spacing: 0.08em;
+}
+
+.raw-capture-copy small {
+  color: var(--muted);
+}
+
+.raw-capture-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .combat-standalone-tabs {
   position: sticky;
   top: 0;
@@ -37,4 +71,19 @@ body,
 
 .combat-standalone-content .command-bar {
   display: none;
+}
+
+@media (max-width: 720px) {
+  .raw-capture-banner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .raw-capture-actions {
+    justify-content: stretch;
+  }
+
+  .raw-capture-actions button {
+    flex: 1 1 180px;
+  }
 }

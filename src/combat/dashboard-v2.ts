@@ -1,14 +1,13 @@
 import './styles.css';
 import {
-  buildCharacterAnalyses,
   buildGlobalPinnedDrops,
   sortRaidHistoryForDisplay,
-  summarizeTurns,
 } from './analytics.ts';
 import { filterRaidHistory, toggleTrackedItem } from './aggregate.ts';
 import { serializeRaidParse } from './export.ts';
 import { renderCombatLayout, type CombatLayoutPreset } from './layouts.ts';
 import type { CombatParseContext } from './multiraid.ts';
+import { renderHistoricalRaidLayout, type RaidWithLoadout } from './raid-history-layout-ui.ts';
 import {
   getAllDropPreferences,
   getCombatLiveContext,
@@ -35,6 +34,8 @@ export class CombatDashboardControllerV2 {
   private metadataLoadStarted = false;
   private selectedActorId: string | null = null;
   private readonly collapsedCombatSections = new Set<string>();
+  private readonly selectedRaidActorByLocalId = new Map<string, string>();
+  private readonly collapsedRaidLayoutSections = new Map<string, Set<string>>();
   private readonly collapsedRaidCombat = new Set<string>();
   private readonly collapsedRaidDrops = new Set<string>();
   private readonly wikiReferences = new Map<string, WikiDropReference>();
@@ -71,7 +72,7 @@ export class CombatDashboardControllerV2 {
     });
   }
 
-  renderRaids(query: string): string {
+  renderRaids(query: string, layout: CombatLayoutPreset): string {
     const ordered = sortRaidHistoryForDisplay(this.history);
     const raids = filterRaidHistory(ordered, query, this.preferences);
     const pins = buildGlobalPinnedDrops(this.history, this.preferences);
@@ -82,7 +83,7 @@ export class CombatDashboardControllerV2 {
       </div>
       ${this.renderGlobalPins(pins)}
       ${raids.length
-        ? `<div class="raid-list">${raids.map((raid) => this.renderRaid(raid)).join('')}</div>`
+        ? `<div class="raid-list">${raids.map((raid) => this.renderRaid(raid, layout)).join('')}</div>`
         : '<div class="empty"><strong>No matching raid records</strong><span>Completed/left raids appear only when enough normalized identifying data was observed.</span></div>'}
     `;
   }
@@ -90,13 +91,28 @@ export class CombatDashboardControllerV2 {
   bind(root: HTMLElement): void {
     root.querySelectorAll<HTMLButtonElement>('[data-character-select]').forEach((button) => {
       button.addEventListener('click', () => {
-        this.selectedActorId = button.dataset.characterSelect ?? null;
+        const actorId = button.dataset.characterSelect ?? null;
+        const localId = button.closest<HTMLElement>('[data-history-layout-owner]')?.dataset.historyLayoutOwner;
+        if (localId && actorId) this.selectedRaidActorByLocalId.set(localId, actorId);
+        else this.selectedActorId = actorId;
         this.onChanged();
       });
     });
 
     root.querySelectorAll<HTMLDetailsElement>('[data-combat-collapse]').forEach((details) => {
-      details.addEventListener('toggle', () => this.rememberDetails(details, this.collapsedCombatSections, 'combatCollapse'));
+      details.addEventListener('toggle', () => {
+        const localId = details.closest<HTMLElement>('[data-history-layout-owner]')?.dataset.historyLayoutOwner;
+        if (localId) {
+          const section = details.dataset.combatCollapse;
+          if (!section) return;
+          const collapsed = this.collapsedRaidLayoutSections.get(localId) ?? new Set<string>();
+          if (details.open) collapsed.delete(section);
+          else collapsed.add(section);
+          this.collapsedRaidLayoutSections.set(localId, collapsed);
+          return;
+        }
+        this.rememberDetails(details, this.collapsedCombatSections, 'combatCollapse');
+      });
     });
     root.querySelectorAll<HTMLDetailsElement>('[data-raid-combat-collapse]').forEach((details) => {
       details.addEventListener('toggle', () => this.rememberDetails(details, this.collapsedRaidCombat, 'raidCombatCollapse'));
@@ -155,10 +171,19 @@ export class CombatDashboardControllerV2 {
     </section>`;
   }
 
-  private renderRaid(raid: RaidHistoryRecord): string {
+  private renderRaid(raid: RaidHistoryRecord, layout: CombatLayoutPreset): string {
     const preference = this.preferences.find((entry) => entry.raidTechnicalId === raid.raidTechnicalId);
     const combatOpen = !this.collapsedRaidCombat.has(raid.localId);
     const dropsOpen = !this.collapsedRaidDrops.has(raid.localId);
+    const selectedActorId = this.selectedRaidActorByLocalId.get(raid.localId) ?? null;
+    const collapsedLayout = this.collapsedRaidLayoutSections.get(raid.localId) ?? new Set<string>();
+    const historicalLayout = renderHistoricalRaidLayout(
+      raid as RaidWithLoadout,
+      layout,
+      this.metadata,
+      selectedActorId,
+      collapsedLayout,
+    );
     return `<article class="raid-card ${raid.favorite ? 'favorite' : ''}">
       <div class="raid-head">
         <div><p class="eyebrow">${escapeHtml(raid.result.toUpperCase())}</p><h3>${escapeHtml(raid.raidName ?? raid.raidTechnicalId)}</h3><p class="muted">${formatDate(raid.observedEndedAt ?? raid.lastObservedAt)} · ${escapeHtml(raid.raidTechnicalId)}</p></div>
@@ -166,7 +191,7 @@ export class CombatDashboardControllerV2 {
       </div>
       <details class="raid-section" data-raid-combat-collapse="${escapeAttribute(raid.localId)}"${combatOpen ? ' open' : ''}>
         <summary>Combat data</summary>
-        <div class="raid-section-body">${this.renderRaidCombat(raid)}</div>
+        <div class="raid-section-body"><div data-history-layout-owner="${escapeAttribute(raid.localId)}">${historicalLayout}</div></div>
       </details>
       <details class="raid-section" data-raid-drops-collapse="${escapeAttribute(raid.localId)}"${dropsOpen ? ' open' : ''}>
         <summary>Drops · ${formatNumber(raid.drops.length)}</summary>
@@ -174,20 +199,6 @@ export class CombatDashboardControllerV2 {
       </details>
       <div class="raid-note"><textarea data-note-id="${escapeAttribute(raid.localId)}" rows="2" placeholder="Local note">${escapeHtml(raid.note ?? '')}</textarea><button type="button" data-save-note="${escapeAttribute(raid.localId)}">Save note</button></div>
     </article>`;
-  }
-
-  private renderRaidCombat(raid: RaidHistoryRecord): string {
-    const analyses = buildCharacterAnalyses(raid);
-    const turns = summarizeTurns(raid);
-    const honors = raid.participants?.honors ?? raid.participants?.contribution;
-    const boss = raid.boss?.hp === undefined
-      ? '—'
-      : `${formatNumber(raid.boss.hp)}${raid.boss.maxHp === undefined ? '' : ` / ${formatNumber(raid.boss.maxHp)}`}`;
-    return `<div class="raid-combat-summary">
-      <div><span>Boss HP</span><strong>${boss}</strong></div><div><span>Party damage</span><strong>${optionalNumber(raid.partyDamage)}</strong></div><div><span>Honors</span><strong>${optionalNumber(honors)}</strong></div><div><span>Last observed turn</span><strong>${turns.currentTurn ?? '—'}</strong></div>
-    </div>
-    ${analyses.length ? `<div class="raid-combat-table"><div class="raid-combat-row head"><span>Character</span><span>Total</span><span>Normal</span><span>Skill</span><span>Ougi</span></div>${analyses.map((analysis) => `<div class="raid-combat-row"><strong>${escapeHtml(analysis.actorName ?? analysis.actorId)}</strong><span>${formatNumber(analysis.totalDamage)}</span><span>${optionalNumber(analysis.breakdown.normal)}</span><span>${optionalNumber(analysis.breakdown.skill)}</span><span>${optionalNumber(analysis.breakdown.ougi)}</span></div>`).join('')}</div>` : '<p class="muted">No attributed character damage in this record.</p>'}
-    ${raid.log.length ? `<details class="raid-log-mini"><summary>Observed actions · ${formatNumber(raid.log.length)}</summary><div>${raid.log.slice(-50).reverse().map((entry) => `<div class="raid-log-row"><span>${entry.turn === undefined ? 'T—' : `T${entry.turn}`}</span><strong>${escapeHtml(entry.actorName ?? entry.actorId ?? 'Actor unavailable')}</strong><span>${escapeHtml(entry.actionName ?? entry.actionKind)}</span><span>${formatNumber(entry.damage)}</span></div>`).join('')}</div></details>` : ''}`;
   }
 
   private renderRaidDrops(raid: RaidHistoryRecord, preference: RaidDropPreferences | undefined): string {
@@ -282,10 +293,6 @@ function renderWikiReference(reference: WikiDropReference): string {
 
 function wikiKey(raidTechnicalId: string, itemId: string): string {
   return `${raidTechnicalId}:${itemId}`;
-}
-
-function optionalNumber(value: number | undefined): string {
-  return value === undefined ? '—' : formatNumber(value);
 }
 
 function formatNumber(value: number): string {
