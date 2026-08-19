@@ -42,7 +42,11 @@ export async function processObservedResponse(
   const record = buildCapturedResponse(meta, rawBody, scanId, capturedAt);
   if (!record) return null;
 
-  await maybeStoreRawCombatResponse(meta, rawBody, capturedAt);
+  try {
+    await maybeStoreRawCombatResponse(meta, rawBody, capturedAt);
+  } catch {
+    // Raw capture is optional diagnostics and must never interrupt normal parsing.
+  }
   await save(record);
   try {
     await ingestObservedLoadoutRecord(record);
