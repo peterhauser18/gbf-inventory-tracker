@@ -4,7 +4,6 @@ import './combat/standalone.css';
 import './combat/ui.ts';
 import {
   clearRawCombatCapture,
-  disableRawCombatCapture,
   enableRawCombatCapture,
   getRawCombatCaptureExport,
   getRawCombatCaptureStatus,
@@ -56,10 +55,9 @@ async function installRawCaptureMode(): Promise<void> {
   const status = requiredElement('#raw-capture-status');
   const exportButton = requiredButton('#raw-capture-export');
   const clearButton = requiredButton('#raw-capture-clear');
-  let ownerTabId: number | undefined;
 
   try {
-    ownerTabId = (await chrome.tabs.getCurrent())?.id;
+    const ownerTabId = (await chrome.tabs.getCurrent())?.id;
     if (ownerTabId !== undefined) await enableRawCombatCapture(ownerTabId, false);
   } catch (error) {
     status.textContent = `Raw capture could not be enabled: ${error instanceof Error ? error.message : String(error)}`;
@@ -101,10 +99,7 @@ async function installRawCaptureMode(): Promise<void> {
   });
 
   window.addEventListener('focus', () => { void refresh(); });
-  window.addEventListener('pagehide', () => {
-    if (ownerTabId !== undefined) void disableRawCombatCapture(ownerTabId);
-  }, { once: true });
-
+  window.setInterval(() => { void refresh(); }, 1000);
   await refresh();
 }
 
