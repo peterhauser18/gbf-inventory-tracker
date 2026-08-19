@@ -1,5 +1,5 @@
 import type { AccountDatabaseState } from './database.ts';
-import { ACCOUNT_DATABASE_VERSION } from './database.ts';
+import { ACCOUNT_DATABASE_VERSION, mergeAccountDatabase } from './database.ts';
 
 export const ACCOUNT_DATABASE_STORAGE_KEY = 'gbfit:account-database-v1';
 
@@ -35,7 +35,9 @@ export async function saveAccountDatabase(
   area?: AccountStorageArea,
 ): Promise<void> {
   const storage = area ?? chromeAccountStorage();
-  await storage.set({ [ACCOUNT_DATABASE_STORAGE_KEY]: state });
+  const current = await readAccountDatabase(storage);
+  const next = current ? mergeAccountDatabase(current, state.snapshot) : state;
+  await storage.set({ [ACCOUNT_DATABASE_STORAGE_KEY]: next });
 }
 
 export async function resetAccountDatabase(area?: AccountStorageArea): Promise<void> {
