@@ -1,6 +1,7 @@
 import type { DebuggerResponseBody } from './capture/types.ts';
 
-export const OBSERVED_ACTOR_IMAGE_CACHE_NAME = 'gbfit:observed-gbf-actor-images:v1';
+export const OBSERVED_ACTOR_IMAGE_CACHE_NAME = 'gbfit:observed-gbf-actor-images:v2';
+const LEGACY_OBSERVED_ACTOR_IMAGE_CACHE_NAME = 'gbfit:observed-gbf-actor-images:v1';
 const CACHE_KEY_ORIGIN = 'https://gbfit.local';
 const CACHE_KEY_PREFIX = '/observed-actor-images/';
 const ACTOR_IMAGE_HOSTS = new Set([
@@ -94,7 +95,11 @@ export async function clearObservedActorImageCache(
 ): Promise<boolean> {
   if (!cacheStorage) return false;
   try {
-    return await cacheStorage.delete(OBSERVED_ACTOR_IMAGE_CACHE_NAME);
+    const [current, legacy] = await Promise.all([
+      cacheStorage.delete(OBSERVED_ACTOR_IMAGE_CACHE_NAME),
+      cacheStorage.delete(LEGACY_OBSERVED_ACTOR_IMAGE_CACHE_NAME),
+    ]);
+    return current || legacy;
   } catch {
     return false;
   }
