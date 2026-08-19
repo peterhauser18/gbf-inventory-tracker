@@ -88,12 +88,12 @@
 }
 
 /* Main/support labels replace the old visual divider between own and friend summons. */
-.active-combat-card .preset-combat-cockpit .summon-card { position: relative; }
-.active-combat-card .preset-combat-cockpit .summon-card.supporter-slot {
+.preset-combat-cockpit .summon-card { position: relative; }
+.preset-combat-cockpit .summon-card.supporter-slot {
   border-left: 0 !important;
   padding-left: 0 !important;
 }
-.active-combat-card .preset-combat-cockpit .summon-role-label {
+.preset-combat-cockpit .summon-role-label {
   position: absolute;
   z-index: 3;
   top: 4px;
