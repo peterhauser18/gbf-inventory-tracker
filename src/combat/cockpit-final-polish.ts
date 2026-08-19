@@ -1,15 +1,13 @@
 import './cockpit-final-polish.css';
+import { readObservedActorImageBlob } from '../actor-image-cache.ts';
 import { buildCharacterAnalyses, type CharacterCombatAnalysis } from './analytics.ts';
-import { readPersistedRaidLoadouts } from './loadout-read.ts';
-import type { RaidLoadoutSnapshot } from './loadout-types.ts';
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
 import { getActiveCombatRaids } from './storage.ts';
 import type { NormalizedRaidParse } from './types.ts';
-import { resolveSafeExternalImageUrl } from '../dashboard/resolver.ts';
+import { actorVisualImageId } from './visual-context.ts';
 
-const WIKI_API = 'https://gbf.wiki/api.php';
 const rememberedActorImages = new Map<string, string>();
-const classThumbnailPromises = new Map<string, Promise<string | undefined>>();
+const observedActorImagePromises = new Map<string, Promise<string | undefined>>();
 let latestDecorationRun = 0;
 
 export function applyCockpitFinalPolish(root: HTMLElement): void {
@@ -19,10 +17,7 @@ export function applyCockpitFinalPolish(root: HTMLElement): void {
 
 export async function decorateCockpitRosterPresentation(root: HTMLElement): Promise<void> {
   const run = ++latestDecorationRun;
-  const [active, persisted] = await Promise.all([
-    getActiveCombatRaids(),
-    readPersistedRaidLoadouts(),
-  ]);
+  const active = await getActiveCombatRaids();
   if (run !== latestDecorationRun || !root.isConnected) return;
 
   const activeByKey = new Map(active.map((entry) => [entry.key, entry]));
@@ -32,13 +27,11 @@ export async function decorateCockpitRosterPresentation(root: HTMLElement): Prom
     if (!key || !entry?.context) continue;
     preserveExistingActorImages(card, key);
     normalizeActiveRoster(card, key, entry.parse, entry.context);
-    void hydrateMainCharacterImage(card, persisted.active.get(key));
+    await hydrateObservedRosterImages(card, entry.context);
   }
 
   for (const card of root.querySelectorAll<HTMLElement>('.raid-card')) {
-    const localId = card.querySelector<HTMLButtonElement>('[data-raid-export]')?.dataset.raidExport;
-    if (!localId) continue;
-    void hydrateMainCharacterImage(card, persisted.history.get(localId));
+    await hydrateVisibleActorImages(card);
   }
 }
 
@@ -296,54 +289,49 @@ function createCombatImage(
   return image;
 }
 
-async function hydrateMainCharacterImage(
-  scope: HTMLElement,
-  loadout: RaidLoadoutSnapshot | undefined,
-): Promise<void> {
-  const jobName = loadout?.jobName?.trim();
-  if (!jobName) return;
-  const source = await resolveClassThumbnail(jobName);
-  if (!source || !scope.isConnected) return;
-
-  const targets: HTMLElement[] = [];
-  const tableRow = scope.querySelector<HTMLElement>('.preset-combat-cockpit .cockpit-table > button.cockpit-row');
-  const partyCard = scope.querySelector<HTMLElement>('.preset-combat-cockpit .party-cards-compact > .party-card');
-  const tableImage = tableRow?.querySelector<HTMLElement>('.combat-image');
-  const partyImage = partyCard?.querySelector<HTMLElement>('.combat-image');
-  if (tableImage) targets.push(tableImage);
-  if (partyImage && partyImage !== tableImage) targets.push(partyImage);
-  for (const target of targets) if (!target.querySelector('img')) installImage(target, source);
+async function hydrateObservedRosterImages(scope: HTMLElement, context: CombatParseContext): Promise<void> {
+  const roster = (context.actors ?? context.actorSlots).slice(0, 6);
+  await Promise.all(roster.map(async (actor) => {
+    if (!actor.id) return;
+    const source = await observedActorImageSource(actorVisualImageId(actor) ?? actor.id)
+      ?? await observedActorImageSource(actor.id);
+    if (!source || !scope.isConnected) return;
+    replaceActorImages(scope, actor.id, source);
+  }));
 }
 
-function resolveClassThumbnail(jobName: string): Promise<string | undefined> {
-  const key = jobName.toLocaleLowerCase();
-  const existing = classThumbnailPromises.get(key);
+async function hydrateVisibleActorImages(scope: HTMLElement): Promise<void> {
+  const actorIds = new Set<string>();
+  for (const element of scope.querySelectorAll<HTMLElement>('[data-character-select], [data-roster-actor-id]')) {
+    const actorId = element.dataset.characterSelect ?? element.dataset.rosterActorId;
+    if (actorId) actorIds.add(actorId);
+  }
+  await Promise.all([...actorIds].map(async (actorId) => {
+    const source = await observedActorImageSource(actorId);
+    if (!source || !scope.isConnected) return;
+    replaceActorImages(scope, actorId, source);
+  }));
+}
+
+function observedActorImageSource(assetId: string): Promise<string | undefined> {
+  const existing = observedActorImagePromises.get(assetId);
   if (existing) return existing;
-  const pending = loadClassThumbnail(jobName).catch(() => undefined);
-  classThumbnailPromises.set(key, pending);
+  const pending = readObservedActorImageBlob(assetId)
+    .then((blob) => blob ? URL.createObjectURL(blob) : undefined)
+    .catch(() => undefined);
+  observedActorImagePromises.set(assetId, pending);
   return pending;
 }
 
-async function loadClassThumbnail(jobName: string): Promise<string | undefined> {
-  const url = new URL(WIKI_API);
-  url.searchParams.set('action', 'query');
-  url.searchParams.set('format', 'json');
-  url.searchParams.set('origin', '*');
-  url.searchParams.set('prop', 'pageimages');
-  url.searchParams.set('piprop', 'thumbnail');
-  url.searchParams.set('pithumbsize', '360');
-  url.searchParams.set('titles', jobName);
-  const response = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' });
-  if (!response.ok) return undefined;
-  const body = await response.json() as unknown;
-  if (!obj(body) || !obj(body.query) || !obj(body.query.pages)) return undefined;
-  for (const page of Object.values(body.query.pages)) {
-    if (!obj(page) || !obj(page.thumbnail)) continue;
-    const source = text(page.thumbnail.source);
-    const safe = resolveSafeExternalImageUrl(source);
-    if (safe) return safe;
+function replaceActorImages(scope: HTMLElement, actorId: string, source: string): void {
+  for (const target of scope.querySelectorAll<HTMLElement>('[data-character-select], [data-roster-actor-id]')) {
+    if ((target.dataset.characterSelect ?? target.dataset.rosterActorId) !== actorId) continue;
+    const image = target.querySelector<HTMLElement>('.combat-image');
+    if (!image) continue;
+    image.querySelectorAll('img').forEach((entry) => entry.remove());
+    image.querySelector(':scope > span')?.remove();
+    installImage(image, source);
   }
-  return undefined;
 }
 
 function installImage(target: HTMLElement, source: string): void {
@@ -385,12 +373,4 @@ function optionalNumber(value: number | undefined): string {
 
 function formatNumber(value: number): string {
   return Math.round(value).toLocaleString('en-US');
-}
-
-function text(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
-}
-
-function obj(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
