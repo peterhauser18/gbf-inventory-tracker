@@ -7,11 +7,13 @@ const layoutsCss = readFileSync(new URL('./layouts.css', import.meta.url), 'utf8
 const liveUiCss = readFileSync(new URL('./live-ui-fixes.css', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 const uiV2Css = readFileSync(new URL('./ui-v2.css', import.meta.url), 'utf8');
+const loadoutFillCss = readFileSync(new URL('./cockpit-loadout-fill.css', import.meta.url), 'utf8');
 const sharedPresentation = readFileSync(new URL('./shared-presentation-fixes.ts', import.meta.url), 'utf8');
 const stableDom = readFileSync(new URL('./live-dom-preservation.ts', import.meta.url), 'utf8');
 const loadoutUi = readFileSync(new URL('./loadout-ui.ts', import.meta.url), 'utf8');
 const loadoutPreservation = readFileSync(new URL('./loadout-dom-preservation.ts', import.meta.url), 'utf8');
 const raidHistoryCompact = readFileSync(new URL('./raid-history-compact.ts', import.meta.url), 'utf8');
+const raidHistoryCss = readFileSync(new URL('./raid-history-compact.css', import.meta.url), 'utf8');
 const attackModes = readFileSync(new URL('./cockpit-attack-modes.ts', import.meta.url), 'utf8');
 const attackModesCss = readFileSync(new URL('./cockpit-attack-modes.css', import.meta.url), 'utf8');
 
@@ -35,6 +37,18 @@ test('aggressive live refresh preserves loaded visuals and expanded state instea
   assert.match(stableDom, /img\[data-combat-image\]/);
   assert.match(stableDom, /\.cockpit-secondary-panel\[data-combat-collapse\]/);
   assert.match(stableDom, /\.cockpit-loadout-panel\[data-cockpit-loadout-panel\]/);
+});
+
+test('known weapon grids survive transient unknown refreshes and roster tabs fill their available slot', () => {
+  assert.match(loadoutUi, /let latestDecorationRun = 0/);
+  assert.match(loadoutUi, /run !== latestDecorationRun \|\| !root\.isConnected/);
+  assert.match(loadoutUi, /shouldPreserveCurrentLoadout\(current, target\.loadout\)/);
+  assert.match(loadoutUi, /qualityRank\(currentQuality\) > qualityRank\(incomingQuality\)/);
+  assert.match(loadoutUi, /next\.dataset\.loadoutGridQuality = target\.loadout\?\.weaponGridQuality \?\? 'unknown'/);
+  assert.match(ui, /import '\.\/cockpit-loadout-fill\.css'/);
+  assert.match(loadoutFillCss, /\.cockpit-character-panel,[\s\S]*\.cockpit-character-empty,[\s\S]*\.party-cards-compact,[\s\S]*\.summon-strip\s*\{[^}]*height:\s*100%/s);
+  assert.match(loadoutFillCss, /\.party-card-visual \.combat-image\s*\{[^}]*height:\s*100%/s);
+  assert.match(loadoutFillCss, /\.summon-card \.combat-image\s*\{[^}]*height:\s*100% !important/s);
 });
 
 test('character drill-down is removed and SA DA TA counts with percentages are added while Echo stays visible', () => {
@@ -81,16 +95,26 @@ test('compact Weapons view mirrors the game grid and keeps skill boosts visible'
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-skill-boosts\s*\{[^}]*display:\s*block/s);
 });
 
-test('Raid History uses a compact fixed cockpit shell with five records per page', () => {
+test('Raid History uses compact five-record pages with navigation before the final visible raid', () => {
   assert.match(ui, /const layout: CombatLayoutPreset = 'combat-cockpit'/);
   assert.doesNotMatch(ui, /combat-layout-select|COMBAT_LAYOUT_PRESETS|loadLayoutPreference/);
   assert.match(ui, /class="content-header raids-compact-header"/);
   assert.doesNotMatch(ui, /<h2>Raids<\/h2>/);
   assert.match(raidHistoryCompact, /const RAIDS_PER_PAGE = 5/);
   assert.match(raidHistoryCompact, /card\.hidden = index < start \|\| index >= end/);
-  assert.match(raidHistoryCompact, /list\.insertAdjacentElement\('afterend', pagination\)/);
+  assert.match(raidHistoryCompact, /const lastVisibleRaid = cards\[Math\.min\(end, cards\.length\) - 1\]/);
+  assert.match(raidHistoryCompact, /list\.insertBefore\(pagination, lastVisibleRaid\)/);
   assert.match(raidHistoryCompact, /toolbar\.classList\.add\('raid-toolbar-bottom'\)/);
   assert.match(raidHistoryCompact, /root\.append\(toolbar\)/);
+});
+
+test('Raid History shows a compact full-width damage strip with Honors and Participants', () => {
+  assert.match(layouts, /liveStat\('Honors', honors\)/);
+  assert.match(layouts, /liveStat\('Participants', participants\)/);
+  assert.match(raidHistoryCss, /\.raid-card \.preset-combat-cockpit \.cockpit-summary\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(raidHistoryCss, /\.raid-card \.preset-combat-cockpit \.combat-live-stats\s*\{[^}]*repeat\(5,/s);
+  assert.match(raidHistoryCss, /\.live-stat:nth-child\(4\)\s*\{\s*display:\s*none !important/s);
+  assert.match(raidHistoryCss, /\.raid-card \.preset-combat-cockpit \.live-stat\s*\{[^}]*display:\s*grid !important/s);
 });
 
 test('Participants and Combat Log stay collapsed and open in bounded overlay panels', () => {
