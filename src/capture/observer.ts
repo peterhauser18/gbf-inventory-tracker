@@ -1,6 +1,10 @@
 import { ingestObservedLoadoutRecord } from '../combat/loadout.ts';
+import {
+  maybeStoreRawCombatReadFailure,
+  maybeStoreRawCombatResponse,
+} from '../combat/raw-capture.ts';
 import { buildCapturedResponse } from './policy.ts';
-import { shouldReadObservedResponse } from './route.ts';
+import { classifyObservedResponseUrl, shouldReadObservedResponse } from './route.ts';
 import type {
   CapturedResponseRecord,
   DebuggerResponseBody,
@@ -34,13 +38,40 @@ export async function processObservedResponse(
 ): Promise<CapturedResponseRecord | null> {
   if (!shouldReadObservedResponse(meta.url, meta.resourceType)) return null;
 
-  const responseBody = await readResponseBodyWithRetry(reader, meta.requestId);
+  let responseBody: DebuggerResponseBody;
+  try {
+    responseBody = await readResponseBodyWithRetry(reader, meta.requestId);
+  } catch (error) {
+    if (error instanceof ResponseBodyUnavailableError) {
+      try {
+        await maybeStoreRawCombatReadFailure(
+          meta,
+          capturedAt,
+          classifyObservedResponseUrl(meta.url) === 'combat',
+        );
+      } catch {
+        // Raw capture diagnostics must never interrupt normal observation failure handling.
+      }
+    }
+    throw error;
+  }
+
   const rawBody = responseBody.base64Encoded
     ? decodeBase64Utf8(responseBody.body)
     : responseBody.body;
   const record = buildCapturedResponse(meta, rawBody, scanId, capturedAt);
   if (!record) return null;
 
+  try {
+    await maybeStoreRawCombatResponse(
+      meta,
+      rawBody,
+      capturedAt,
+      classifyObservedResponseUrl(meta.url) === 'combat',
+    );
+  } catch {
+    // Raw capture is optional diagnostics and must never interrupt normal parsing.
+  }
   await save(record);
   try {
     await ingestObservedLoadoutRecord(record);
