@@ -1,6 +1,6 @@
 export function applySharedCombatPresentationFixes(root: HTMLElement): void {
   compactSelectedAnalysis(root);
-  moveCockpitSelectedAnalysisInline(root);
+  removeCockpitSelectedAnalysis(root);
   labelCockpitSummons(root);
 
   const selectors = [
@@ -74,16 +74,9 @@ function compactSelectedAnalysis(root: HTMLElement): void {
   }
 }
 
-function moveCockpitSelectedAnalysisInline(root: HTMLElement): void {
-  for (const cockpit of root.querySelectorAll<HTMLElement>('.preset-combat-cockpit')) {
-    const selected = cockpit.querySelector<HTMLElement>('button.cockpit-row.selected');
-    const detail = cockpit.querySelector<HTMLDetailsElement>('.cockpit-selected-analysis');
-    if (!selected || !detail) continue;
-
-    detail.classList.add('cockpit-inline-analysis');
-    detail.open = true;
-    selected.insertAdjacentElement('afterend', detail);
-  }
+function removeCockpitSelectedAnalysis(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('.preset-combat-cockpit .cockpit-selected-analysis')
+    .forEach((detail) => detail.remove());
 }
 
 function labelCockpitSummons(root: HTMLElement): void {
