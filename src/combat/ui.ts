@@ -7,6 +7,8 @@ import { installCombatMultiActiveCompat } from './multi-active-compat.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 import { decorateCombatLoadouts } from './loadout-ui.ts';
 import { detachCombatLoadouts, restoreCombatLoadouts } from './loadout-dom-preservation.ts';
+import { decorateHistoricalRaidLayouts } from './raid-history-layout-ui.ts';
+import { applySharedCombatPresentationFixes } from './shared-presentation-fixes.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 const LAYOUT_KEY = 'gbfit:combat-layout';
@@ -107,9 +109,10 @@ function renderSelectedShell(): void {
   const description = selected === 'combat'
     ? 'Live read-only raid analytics from already-received supported combat responses.'
     : 'Local raid history, global pinned drops, personal observed rates, public wiki references and normalized import/export.';
+  const layoutControl = `<label class="search combat-layout-control"><span>Layout</span><select id="combat-layout-select">${COMBAT_LAYOUT_PRESETS.map(([value, label]) => `<option value="${value}"${value === layout ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>`;
   const controls = selected === 'combat'
-    ? `<label class="search combat-layout-control"><span>Layout</span><select id="combat-layout-select">${COMBAT_LAYOUT_PRESETS.map(([value, label]) => `<option value="${value}"${value === layout ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>`
-    : `<label class="search"><span>Search</span><input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" /></label>`;
+    ? layoutControl
+    : `<label class="search"><span>Search</span><input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" /></label>${layoutControl}`;
 
   content.innerHTML = `
     <div class="command-bar">
@@ -151,7 +154,7 @@ function renderSectionIfChanged(force = false): void {
   const markup = selected === 'combat' ? controller.renderCombat(layout) : controller.renderRaids(query);
   if (!force && markup === lastSectionMarkup) {
     if (selected === 'combat') applyCombatLiveUiFixes(section);
-    void decorateCombatLoadouts(section);
+    decorateSection(section, selected, layout);
     return;
   }
   const preservedLoadouts = detachCombatLoadouts(section);
@@ -160,7 +163,20 @@ function renderSectionIfChanged(force = false): void {
   controller.bind(section);
   if (selected === 'combat') applyCombatLiveUiFixes(section);
   restoreCombatLoadouts(section, preservedLoadouts);
-  void decorateCombatLoadouts(section);
+  decorateSection(section, selected, layout);
+}
+
+function decorateSection(
+  section: HTMLElement,
+  sectionKind: 'combat' | 'raids',
+  selectedLayout: CombatLayoutPreset,
+): void {
+  void (async () => {
+    if (sectionKind === 'raids') await decorateHistoricalRaidLayouts(section, selectedLayout);
+    if (!section.isConnected) return;
+    applySharedCombatPresentationFixes(section);
+    await decorateCombatLoadouts(section);
+  })();
 }
 
 function loadLayoutPreference(): CombatLayoutPreset {
