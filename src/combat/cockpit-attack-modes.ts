@@ -3,20 +3,32 @@ import { buildCharacterAnalyses, type CharacterCombatAnalysis, type AttackModeSu
 import { getActiveCombatRaids, getRaidHistory } from './storage.ts';
 import type { NormalizedRaidParse } from './types.ts';
 
+let latestDecorationRun = 0;
+
 export async function decorateCockpitAttackModes(root: HTMLElement): Promise<void> {
   root.querySelectorAll<HTMLElement>('.cockpit-selected-analysis').forEach((analysis) => analysis.remove());
 
-  const [active, history] = await Promise.all([getActiveCombatRaids(), getRaidHistory()]);
+  const run = ++latestDecorationRun;
+  const activeCards = [...root.querySelectorAll<HTMLElement>('[data-active-combat-key]')];
+  const historyCards = [...root.querySelectorAll<HTMLElement>('.raid-card')];
+  const [active, history] = await Promise.all([
+    activeCards.length ? getActiveCombatRaids() : Promise.resolve([]),
+    historyCards.length ? getRaidHistory() : Promise.resolve([]),
+  ]);
+  if (run !== latestDecorationRun || !root.isConnected) return;
+
   const activeByKey = new Map(active.map((entry) => [entry.key, entry.parse]));
   const historyById = new Map(history.map((entry) => [entry.localId, entry]));
 
-  for (const card of root.querySelectorAll<HTMLElement>('[data-active-combat-key]')) {
+  for (const card of activeCards) {
+    if (!card.isConnected) continue;
     const key = card.dataset.activeCombatKey;
     const raid = key ? activeByKey.get(key) : undefined;
     if (raid) decorateTable(card, raid);
   }
 
-  for (const card of root.querySelectorAll<HTMLElement>('.raid-card')) {
+  for (const card of historyCards) {
+    if (!card.isConnected) continue;
     const localId = card.querySelector<HTMLButtonElement>('[data-raid-export]')?.dataset.raidExport;
     const raid = localId ? historyById.get(localId) : undefined;
     if (raid) decorateTable(card, raid);
