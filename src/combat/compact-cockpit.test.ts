@@ -16,6 +16,8 @@ const raidHistoryCompact = readFileSync(new URL('./raid-history-compact.ts', imp
 const raidHistoryCss = readFileSync(new URL('./raid-history-compact.css', import.meta.url), 'utf8');
 const attackModes = readFileSync(new URL('./cockpit-attack-modes.ts', import.meta.url), 'utf8');
 const attackModesCss = readFileSync(new URL('./cockpit-attack-modes.css', import.meta.url), 'utf8');
+const finalPolish = readFileSync(new URL('./cockpit-final-polish.ts', import.meta.url), 'utf8');
+const finalPolishCss = readFileSync(new URL('./cockpit-final-polish.css', import.meta.url), 'utf8');
 
 test('Combat Cockpit is a bounded compact dashboard instead of stacked long sections', () => {
   assert.match(layouts, /class="cockpit-summary"/);
@@ -49,6 +51,7 @@ test('known weapon grids survive transient unknown refreshes and roster tabs fil
   assert.match(loadoutFillCss, /\.cockpit-character-panel,[\s\S]*\.cockpit-character-empty,[\s\S]*\.party-cards-compact,[\s\S]*\.summon-strip\s*\{[^}]*height:\s*100%/s);
   assert.match(loadoutFillCss, /\.party-card-visual \.combat-image\s*\{[^}]*height:\s*100%/s);
   assert.match(loadoutFillCss, /\.summon-card \.combat-image\s*\{[^}]*height:\s*100% !important/s);
+  assert.match(finalPolishCss, /\.preset-combat-cockpit \.party-cards-compact,[\s\S]*\.summon-strip\s*\{[^}]*height:\s*100%/s);
 });
 
 test('character drill-down is removed and SA DA TA counts with percentages are added while Echo stays visible', () => {
@@ -95,6 +98,28 @@ test('compact Weapons view mirrors the game grid and keeps skill boosts visible'
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-skill-boosts\s*\{[^}]*display:\s*block/s);
 });
 
+test('live roster keeps all six observed original actors and makes deaths/backline explicit', () => {
+  assert.match(finalPolish, /const roster = \(context\.actors \?\? \[\]\)/);
+  assert.match(finalPolish, /\.slice\(0, 6\)/);
+  assert.match(finalPolish, /normalizeCockpitTable\(card, key, roster/);
+  assert.match(finalPolish, /normalizeCockpitPartyCards\(card, key, roster/);
+  assert.match(finalPolish, /actor\.alive === false \|\| actor\.hp === 0/);
+  assert.match(finalPolish, /`Dead · Backline \$\{index - 3\}`/);
+  assert.match(finalPolish, /`Backline \$\{index - 3\}`/);
+  assert.doesNotMatch(finalPolish, /Retained from verified party history/);
+  assert.match(finalPolishCss, /\.cockpit-row\.dead[\s\S]*opacity:/s);
+  assert.match(finalPolishCss, /\.cockpit-row\.dead \.combat-image img,[\s\S]*filter:\s*grayscale\(1\)/s);
+  assert.match(finalPolishCss, /button\.cockpit-row\s*\{[^}]*flex:\s*1 1 0/s);
+});
+
+test('main character can use one cached public class thumbnail instead of an MC-only fallback', () => {
+  assert.match(finalPolish, /const classThumbnailPromises = new Map/);
+  assert.match(finalPolish, /loadout\?\.jobName/);
+  assert.match(finalPolish, /url\.searchParams\.set\('prop', 'pageimages'\)/);
+  assert.match(finalPolish, /resolveSafeExternalImageUrl\(source\)/);
+  assert.match(finalPolish, /if \(!target\.querySelector\('img'\)\) installImage\(target, source\)/);
+});
+
 test('Raid History uses compact five-record pages with navigation before the final visible raid', () => {
   assert.match(ui, /const layout: CombatLayoutPreset = 'combat-cockpit'/);
   assert.doesNotMatch(ui, /combat-layout-select|COMBAT_LAYOUT_PRESETS|loadLayoutPreference/);
@@ -108,13 +133,22 @@ test('Raid History uses compact five-record pages with navigation before the fin
   assert.match(raidHistoryCompact, /root\.append\(toolbar\)/);
 });
 
-test('Raid History shows a compact full-width damage strip with Honors and Participants', () => {
+test('live and historical cockpit show Party Damage Previous Current Honors and Participants together', () => {
   assert.match(layouts, /liveStat\('Honors', honors\)/);
   assert.match(layouts, /liveStat\('Participants', participants\)/);
-  assert.match(raidHistoryCss, /\.raid-card \.preset-combat-cockpit \.cockpit-summary\s*\{[^}]*grid-template-columns:\s*1fr/s);
-  assert.match(raidHistoryCss, /\.raid-card \.preset-combat-cockpit \.combat-live-stats\s*\{[^}]*repeat\(5,/s);
-  assert.match(raidHistoryCss, /\.live-stat:nth-child\(4\)\s*\{\s*display:\s*none !important/s);
-  assert.match(raidHistoryCss, /\.raid-card \.preset-combat-cockpit \.live-stat\s*\{[^}]*display:\s*grid !important/s);
+  assert.match(finalPolish, /label === 'Average \/ Turn'/);
+  assert.match(finalPolishCss, /\.preset-combat-cockpit \.combat-live-stats\s*\{[^}]*repeat\(5,/s);
+  assert.match(finalPolishCss, /\.preset-combat-cockpit \.live-stat\s*\{[^}]*display:\s*grid !important/s);
+  assert.doesNotMatch(raidHistoryCss, /live-stat:nth-child\(4\)[\s\S]*display:\s*none/s);
+});
+
+test('Raid History visually flattens the duplicate wrapper and retains the shared Combat Cockpit plus Drops', () => {
+  assert.match(raidHistoryCompact, /flattenRaidCards\(root\)/);
+  assert.match(raidHistoryCompact, /raid-history-tools-only/);
+  assert.match(raidHistoryCompact, /raid-combat-flat/);
+  assert.match(raidHistoryCompact, /combat\.open = true/);
+  assert.match(finalPolishCss, /\.raid-section\.raid-combat-flat > summary\s*\{[^}]*display:\s*none/s);
+  assert.match(finalPolishCss, /\.raid-card \.preset-combat-cockpit\s*\{[^}]*height:\s*clamp\(620px/s);
 });
 
 test('Participants and Combat Log stay collapsed and open in bounded overlay panels', () => {
