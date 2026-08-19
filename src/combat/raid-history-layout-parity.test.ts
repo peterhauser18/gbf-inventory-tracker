@@ -30,14 +30,24 @@ test('historical party, summons, and interaction state are scoped to the selecte
   assert.match(dashboard, /data-history-layout-owner/);
 });
 
+test('historical summon cards stay limited to persisted loadout entries and can fall back to master-id images', () => {
+  assert.match(historyLayout, /const summon = loadout\.summons\[index\+\+\]/);
+  assert.match(historyLayout, /if \(!summon\) return '';/);
+  assert.match(historyLayout, /historicalSummonImageUrl\(summon\.id\)/);
+  assert.match(historyLayout, /\^20\\d\{8\}\$/);
+  assert.match(historyLayout, /wikiEntityImageUrl\('summon', id\)/);
+});
+
 test('historical MC identity prefers proven display text but rejects technical resource labels', () => {
   assert.match(historyLayout, /isTechnicalMainCharacterLabel\(mainAnalysis\.actorId\)/);
   assert.match(historyLayout, /humanFacingPlayerName\(mainAnalysis\.actorName\)/);
   assert.match(historyLayout, /const accountDisplayName = persistedMainName \?\? observedMainName/);
 });
 
-test('shared presentation fixes disambiguate Ougi uses and hide technical MC resource labels', () => {
-  assert.match(presentationFixes, /label\.textContent = 'Ougi uses'/);
+test('shared presentation fixes compact Ougi and attack-mode metrics and hide technical MC resource labels', () => {
+  assert.match(presentationFixes, /ougiLabel\.textContent = `Ougi \/ \$\{ougiCount\}`/);
+  assert.match(presentationFixes, /ougiCard\?\.remove\(\)/);
+  assert.match(presentationFixes, /label\.textContent = 'SA \/ DA \/ TA'/);
   assert.match(presentationFixes, /label\.textContent = 'Main Character'/);
   assert.match(presentationFixes, /\(\?:\^\|_\)sp/);
   assert.match(ui, /applySharedCombatPresentationFixes\(section\)/);
