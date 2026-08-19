@@ -7,12 +7,9 @@ const ACTOR_IMAGE_HOSTS = new Set([
   'game.granbluefantasy.jp',
   'prd-game-a-granbluefantasy.akamaized.net',
 ]);
-const ACTOR_IMAGE_PATH = /^\/assets(?:_en)?(?:\/\d+)?\/img\/sp\/assets\/(?:leader|npc)\/(s|m|ds)\/([A-Za-z0-9_-]+)\.(?:png|jpe?g|webp)$/i;
+const COMPACT_ACTOR_IMAGE_PATH = /^\/assets(?:_en)?(?:\/\d+)?\/img\/sp\/assets\/(?:leader|npc)\/s\/([A-Za-z0-9_-]+)\.(?:png|jpe?g|webp)$/i;
 const SUPPORTED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const PREFERRED_VARIANTS = ['s', 'm', 'ds'] as const;
 const MAX_ENTRIES = 240;
-
-export type ObservedActorImageVariant = typeof PREFERRED_VARIANTS[number];
 
 type CacheLike = Pick<Cache, 'match' | 'put' | 'keys' | 'delete'>;
 interface CacheStorageLike {
@@ -22,7 +19,6 @@ interface CacheStorageLike {
 
 export interface ObservedActorImageResponse {
   assetId: string;
-  variant: ObservedActorImageVariant;
   url: string;
   mimeType: string;
 }
@@ -39,11 +35,9 @@ export function parseObservedActorImageResponse(
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:' || !ACTOR_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) return null;
-    const match = ACTOR_IMAGE_PATH.exec(parsed.pathname);
-    const variant = match?.[1]?.toLowerCase() as ObservedActorImageVariant | undefined;
-    const assetId = match?.[2];
-    if (!assetId || !variant || !PREFERRED_VARIANTS.includes(variant)) return null;
-    return { assetId, variant, url: parsed.toString(), mimeType: normalizedMime };
+    const assetId = COMPACT_ACTOR_IMAGE_PATH.exec(parsed.pathname)?.[1];
+    if (!assetId) return null;
+    return { assetId, url: parsed.toString(), mimeType: normalizedMime };
   } catch {
     return null;
   }
@@ -51,7 +45,6 @@ export function parseObservedActorImageResponse(
 
 export async function storeObservedActorImageBody(
   assetId: string,
-  variant: ObservedActorImageVariant,
   mimeType: string,
   body: DebuggerResponseBody,
   cacheStorage: CacheStorageLike | undefined = safeCacheStorage(),
@@ -59,7 +52,6 @@ export async function storeObservedActorImageBody(
   if (
     !cacheStorage ||
     !safeAssetId(assetId) ||
-    !PREFERRED_VARIANTS.includes(variant) ||
     !SUPPORTED_MIME_TYPES.has(mimeType.toLowerCase()) ||
     !body.base64Encoded ||
     !body.body
@@ -69,7 +61,7 @@ export async function storeObservedActorImageBody(
     if (bytes.byteLength === 0) return false;
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     const cache = await cacheStorage.open(OBSERVED_ACTOR_IMAGE_CACHE_NAME);
-    await cache.put(actorImageCacheKey(assetId, variant), new Response(buffer, {
+    await cache.put(actorImageCacheKey(assetId), new Response(buffer, {
       headers: { 'Content-Type': mimeType.toLowerCase() },
     }));
     await prune(cache);
@@ -86,12 +78,12 @@ export async function readObservedActorImageBlob(
   if (!cacheStorage || !safeAssetId(assetId)) return undefined;
   try {
     const cache = await cacheStorage.open(OBSERVED_ACTOR_IMAGE_CACHE_NAME);
-    for (const variant of PREFERRED_VARIANTS) {
-      const blob = await readCachedBlob(cache, actorImageCacheKey(assetId, variant));
-      if (blob) return blob;
-    }
-    // Compatibility fallback for actor images cached before variants were keyed separately.
-    return await readCachedBlob(cache, legacyActorImageCacheKey(assetId));
+    const response = await cache.match(actorImageCacheKey(assetId));
+    if (!response?.ok) return undefined;
+    const contentType = response.headers.get('content-type')?.toLowerCase();
+    if (contentType && !SUPPORTED_MIME_TYPES.has(contentType)) return undefined;
+    const blob = await response.blob();
+    return blob.size > 0 ? blob : undefined;
   } catch {
     return undefined;
   }
@@ -108,20 +100,7 @@ export async function clearObservedActorImageCache(
   }
 }
 
-export function actorImageCacheKey(assetId: string, variant: ObservedActorImageVariant = 's'): string {
-  return new URL(`${CACHE_KEY_PREFIX}${encodeURIComponent(assetId)}/${variant}`, CACHE_KEY_ORIGIN).toString();
-}
-
-async function readCachedBlob(cache: CacheLike, key: string): Promise<Blob | undefined> {
-  const response = await cache.match(key);
-  if (!response?.ok) return undefined;
-  const contentType = response.headers.get('content-type')?.toLowerCase();
-  if (contentType && !SUPPORTED_MIME_TYPES.has(contentType)) return undefined;
-  const blob = await response.blob();
-  return blob.size > 0 ? blob : undefined;
-}
-
-function legacyActorImageCacheKey(assetId: string): string {
+export function actorImageCacheKey(assetId: string): string {
   return new URL(`${CACHE_KEY_PREFIX}${encodeURIComponent(assetId)}`, CACHE_KEY_ORIGIN).toString();
 }
 
