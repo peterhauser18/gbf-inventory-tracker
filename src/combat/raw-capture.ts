@@ -1,6 +1,6 @@
 import { isSensitiveJsonKey, sanitizeResponseUrl } from '../capture/policy.ts';
 import type { ObservedResponse } from '../capture/types.ts';
-import { isVerifiedCombatResponseUrl } from './multiraid.ts';
+import { isVerifiedCombatResponseUrl } from './complete-observation.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-raw-combat';
 const DB_VERSION = 1;
@@ -104,6 +104,10 @@ export function rawCombatCaptureFilename(exportedAt: number): string {
 
 export async function enableRawCombatCapture(ownerTabId: number, reset = true): Promise<void> {
   if (!Number.isInteger(ownerTabId) || ownerTabId < 0) throw new Error('Raw capture tab is invalid.');
+  if (!reset) {
+    const existing = await loadModeState();
+    if (existing.enabled && existing.ownerTabId === ownerTabId) return;
+  }
   const startedAt = Date.now();
   if (reset) await clearRawCombatCaptureStorage();
   await saveModeState(rawCombatCaptureState(ownerTabId, startedAt));
