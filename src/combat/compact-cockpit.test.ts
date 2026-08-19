@@ -52,17 +52,18 @@ test('aggressive live refresh preserves loaded visuals and expanded state instea
   assert.match(stableDom, /\.cockpit-loadout-panel\[data-cockpit-loadout-panel\]/);
 });
 
-test('known weapon grids survive transient unknown refreshes and roster tabs fill their available slot', () => {
+test('known weapon grids survive transient unknown refreshes while Character and Summon cards stay top-aligned', () => {
   assert.match(loadoutUi, /let latestDecorationRun = 0/);
   assert.match(loadoutUi, /run !== latestDecorationRun \|\| !root\.isConnected/);
   assert.match(loadoutUi, /shouldPreserveCurrentLoadout\(current, target\.loadout\)/);
   assert.match(loadoutUi, /qualityRank\(currentQuality\) > qualityRank\(incomingQuality\)/);
   assert.match(loadoutUi, /next\.dataset\.loadoutGridQuality = target\.loadout\?\.weaponGridQuality \?\? 'unknown'/);
   assert.match(ui, /import '\.\/cockpit-loadout-fill\.css'/);
-  assert.match(loadoutFillCss, /\.cockpit-character-panel,[\s\S]*\.cockpit-character-empty,[\s\S]*\.party-cards-compact,[\s\S]*\.summon-strip\s*\{[^}]*height:\s*100%/s);
-  assert.match(loadoutFillCss, /\.party-card-visual \.combat-image\s*\{[^}]*height:\s*100%/s);
-  assert.match(loadoutFillCss, /\.summon-card \.combat-image\s*\{[^}]*height:\s*100% !important/s);
-  assert.match(finalPolishCss, /\.preset-combat-cockpit \.party-cards-compact,[\s\S]*\.summon-strip\s*\{[^}]*height:\s*100%/s);
+  assert.match(loadoutFillCss, /\.party-cards-compact,[\s\S]*\.summon-strip\s*\{[^}]*height:\s*auto/s);
+  assert.match(loadoutFillCss, /\.party-card-visual\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
+  assert.match(loadoutFillCss, /\.summon-card \.combat-image\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
+  assert.match(finalPolishCss, /\.preset-combat-cockpit \.party-cards-compact\s*\{[^}]*height:\s*auto !important/s);
+  assert.match(finalPolishCss, /\.preset-combat-cockpit \.cockpit-summons-panel \.summon-strip\s*\{[^}]*height:\s*auto !important/s);
 });
 
 test('weapon grid does not rebuild for timestamp-only refreshes and preserves scroll on real replacements', () => {
@@ -102,11 +103,13 @@ test('Combat Cockpit shares one lower slot between characters, summons, and weap
   assert.match(layouts, /Weapon Grid — Unknown\. Waiting for a matching passive Party deck observation\./);
 });
 
-test('cockpit summons label main and support without the old divider line', () => {
+test('cockpit summons label main and support inside the image without the old divider line', () => {
   assert.match(sharedPresentation, /addSummonRole\(cards\[0\], 'Main'\)/);
   assert.match(sharedPresentation, /addSummonRole\(cards\[5\], 'Support'\)/);
+  assert.match(sharedPresentation, /const image = card\.querySelector<HTMLElement>\('\.combat-image'\)/);
+  assert.match(sharedPresentation, /image\.append\(label\)/);
   assert.match(liveUiCss, /\.summon-card\.supporter-slot\s*\{[^}]*border-left:\s*0;/s);
-  assert.match(uiV2Css, /\.preset-combat-cockpit \.summon-role-label\s*\{/);
+  assert.match(finalPolishCss, /summon-card \.combat-image > \.summon-role-label\s*\{[^}]*position:\s*absolute !important/s);
 });
 
 test('compact Weapons view mirrors the game grid without per-weapon skill text and keeps boosts collapsed by default', () => {
@@ -121,7 +124,7 @@ test('compact Weapons view mirrors the game grid without per-weapon skill text a
   assert.match(runtimePolishCss, /\.combat-skill-boosts\[open\] > summary::after/);
 });
 
-test('live roster keeps all six observed original actors and makes deaths/backline explicit', () => {
+test('live roster keeps all six observed original actors and makes deaths/backline explicit inside portraits', () => {
   assert.match(finalPolish, /const roster = \(context\.actors \?\? \[\]\)/);
   assert.match(finalPolish, /\.slice\(0, 6\)/);
   assert.match(finalPolish, /normalizeCockpitTable\(card, key, roster/);
@@ -130,29 +133,29 @@ test('live roster keeps all six observed original actors and makes deaths/backli
   assert.match(finalPolish, /`Dead · Backline \$\{index - 3\}`/);
   assert.match(finalPolish, /`Backline \$\{index - 3\}`/);
   assert.doesNotMatch(finalPolish, /Retained from verified party history/);
+  assert.match(finalPolish, /movePartyOverlaysIntoVisual\(partyCard\)/);
   assert.match(finalPolishCss, /\.cockpit-row\.dead[\s\S]*opacity:/s);
   assert.match(finalPolishCss, /\.cockpit-row\.dead \.combat-image img,[\s\S]*filter:\s*grayscale\(1\)/s);
   assert.match(finalPolishCss, /button\.cockpit-row\s*\{[^}]*flex:\s*1 1 0/s);
-  assert.match(finalPolishCss, /content:\s*'Backline 1'/);
-  assert.match(finalPolishCss, /content:\s*'Backline 2'/);
+  assert.match(finalPolishCss, /party-cards-compact \.state-tag\s*\{[^}]*position:\s*absolute !important/s);
 });
 
-test('MC and characters prefer locally observed game portrait bytes without a new image lookup', () => {
+test('MC and characters prefer locally observed battle portrait bytes without a new image lookup', () => {
   assert.match(finalPolish, /readObservedActorImageBlob/);
-  assert.match(finalPolish, /actorVisualImageId\(actor\) \?\? actor\.id/);
+  assert.match(finalPolish, /const ids = \[actor\.id, actorVisualImageId\(actor\)\]/);
   assert.match(finalPolish, /URL\.createObjectURL\(blob\)/);
   assert.doesNotMatch(finalPolish, /gbf\.wiki\/api\.php|pageimages|fetch\(/);
 });
 
-test('Raid History uses compact five-record pages with navigation before the final visible raid', () => {
+test('Raid History uses compact five-record pages with navigation above the raid list under Search', () => {
   assert.match(ui, /const layout: CombatLayoutPreset = 'combat-cockpit'/);
   assert.doesNotMatch(ui, /combat-layout-select|COMBAT_LAYOUT_PRESETS|loadLayoutPreference/);
   assert.match(ui, /class="content-header raids-compact-header"/);
   assert.doesNotMatch(ui, /<h2>Raids<\/h2>/);
   assert.match(raidHistoryCompact, /const RAIDS_PER_PAGE = 5/);
   assert.match(raidHistoryCompact, /card\.hidden = index < start \|\| index >= end/);
-  assert.match(raidHistoryCompact, /const lastVisibleRaid = cards\[Math\.min\(end, cards\.length\) - 1\]/);
-  assert.match(raidHistoryCompact, /list\.insertBefore\(pagination, lastVisibleRaid\)/);
+  assert.match(raidHistoryCompact, /root\.before\(pagination\)/);
+  assert.doesNotMatch(raidHistoryCompact, /list\.insertBefore\(pagination, lastVisibleRaid\)/);
   assert.match(raidHistoryCompact, /toolbar\.classList\.add\('raid-toolbar-bottom'\)/);
   assert.match(raidHistoryCompact, /root\.append\(toolbar\)/);
 });
