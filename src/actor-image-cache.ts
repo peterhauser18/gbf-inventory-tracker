@@ -1,7 +1,10 @@
 import type { DebuggerResponseBody } from './capture/types.ts';
 
-export const OBSERVED_ACTOR_IMAGE_CACHE_NAME = 'gbfit:observed-gbf-actor-images:v2';
-const LEGACY_OBSERVED_ACTOR_IMAGE_CACHE_NAME = 'gbfit:observed-gbf-actor-images:v1';
+export const OBSERVED_ACTOR_IMAGE_CACHE_NAME = 'gbfit:observed-gbf-actor-images:v3';
+const LEGACY_OBSERVED_ACTOR_IMAGE_CACHE_NAMES = [
+  'gbfit:observed-gbf-actor-images:v2',
+  'gbfit:observed-gbf-actor-images:v1',
+] as const;
 const CACHE_KEY_ORIGIN = 'https://gbfit.local';
 const CACHE_KEY_PREFIX = '/observed-actor-images/';
 const ACTOR_IMAGE_HOSTS = new Set([
@@ -10,9 +13,18 @@ const ACTOR_IMAGE_HOSTS = new Set([
 ]);
 const ACTOR_IMAGE_PATH = /^\/assets(?:_en)?(?:\/\d+)?\/img\/sp\/assets\/(leader|npc)\/(s|m|ds)\/([A-Za-z0-9_-]+)\.(?:png|jpe?g|webp)$/i;
 const SUPPORTED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const LEADER_FALLBACK_VARIANTS = ['m', 'ds'] as const;
+const ACTOR_VARIANT_PREFERENCE = [
+  ['npc', 'ds'],
+  ['leader', 'ds'],
+  ['npc', 's'],
+  ['leader', 's'],
+  ['npc', 'm'],
+  ['leader', 'm'],
+] as const;
 const MAX_ENTRIES = 240;
 
+type ActorImageFamily = 'leader' | 'npc';
+type ActorImageVariant = 's' | 'm' | 'ds';
 type CacheLike = Pick<Cache, 'match' | 'put' | 'keys' | 'delete'>;
 interface CacheStorageLike {
   open(name: string): Promise<CacheLike>;
@@ -38,20 +50,19 @@ export function parseObservedActorImageResponse(
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:' || !ACTOR_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) return null;
     const match = ACTOR_IMAGE_PATH.exec(parsed.pathname);
-    const family = match?.[1]?.toLowerCase();
-    const variant = match?.[2]?.toLowerCase();
+    const family = normalizeFamily(match?.[1]);
+    const variant = normalizeVariant(match?.[2]);
     const observedAssetId = match?.[3];
     if (!family || !variant || !observedAssetId) return null;
 
-    // NPC `s` is the compact GBF party/combat asset. Reject larger NPC variants so
-    // they cannot overwrite the card-sized portrait in the local cache. MC/leader
-    // may only be observed as a larger local variant, so retain those under a
-    // fallback-only cache id while still preferring `leader/s` when it exists.
-    if (family === 'npc' && variant !== 's') return null;
-    const assetId = family === 'leader' && variant !== 's'
-      ? leaderFallbackAssetId(observedAssetId, variant)
-      : observedAssetId;
-    return { assetId, url: parsed.toString(), mimeType: normalizedMime };
+    // Keep every already-loaded GBF actor variant under its own cache id. The battle
+    // response itself uses `ds` images for the in-combat party portraits, so readers
+    // can prefer those without letting a later `s`/`m` response overwrite them.
+    return {
+      assetId: actorVariantAssetId(family, variant, observedAssetId),
+      url: parsed.toString(),
+      mimeType: normalizedMime,
+    };
   } catch {
     return null;
   }
@@ -92,11 +103,12 @@ export async function readObservedActorImageBlob(
   if (!cacheStorage || !safeAssetId(assetId)) return undefined;
   try {
     const cache = await cacheStorage.open(OBSERVED_ACTOR_IMAGE_CACHE_NAME);
-    const preferred = await readCachedBlob(cache, actorImageCacheKey(assetId));
-    if (preferred) return preferred;
-    for (const variant of LEADER_FALLBACK_VARIANTS) {
-      const fallback = await readCachedBlob(cache, actorImageCacheKey(leaderFallbackAssetId(assetId, variant)));
-      if (fallback) return fallback;
+    for (const [family, variant] of ACTOR_VARIANT_PREFERENCE) {
+      const blob = await readCachedBlob(
+        cache,
+        actorImageCacheKey(actorVariantAssetId(family, variant, assetId)),
+      );
+      if (blob) return blob;
     }
     return undefined;
   } catch {
@@ -109,11 +121,11 @@ export async function clearObservedActorImageCache(
 ): Promise<boolean> {
   if (!cacheStorage) return false;
   try {
-    const [current, legacy] = await Promise.all([
+    const deleted = await Promise.all([
       cacheStorage.delete(OBSERVED_ACTOR_IMAGE_CACHE_NAME),
-      cacheStorage.delete(LEGACY_OBSERVED_ACTOR_IMAGE_CACHE_NAME),
+      ...LEGACY_OBSERVED_ACTOR_IMAGE_CACHE_NAMES.map((name) => cacheStorage.delete(name)),
     ]);
-    return current || legacy;
+    return deleted.some(Boolean);
   } catch {
     return false;
   }
@@ -121,6 +133,14 @@ export async function clearObservedActorImageCache(
 
 export function actorImageCacheKey(assetId: string): string {
   return new URL(`${CACHE_KEY_PREFIX}${encodeURIComponent(assetId)}`, CACHE_KEY_ORIGIN).toString();
+}
+
+export function actorVariantAssetId(
+  family: ActorImageFamily,
+  variant: ActorImageVariant,
+  assetId: string,
+): string {
+  return `${family}_${variant}_${assetId}`;
 }
 
 async function readCachedBlob(cache: CacheLike, key: string): Promise<Blob | undefined> {
@@ -132,8 +152,14 @@ async function readCachedBlob(cache: CacheLike, key: string): Promise<Blob | und
   return blob.size > 0 ? blob : undefined;
 }
 
-function leaderFallbackAssetId(assetId: string, variant: string): string {
-  return `leader_${variant}_${assetId}`;
+function normalizeFamily(value: string | undefined): ActorImageFamily | undefined {
+  const normalized = value?.toLowerCase();
+  return normalized === 'leader' || normalized === 'npc' ? normalized : undefined;
+}
+
+function normalizeVariant(value: string | undefined): ActorImageVariant | undefined {
+  const normalized = value?.toLowerCase();
+  return normalized === 's' || normalized === 'm' || normalized === 'ds' ? normalized : undefined;
 }
 
 async function prune(cache: CacheLike): Promise<void> {
@@ -148,7 +174,7 @@ async function prune(cache: CacheLike): Promise<void> {
 }
 
 function safeAssetId(value: string): boolean {
-  return value.length > 0 && value.length <= 100 && /^[A-Za-z0-9_-]+$/.test(value);
+  return value.length > 0 && value.length <= 120 && /^[A-Za-z0-9_-]+$/.test(value);
 }
 
 function decodeBase64(encoded: string): Uint8Array {
