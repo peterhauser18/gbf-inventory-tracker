@@ -12,13 +12,21 @@ type RenderTarget = {
 };
 
 const openState = new CombatLoadoutOpenState();
+let latestDecorationRun = 0;
 
 export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
+  const run = ++latestDecorationRun;
   const targets = await collectTargets(root);
+  if (run !== latestDecorationRun || !root.isConnected) return;
+
   for (const target of targets) {
     if (!target.mount.isConnected) continue;
     const current = findCurrentLoadout(target.mount, target.owner);
     const fingerprint = loadoutFingerprint(target.loadout);
+    if (shouldPreserveCurrentLoadout(current, target.loadout)) {
+      void hydrateWeaponSkills(current!);
+      continue;
+    }
     if (current?.dataset.loadoutFingerprint === fingerprint) {
       void hydrateWeaponSkills(current);
       continue;
@@ -28,6 +36,7 @@ export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
     next.className = 'combat-accordion combat-loadout-section';
     next.dataset.loadoutOwner = target.owner;
     next.dataset.loadoutFingerprint = fingerprint;
+    next.dataset.loadoutGridQuality = target.loadout?.weaponGridQuality ?? 'unknown';
     next.open = openState.resolve(target.owner, current?.open);
     next.innerHTML = `<summary>${escapeHtml(loadoutSummary(target.loadout))}</summary><div><section class="combat-loadout-panel">${renderLoadout(target.loadout)}</section></div>`;
     next.addEventListener('toggle', () => openState.remember(target.owner, next.open));
@@ -57,6 +66,26 @@ async function collectTargets(root: HTMLElement): Promise<RenderTarget[]> {
 function findCurrentLoadout(mount: HTMLElement, owner: string): HTMLDetailsElement | undefined {
   return [...mount.querySelectorAll<HTMLDetailsElement>('.combat-loadout-section')]
     .find((candidate) => candidate.dataset.loadoutOwner === owner);
+}
+
+function shouldPreserveCurrentLoadout(
+  current: HTMLDetailsElement | undefined,
+  incoming: RaidLoadoutSnapshot | undefined,
+): boolean {
+  if (!current) return false;
+  const currentQuality = current.dataset.loadoutGridQuality ?? qualityFromFingerprint(current.dataset.loadoutFingerprint);
+  const incomingQuality = incoming?.weaponGridQuality ?? 'unknown';
+  return qualityRank(currentQuality) > qualityRank(incomingQuality);
+}
+
+function qualityFromFingerprint(fingerprint: string | undefined): string {
+  return fingerprint?.split(':')[1] ?? 'unknown';
+}
+
+function qualityRank(quality: string): number {
+  if (quality === 'known') return 2;
+  if (quality === 'partial') return 1;
+  return 0;
 }
 
 function placeLoadout(target: RenderTarget, next: HTMLDetailsElement): void {
