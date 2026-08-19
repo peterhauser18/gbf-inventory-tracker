@@ -66,7 +66,7 @@ test('known weapon grids survive transient unknown refreshes and roster tabs fil
 });
 
 test('weapon grid does not rebuild for timestamp-only refreshes and preserves scroll on real replacements', () => {
-  const fingerprintFunction = /function loadoutFingerprint[\s\S]*?\n}\n\nfunction rememberLoadoutScroll/.exec(loadoutUi)?.[0] ?? '';
+  const fingerprintFunction = /function loadoutFingerprint[\s\S]*?function rememberLoadoutScroll/.exec(loadoutUi)?.[0] ?? '';
   assert.doesNotMatch(fingerprintFunction, /updatedAt|observedAt/);
   assert.match(fingerprintFunction, /weapons:\s*loadout\.weapons\.map/);
   assert.match(fingerprintFunction, /calculator:/);
