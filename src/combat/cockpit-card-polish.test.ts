@@ -13,7 +13,7 @@ test('compact Character cards prefer locally observed battle ds assets and keep 
   assert.match(actorImageCache, /actorVariantAssetId\(family, variant, observedAssetId\)/);
   assert.match(finalPolish, /const ids = \[actor\.id, actorVisualImageId\(actor\)\]/);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-visual\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
-  assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card\s*\{[^}]*height:\s*auto !important/s);
+  assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card,\s*[\s\S]*cockpit-summons-panel \.summon-card\s*\{[^}]*height:\s*auto !important/s);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-copy\s*\{[^}]*display:\s*block/s);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-copy > strong\s*\{[^}]*display:\s*block/s);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-visual \.combat-image img[\s\S]*object-fit:\s*contain !important/s);
