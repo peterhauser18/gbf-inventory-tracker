@@ -10,31 +10,6 @@
 }
 .raid-list > .raid-card[hidden] { display: none !important; }
 
-/* Historical raids use a single compact summary strip instead of the live two-column header/KPI split. */
-.raid-card .preset-combat-cockpit .cockpit-summary {
-  grid-template-columns: 1fr;
-}
-.raid-card .preset-combat-cockpit .combat-live-stats {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  min-height: 0;
-}
-.raid-card .preset-combat-cockpit .live-stat {
-  display: grid !important;
-  min-height: 48px;
-  align-content: center;
-  padding: 7px 9px;
-  border-top: 0 !important;
-}
-.raid-card .preset-combat-cockpit .live-stat:nth-child(4) {
-  display: none !important;
-}
-.raid-card .preset-combat-cockpit .live-stat strong {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  line-height: 1.2;
-}
-
 .raid-pagination {
   display: flex;
   justify-content: center;
@@ -71,10 +46,10 @@
 }
 .raid-toolbar.raid-toolbar-bottom .import-button { order: 2; }
 .raid-toolbar.raid-toolbar-bottom .muted { order: 1; }
+
 @media (max-width: 620px) {
   .raids-compact-header { align-items: stretch; }
   .raids-compact-header .raid-history-search { width: 100%; }
-  .raid-card .preset-combat-cockpit .combat-live-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .raid-pagination { gap: 4px; }
   .raid-page-button { min-width: 32px; height: 32px; padding: 0 7px; }
   .raid-toolbar.raid-toolbar-bottom { align-items: stretch; flex-direction: column; }
