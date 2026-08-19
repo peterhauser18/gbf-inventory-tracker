@@ -28,8 +28,13 @@ export function buildHistoricalCombatContext(raid: RaidWithLoadout): CombatParse
     };
   }
 
-  const mainCharacterId = matched.get(0)?.actorId ?? actorSlots[0]?.id;
-  const accountDisplayName = humanFacingPlayerName(members.find((member) => member.position === 0)?.name);
+  const mainAnalysis = matched.get(0);
+  const mainCharacterId = mainAnalysis?.actorId ?? actorSlots[0]?.id;
+  const persistedMainName = humanFacingPlayerName(members.find((member) => member.position === 0)?.name);
+  const observedMainName = mainAnalysis && isTechnicalMainCharacterLabel(mainAnalysis.actorId)
+    ? humanFacingPlayerName(mainAnalysis.actorName)
+    : undefined;
+  const accountDisplayName = persistedMainName ?? observedMainName;
   return {
     raidTechnicalId: raid.raidTechnicalId,
     instanceId: raid.instanceId,
