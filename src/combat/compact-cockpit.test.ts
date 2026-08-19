@@ -37,13 +37,15 @@ test('aggressive live refresh preserves loaded visuals and expanded state instea
   assert.match(stableDom, /\.cockpit-loadout-panel\[data-cockpit-loadout-panel\]/);
 });
 
-test('character drill-down is removed and SA DA TA counts with percentages are added to the overview', () => {
+test('character drill-down is removed and SA DA TA counts with percentages are added while Echo stays visible', () => {
   assert.match(sharedPresentation, /removeCockpitSelectedAnalysis\(root\)/);
   assert.match(sharedPresentation, /\.cockpit-selected-analysis/);
   assert.match(attackModes, /for \(const label of \['SA', 'DA', 'TA'\]\)/);
+  assert.match(attackModes, /cell\.textContent\?\.trim\(\) === 'Supp\.'/);
+  assert.doesNotMatch(attackModes, /=== 'Echo'/);
   assert.match(attackModes, /count \/ total \* 100/);
   assert.match(attackModes, /`\$\{count\} \(\$\{formatPercent\(percent\)\}%\)`/);
-  assert.match(attackModesCss, /repeat\(8, minmax\(54px,/);
+  assert.match(attackModesCss, /repeat\(9, minmax\(48px,/);
 });
 
 test('Combat Cockpit shares one lower slot between characters, summons, and weapons', () => {
