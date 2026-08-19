@@ -6,6 +6,7 @@ type Obj = Record<string, unknown>;
 
 export function enrichVerifiedScenarioSemantics(body: unknown, observation: VerifiedCombatObservation): void {
   if (!obj(body)) return;
+  enrichVerifiedOwnHonors(observation);
   enrichVerifiedSummonContext(body, observation);
   if (!Array.isArray(body.scenario)) return;
 
@@ -23,6 +24,22 @@ export function enrichVerifiedScenarioSemantics(body: unknown, observation: Veri
     action.hits = classifyVerifiedNormalDamage(rawHits);
     action.critical = criticalDecision(rawHits);
   }
+}
+
+export function enrichVerifiedOwnHonors(observation: VerifiedCombatObservation): void {
+  const context = observation.context;
+  const accountName = humanFacingAccountName(context?.accountDisplayName);
+  if (!context || !accountName || !context.participants?.length) return;
+  const normalized = accountName.toLocaleLowerCase();
+  const matches = context.participants.filter((participant) =>
+    humanFacingAccountName(participant.name)?.toLocaleLowerCase() === normalized);
+  if (matches.length !== 1 || matches[0]?.honors === undefined) return;
+
+  observation.participants = {
+    ...observation.participants,
+    honors: matches[0].honors,
+    quality: observation.participants?.quality === 'known' ? 'known' : 'partial',
+  };
 }
 
 export function preserveVerifiedNormalFacts(
@@ -336,6 +353,13 @@ function hasVerifiedHitStructure(hit: ParsedDamageHit): boolean {
     || hit.attackCount !== undefined
     || hit.concurrentAttackCount !== undefined
     || hit.isRandomAttack !== undefined;
+}
+
+function humanFacingAccountName(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  if (!text || /^(?:mc|main character)$/i.test(text)) return undefined;
+  if (/(?:^|_)sp(?:_|$)/i.test(text) && /\d/.test(text)) return undefined;
+  return text;
 }
 
 function obj(value: unknown): value is Obj {
