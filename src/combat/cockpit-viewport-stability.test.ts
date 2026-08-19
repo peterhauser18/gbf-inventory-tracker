@@ -27,7 +27,7 @@ test('live Weapons panel survives surrounding turn rerenders as the same DOM isl
 });
 
 test('Weapon Grid semantic fingerprint ignores observation timestamps', () => {
-  const fingerprint = /function loadoutFingerprint[\s\S]*?\n}\n/.exec(loadoutUi)?.[0] ?? '';
+  const fingerprint = /function loadoutFingerprint[\s\S]*?function rememberLoadoutScroll/.exec(loadoutUi)?.[0] ?? '';
   assert.match(fingerprint, /weaponGridQuality/);
   assert.match(fingerprint, /weapons:/);
   assert.match(fingerprint, /calculator:/);
