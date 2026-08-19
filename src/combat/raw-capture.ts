@@ -7,6 +7,7 @@ const RECORD_STORE = 'records';
 const MODE_KEY = 'gbfit:raw-combat-capture-mode';
 
 if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
+  void clearStaleRawCombatCapture();
   chrome.tabs.onRemoved.addListener((tabId) => {
     void clearRawCombatCaptureForOwner(tabId);
   });
@@ -134,8 +135,8 @@ export async function clearRawCombatCapture(): Promise<void> {
 }
 
 export async function getRawCombatCaptureStatus(): Promise<RawCombatCaptureStatus> {
-  const [state, records] = await Promise.all([loadModeState(), getRawCombatCaptureRecords()]);
-  return { ...state, count: records.length };
+  const [state, count] = await Promise.all([loadModeState(), countRawCombatCaptureRecords()]);
+  return { ...state, count };
 }
 
 export async function getRawCombatCaptureExport(exportedAt = Date.now()): Promise<RawCombatCaptureExport> {
@@ -209,6 +210,18 @@ export function containsSensitiveJsonKey(value: unknown): boolean {
   return false;
 }
 
+async function clearStaleRawCombatCapture(): Promise<void> {
+  const state = await loadModeState();
+  if (!state.enabled || state.ownerTabId === undefined) return;
+  try {
+    const ownerUrl = (await chrome.tabs.get(state.ownerTabId)).url;
+    if (isRawCombatCaptureOwnerUrl(ownerUrl, chrome.runtime.getURL('combat.html'))) return;
+  } catch {
+    // Missing owner tab means the prior raw session has ended.
+  }
+  await expireRawCombatCapture(state);
+}
+
 async function clearRawCombatCaptureForOwner(tabId: number): Promise<void> {
   const state = await loadModeState();
   if (state.ownerTabId !== tabId) return;
@@ -262,6 +275,18 @@ async function clearRawCombatCaptureStorage(): Promise<void> {
   const db = await openRawCaptureDatabase();
   await runWrite(db, (store) => store.clear());
   db.close();
+}
+
+async function countRawCombatCaptureRecords(): Promise<number> {
+  const db = await openRawCaptureDatabase();
+  const count = await new Promise<number>((resolve, reject) => {
+    const tx = db.transaction(RECORD_STORE, 'readonly');
+    const request = tx.objectStore(RECORD_STORE).count();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+  return count;
 }
 
 async function getRawCombatCaptureRecords(): Promise<RawCombatCaptureRecord[]> {
