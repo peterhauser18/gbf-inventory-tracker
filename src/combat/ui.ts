@@ -109,9 +109,7 @@ function renderSelectedShell(): void {
   });
 
   const header = selected === 'combat'
-    ? `<header class="content-header">
-        <div><p class="eyebrow">COMBAT</p><h2>Combat</h2><p class="muted">Live read-only raid analytics from already-received supported combat responses.</p></div>
-      </header>`
+    ? ''
     : `<header class="content-header raids-compact-header">
         <label class="search raid-history-search"><span>Search</span><input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" /></label>
       </header>`;
