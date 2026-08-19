@@ -5,6 +5,7 @@ import {
   loadoutSignaturesMatch,
   normalizeBattleStartLoadout,
   normalizePartyDeckLoadout,
+  selectLateEnrichmentDecks,
   selectMatchingDeck,
   weaponBoostLabel,
 } from './loadout.ts';
@@ -142,6 +143,27 @@ test('ambiguous matching decks never select or overwrite a raid grid', () => {
   const two = normalizePartyDeckLoadout(deckBody(10, 85), 1100)!;
   assert.equal(selectMatchingDeck(start.signature, [one]), one);
   assert.equal(selectMatchingDeck(start.signature, [one, two]), undefined);
+});
+
+test('late enrichment prefers one active matching raid over older matching history in the same scan', () => {
+  const start = normalizeBattleStartLoadout(startBody(), 2000)!;
+  const deck = normalizePartyDeckLoadout(deckBody(), 2100)!;
+  const assignments = selectLateEnrichmentDecks([
+    { instanceId: 'old-raid', lastObservedAt: 1900, loadout: start, active: false },
+    { instanceId: 'current-raid', lastObservedAt: 2200, loadout: start, active: true },
+  ], [deck]);
+  assert.equal(assignments.get('current-raid'), deck);
+  assert.equal(assignments.has('old-raid'), false);
+});
+
+test('late enrichment still fails closed when two active raids match the same observed deck', () => {
+  const start = normalizeBattleStartLoadout(startBody(), 2000)!;
+  const deck = normalizePartyDeckLoadout(deckBody(), 2100)!;
+  const assignments = selectLateEnrichmentDecks([
+    { instanceId: 'active-a', lastObservedAt: 2200, loadout: start, active: true },
+    { instanceId: 'active-b', lastObservedAt: 2300, loadout: start, active: true },
+  ], [deck]);
+  assert.equal(assignments.size, 0);
 });
 
 test('late enrichment attaches a known grid/calculator and preserves authoritative battle facts', () => {
