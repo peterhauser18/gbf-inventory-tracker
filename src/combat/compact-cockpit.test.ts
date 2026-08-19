@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const layouts = readFileSync(new URL('./layouts.ts', import.meta.url), 'utf8');
 const layoutsCss = readFileSync(new URL('./layouts.css', import.meta.url), 'utf8');
+const liveUiCss = readFileSync(new URL('./live-ui-fixes.css', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 const uiV2Css = readFileSync(new URL('./ui-v2.css', import.meta.url), 'utf8');
 const sharedPresentation = readFileSync(new URL('./shared-presentation-fixes.ts', import.meta.url), 'utf8');
@@ -60,7 +61,7 @@ test('Combat Cockpit shares one lower slot between characters, summons, and weap
 test('cockpit summons label main and support without the old divider line', () => {
   assert.match(sharedPresentation, /addSummonRole\(cards\[0\], 'Main'\)/);
   assert.match(sharedPresentation, /addSummonRole\(cards\[5\], 'Support'\)/);
-  assert.match(uiV2Css, /\.summon-card\.supporter-slot\s*\{[^}]*border-left:\s*0\s*!important/s);
+  assert.match(liveUiCss, /\.summon-card\.supporter-slot\s*\{[^}]*border-left:\s*0;/s);
   assert.match(uiV2Css, /\.summon-role-label\s*\{/);
 });
 
