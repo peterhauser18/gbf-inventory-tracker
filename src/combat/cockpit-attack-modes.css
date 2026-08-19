@@ -1,5 +1,5 @@
 .preset-combat-cockpit .cockpit-row {
-  grid-template-columns: minmax(180px, 1.45fr) repeat(8, minmax(54px, .65fr)) !important;
+  grid-template-columns: minmax(170px, 1.4fr) repeat(9, minmax(48px, .62fr)) !important;
 }
 .preset-combat-cockpit .cockpit-row > .cockpit-attack-mode,
 .preset-combat-cockpit .cockpit-row > .cockpit-attack-mode-head {
@@ -17,7 +17,7 @@
 .preset-combat-cockpit .cockpit-inline-analysis { display: none !important; }
 @media (max-width: 760px) {
   .preset-combat-cockpit .cockpit-row {
-    grid-template-columns: minmax(155px, 1.35fr) repeat(8, minmax(50px, .62fr)) !important;
+    grid-template-columns: minmax(150px, 1.3fr) repeat(9, minmax(46px, .58fr)) !important;
   }
   .preset-combat-cockpit .cockpit-attack-mode { font-size: 8px; }
 }
