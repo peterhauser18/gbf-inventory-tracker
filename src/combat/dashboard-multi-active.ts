@@ -43,8 +43,8 @@ export class CombatDashboardControllerV2 {
     return `<div class="active-combat-list">${this.active.map((entry, index) => this.renderActiveRaid(entry, index, layout)).join('')}</div>`;
   }
 
-  renderRaids(query: string): string {
-    return this.raidsController.renderRaids(query);
+  renderRaids(query: string, layout: CombatLayoutPreset): string {
+    return this.raidsController.renderRaids(query, layout);
   }
 
   bind(root: HTMLElement): void {

@@ -78,3 +78,39 @@ test('same-raid refresh preserves promoted backline action slots and original MC
     { actorId: 'back-b', actorName: 'Back B', damage: 40 },
   ]);
 });
+
+test('initial joined start scenario promotes an explicitly dead frontline before later damage attribution', () => {
+  const joinedBody = {
+    raid_id: 'instance-join-trigger',
+    quest_id: 777002,
+    turn: 4,
+    player: {
+      param: [
+        { pid: 'mc-tech', name: 'Skyfarer', hp: 100, hpmax: 100, alive: 1 },
+        { pid: 'front-a', name: 'Front A', hp: 100, hpmax: 100, alive: 1 },
+        { pid: 'lamretta', name: 'Lamretta', hp: 0, hpmax: 100, alive: 0 },
+        { pid: 'front-c', name: 'Front C', hp: 100, hpmax: 100, alive: 1 },
+        { pid: 'lich', name: 'Lich', hp: 100, hpmax: 100, alive: 1 },
+        { pid: 'orologia', name: 'Orologia', hp: 100, hpmax: 100, alive: 1 },
+      ],
+    },
+    scenario: [{ cmd: 'die', to: 'player', pos: 2 }],
+  };
+
+  const joined = parse(record(START, joinedBody, 20));
+  assert.ok(joined.context);
+  assert.equal(joined.context.actorSlots[2]?.id, 'lich');
+  assert.equal(joined.context.actorSlots[4]?.id, 'orologia');
+  assert.equal(joined.context.actors?.find((actor) => actor.id === 'lamretta')?.alive, false);
+
+  const refreshed = parse(record(START, joinedBody, 21), joined.context);
+  assert.ok(refreshed.context);
+  assert.equal(refreshed.context.actorSlots[2]?.id, 'lich');
+  assert.equal(refreshed.context.actorSlots[4]?.id, 'orologia');
+
+  const attack = parse(record(ATTACK, { scenario: [
+    { cmd: 'attack', from: 'player', pos: 2, damage: [[{ value: 12345 }]] },
+  ] }, 22), refreshed.context);
+  assert.equal(attack.actions[0]?.actorId, 'lich');
+  assert.equal(attack.actions[0]?.actorName, 'Lich');
+});

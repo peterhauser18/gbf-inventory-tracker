@@ -1,11 +1,13 @@
 import { classifyVerifiedNormalDamage, criticalDecision } from './damage-semantics.ts';
-import type { CombatSummonContext, VerifiedCombatObservation } from './multiraid.ts';
+import type { CombatParseContext, CombatSummonContext, VerifiedCombatObservation } from './multiraid.ts';
 import type { NormalizedRaidParse, ParsedCombatAction, ParsedDamageHit } from './types.ts';
 
 type Obj = Record<string, unknown>;
 
 export function enrichVerifiedScenarioSemantics(body: unknown, observation: VerifiedCombatObservation): void {
   if (!obj(body)) return;
+  enrichVerifiedOwnHonors(observation);
+  repairInitialJoinPartyState(body, observation);
   enrichVerifiedSummonContext(body, observation);
   if (!Array.isArray(body.scenario)) return;
 
@@ -23,6 +25,22 @@ export function enrichVerifiedScenarioSemantics(body: unknown, observation: Veri
     action.hits = classifyVerifiedNormalDamage(rawHits);
     action.critical = criticalDecision(rawHits);
   }
+}
+
+export function enrichVerifiedOwnHonors(observation: VerifiedCombatObservation): void {
+  const context = observation.context;
+  const accountName = humanFacingAccountName(context?.accountDisplayName);
+  if (!context || !accountName || !context.participants?.length) return;
+  const normalized = accountName.toLocaleLowerCase();
+  const matches = context.participants.filter((participant) =>
+    humanFacingAccountName(participant.name)?.toLocaleLowerCase() === normalized);
+  if (matches.length !== 1 || matches[0]?.honors === undefined) return;
+
+  observation.participants = {
+    ...observation.participants,
+    honors: matches[0].honors,
+    quality: observation.participants?.quality === 'known' ? 'known' : 'partial',
+  };
 }
 
 export function preserveVerifiedNormalFacts(
@@ -52,6 +70,75 @@ export function preserveVerifiedNormalFacts(
   parse.stats.criticalHits = normalEntries.length > 0 && normalEntries.every((entry) => entry.critical !== undefined)
     ? normalEntries.filter((entry) => entry.critical).length
     : undefined;
+}
+
+function repairInitialJoinPartyState(body: Obj, observation: VerifiedCombatObservation): void {
+  const context = observation.context;
+  const player = obj(body.player) ? body.player : undefined;
+  if (
+    !context ||
+    observation.startObserved ||
+    !player ||
+    !Array.isArray(player.param) ||
+    !Array.isArray(body.scenario)
+  ) return;
+
+  const snapshotIds = player.param.map((value) => obj(value) ? str(value.pid) : undefined);
+  const promotedInThisResponse = new Set<number>();
+
+  for (const raw of body.scenario) {
+    if (!obj(raw) || str(raw.cmd)?.toLowerCase() !== 'die') continue;
+    if (str(raw.target, raw.to)?.toLowerCase() !== 'player') continue;
+    for (const pos of playerDeathPositions(raw)) {
+      const currentId = context.actorSlots[pos]?.id;
+      const snapshotId = snapshotIds[pos];
+      if (!promotedInThisResponse.has(pos) && (!snapshotId || !currentId || snapshotId !== currentId)) continue;
+      if (promoteKnownBackline(context, pos)) promotedInThisResponse.add(pos);
+    }
+  }
+}
+
+function playerDeathPositions(raw: Obj): number[] {
+  const positions = new Set<number>();
+  const direct = num(raw.pos);
+  if (direct !== undefined) positions.add(direct);
+  collectPlayerPositions(raw.list, positions);
+  return [...positions];
+}
+
+function collectPlayerPositions(value: unknown, positions: Set<number>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectPlayerPositions(item, positions);
+    return;
+  }
+  if (!obj(value)) return;
+  const pos = num(value.pos);
+  if (pos !== undefined) positions.add(pos);
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'list' || key === 'damage' || /^\d+$/.test(key)) collectPlayerPositions(child, positions);
+  }
+}
+
+function promoteKnownBackline(context: CombatParseContext, pos: number): boolean {
+  if (!Number.isInteger(pos) || pos < 0 || pos >= 4 || pos >= context.actorSlots.length) return false;
+  const dead = context.actorSlots[pos];
+  const incoming = context.actorSlots[4];
+  if (!dead?.id || !incoming?.id) return false;
+
+  rememberContextActor(context, { ...dead, hp: 0, alive: false });
+  context.actorSlots[pos] = { ...incoming };
+  rememberContextActor(context, incoming);
+  context.actorSlots[4] = context.actorSlots[5] ? { ...context.actorSlots[5] } : {};
+  context.actorSlots[5] = {};
+  return true;
+}
+
+function rememberContextActor(context: CombatParseContext, actor: NonNullable<CombatParseContext['actorSlots'][number]>): void {
+  if (!actor.id) return;
+  context.actors ??= [];
+  const index = context.actors.findIndex((entry) => entry.id === actor.id);
+  if (index < 0) context.actors.push({ ...actor });
+  else context.actors[index] = { ...context.actors[index], ...actor };
 }
 
 function appendVerifiedStartNormalActions(
@@ -336,6 +423,13 @@ function hasVerifiedHitStructure(hit: ParsedDamageHit): boolean {
     || hit.attackCount !== undefined
     || hit.concurrentAttackCount !== undefined
     || hit.isRandomAttack !== undefined;
+}
+
+function humanFacingAccountName(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  if (!text || /^(?:mc|main character)$/i.test(text)) return undefined;
+  if (/(?:^|_)sp(?:_|$)/i.test(text) && /\d/.test(text)) return undefined;
+  return text;
 }
 
 function obj(value: unknown): value is Obj {
