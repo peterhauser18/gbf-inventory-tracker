@@ -1,0 +1,29 @@
+.active-combat-card .preset-combat-cockpit {
+  height: clamp(560px, calc(100dvh - 96px), 1040px) !important;
+  max-height: none !important;
+  grid-template-rows: auto minmax(0, .78fr) minmax(0, 1.22fr) !important;
+}
+
+.raid-card .preset-combat-cockpit {
+  grid-template-rows: auto minmax(0, .78fr) minmax(0, 1.22fr) !important;
+}
+
+.cockpit-secondary-below {
+  margin-top: 8px;
+}
+
+.cockpit-secondary-below .cockpit-secondary-panel[open] > div {
+  position: static !important;
+  inset: auto !important;
+  max-height: min(320px, 50dvh);
+  margin-top: 0;
+  overflow: auto;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .active-combat-card .preset-combat-cockpit {
+    height: clamp(540px, calc(100dvh - 88px), 1040px) !important;
+    grid-template-rows: auto minmax(0, .72fr) minmax(0, 1.28fr) !important;
+  }
+}
