@@ -28,7 +28,9 @@ export function applyCompactRaidHistory(root: HTMLElement, query: string): void 
 
     if (cards.length > RAIDS_PER_PAGE) {
       const pagination = renderPagination(totalPages);
-      list.insertAdjacentElement('afterend', pagination);
+      const lastVisibleRaid = cards[Math.min(end, cards.length) - 1];
+      if (lastVisibleRaid) list.insertBefore(pagination, lastVisibleRaid);
+      else list.append(pagination);
     }
   }
 
