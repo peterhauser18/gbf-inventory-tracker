@@ -32,6 +32,12 @@ test('Combat Cockpit is a bounded compact dashboard instead of stacked long sect
   assert.match(uiV2Css, /\.active-combat-card \.preset-combat-cockpit \.cockpit-loadout-panels\s*\{[^}]*height:\s*calc\(100% - 30px\)/s);
 });
 
+test('standalone Combat omits the redundant title and description block', () => {
+  assert.match(ui, /const header = selected === 'combat'\s*\? ''/s);
+  assert.doesNotMatch(ui, /Live read-only raid analytics from already-received supported combat responses\./);
+  assert.doesNotMatch(ui, /<p class="eyebrow">COMBAT<\/p><h2>Combat<\/h2>/);
+});
+
 test('aggressive live refresh preserves loaded visuals and expanded state instead of flickering', () => {
   assert.match(ui, /detachStableCombatDom\(section\)/);
   assert.match(ui, /restoreStableCombatDom\(section, preservedStableDom\)/);
@@ -110,14 +116,15 @@ test('live roster keeps all six observed original actors and makes deaths/backli
   assert.match(finalPolishCss, /\.cockpit-row\.dead[\s\S]*opacity:/s);
   assert.match(finalPolishCss, /\.cockpit-row\.dead \.combat-image img,[\s\S]*filter:\s*grayscale\(1\)/s);
   assert.match(finalPolishCss, /button\.cockpit-row\s*\{[^}]*flex:\s*1 1 0/s);
+  assert.match(finalPolishCss, /content:\s*'Backline 1'/);
+  assert.match(finalPolishCss, /content:\s*'Backline 2'/);
 });
 
-test('main character can use one cached public class thumbnail instead of an MC-only fallback', () => {
-  assert.match(finalPolish, /const classThumbnailPromises = new Map/);
-  assert.match(finalPolish, /loadout\?\.jobName/);
-  assert.match(finalPolish, /url\.searchParams\.set\('prop', 'pageimages'\)/);
-  assert.match(finalPolish, /resolveSafeExternalImageUrl\(source\)/);
-  assert.match(finalPolish, /if \(!target\.querySelector\('img'\)\) installImage\(target, source\)/);
+test('MC and characters prefer locally observed game portrait bytes without a new image lookup', () => {
+  assert.match(finalPolish, /readObservedActorImageBlob/);
+  assert.match(finalPolish, /actorVisualImageId\(actor\) \?\? actor\.id/);
+  assert.match(finalPolish, /URL\.createObjectURL\(blob\)/);
+  assert.doesNotMatch(finalPolish, /gbf\.wiki\/api\.php|pageimages|fetch\(/);
 });
 
 test('Raid History uses compact five-record pages with navigation before the final visible raid', () => {
