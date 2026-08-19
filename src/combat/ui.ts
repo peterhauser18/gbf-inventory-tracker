@@ -12,6 +12,7 @@ import { detachStableCombatDom, restoreStableCombatDom } from './live-dom-preser
 import { applySharedCombatPresentationFixes } from './shared-presentation-fixes.ts';
 import { applyCompactRaidHistory } from './raid-history-compact.ts';
 import { decorateCockpitAttackModes } from './cockpit-attack-modes.ts';
+import { applyCockpitFinalPolish, decorateCockpitRosterPresentation } from './cockpit-final-polish.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
 const layout: CombatLayoutPreset = 'combat-cockpit';
@@ -146,7 +147,8 @@ function renderSectionIfChanged(force = false): void {
     if (selected === 'combat') applyCombatLiveUiFixes(section);
     applySharedCombatPresentationFixes(section);
     if (selected === 'raids') applyCompactRaidHistory(section, query);
-    decorateAttackModes(section);
+    applyCockpitFinalPolish(section);
+    decorateRosterAndAttackModes(section);
     decorateLoadouts(section);
     return;
   }
@@ -160,18 +162,27 @@ function renderSectionIfChanged(force = false): void {
   if (selected === 'combat') applyCombatLiveUiFixes(section);
   applySharedCombatPresentationFixes(section);
   if (selected === 'raids') applyCompactRaidHistory(section, query);
-  decorateAttackModes(section);
+  applyCockpitFinalPolish(section);
+  decorateRosterAndAttackModes(section);
   decorateLoadouts(section);
 }
 
-function decorateAttackModes(section: HTMLElement): void {
-  void decorateCockpitAttackModes(section).catch(() => {});
+function decorateRosterAndAttackModes(section: HTMLElement): void {
+  void decorateCockpitRosterPresentation(section)
+    .then(() => {
+      if (!section.isConnected) return;
+      applyCockpitFinalPolish(section);
+      return decorateCockpitAttackModes(section);
+    })
+    .catch(() => {});
 }
 
 function decorateLoadouts(section: HTMLElement): void {
   void decorateCombatLoadouts(section)
     .then(() => {
-      if (section.isConnected) applySharedCombatPresentationFixes(section);
+      if (!section.isConnected) return;
+      applySharedCombatPresentationFixes(section);
+      applyCockpitFinalPolish(section);
     })
     .catch(() => {});
 }
