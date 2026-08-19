@@ -84,4 +84,6 @@ test('popup places Raw Capture Mode first in Developer and raw page exposes expo
   assert.match(rawCaptureSource, /clearRawCombatCaptureStorage\(\)/);
   assert.match(rawCaptureSource, /store\.clear\(\)/);
   assert.doesNotMatch(rawCaptureSource, /requestHeaders|responseHeaders|authorizationHeader|cookieHeader/);
+  assert.doesNotMatch(rawCaptureSource, /fetch\(|XMLHttpRequest|webRequest|chrome\.debugger/);
+  assert.doesNotMatch(combatEntry, /fetch\(|XMLHttpRequest|webRequest|chrome\.debugger/);
 });
