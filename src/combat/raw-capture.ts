@@ -1,4 +1,8 @@
-import { isSensitiveJsonKey, sanitizeResponseUrl } from '../capture/policy.ts';
+import {
+  isSensitiveJsonKey,
+  redactSensitiveJson,
+  sanitizeResponseUrl,
+} from '../capture/policy.ts';
 import type { ObservedResponse } from '../capture/types.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-raw-combat';
@@ -17,13 +21,14 @@ export interface RawCombatCaptureModeState {
   enabled: boolean;
   ownerTabId?: number;
   startedAt?: number;
-  skippedSensitive: number;
+  redactedSensitiveFields: number;
 }
 
 export interface RawCombatCaptureRecord {
   id: string;
   capturedAt: number;
   url: string;
+  redactedSensitiveFields: number;
   body: unknown;
 }
 
@@ -32,7 +37,7 @@ export interface RawCombatCaptureExport {
   version: 1;
   startedAt?: number;
   exportedAt: number;
-  skippedSensitive: number;
+  redactedSensitiveFields: number;
   records: Array<Omit<RawCombatCaptureRecord, 'id'>>;
 }
 
@@ -44,7 +49,7 @@ export function rawCombatCaptureState(
   ownerTabId: number,
   startedAt: number,
 ): RawCombatCaptureModeState {
-  return { enabled: true, ownerTabId, startedAt, skippedSensitive: 0 };
+  return { enabled: true, ownerTabId, startedAt, redactedSensitiveFields: 0 };
 }
 
 export function shouldPersistRawCombatResponse(
@@ -71,13 +76,13 @@ export function buildRawCombatCaptureRecord(
   } catch {
     return null;
   }
-  if (containsSensitiveJsonKey(body)) return null;
 
   return {
     id: `${capturedAt}:${meta.requestId}`,
     capturedAt,
     url: sanitizeResponseUrl(meta.url),
-    body,
+    redactedSensitiveFields: countSensitiveJsonKeys(body),
+    body: redactSensitiveJson(body),
   };
 }
 
@@ -91,7 +96,7 @@ export function buildRawCombatCaptureExport(
     version: 1,
     startedAt: state.startedAt,
     exportedAt,
-    skippedSensitive: state.skippedSensitive,
+    redactedSensitiveFields: state.redactedSensitiveFields,
     records: [...records]
       .sort((a, b) => a.capturedAt - b.capturedAt || a.id.localeCompare(b.id))
       .map(({ id: _id, ...record }) => record),
@@ -123,7 +128,7 @@ export async function clearRawCombatCapture(): Promise<void> {
   if (state.enabled && state.ownerTabId !== undefined) {
     await saveModeState(rawCombatCaptureState(state.ownerTabId, Date.now()));
   } else {
-    await saveModeState({ enabled: false, skippedSensitive: 0 });
+    await saveModeState({ enabled: false, redactedSensitiveFields: 0 });
   }
 }
 
@@ -161,30 +166,30 @@ export async function maybeStoreRawCombatResponse(
   if (!shouldPersistRawCombatResponse(state, ownerTabAvailable, meta, verifiedCombat)) return false;
 
   const record = buildRawCombatCaptureRecord(meta, rawBody, capturedAt);
-  if (!record) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rawBody);
-    } catch {
-      return false;
-    }
-    if (containsSensitiveJsonKey(parsed)) {
-      await saveModeState({ ...state, skippedSensitive: state.skippedSensitive + 1 });
-    }
-    return false;
-  }
+  if (!record) return false;
 
   await saveRawCombatCaptureRecord(record);
+  if (record.redactedSensitiveFields > 0) {
+    await saveModeState({
+      ...state,
+      redactedSensitiveFields: state.redactedSensitiveFields + record.redactedSensitiveFields,
+    });
+  }
   return true;
 }
 
-export function containsSensitiveJsonKey(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some((item) => containsSensitiveJsonKey(item));
-  if (!value || typeof value !== 'object') return false;
-  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-    if (isSensitiveJsonKey(key) || containsSensitiveJsonKey(nested)) return true;
+export function countSensitiveJsonKeys(value: unknown): number {
+  if (Array.isArray(value)) {
+    return value.reduce((sum, item) => sum + countSensitiveJsonKeys(item), 0);
   }
-  return false;
+  if (!value || typeof value !== 'object') return 0;
+
+  let count = 0;
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (isSensitiveJsonKey(key)) count += 1;
+    else count += countSensitiveJsonKeys(nested);
+  }
+  return count;
 }
 
 async function clearStaleRawCombatCapture(): Promise<void> {
@@ -207,19 +212,21 @@ async function clearRawCombatCaptureForOwner(tabId: number): Promise<void> {
 
 async function expireRawCombatCapture(state: RawCombatCaptureModeState): Promise<void> {
   await clearRawCombatCaptureStorage();
-  await saveModeState({ enabled: false, skippedSensitive: state.skippedSensitive });
+  await saveModeState({ enabled: false, redactedSensitiveFields: state.redactedSensitiveFields });
 }
 
 async function loadModeState(): Promise<RawCombatCaptureModeState> {
   if (typeof chrome === 'undefined' || !chrome.storage?.local) {
-    return { enabled: false, skippedSensitive: 0 };
+    return { enabled: false, redactedSensitiveFields: 0 };
   }
   const stored = (await chrome.storage.local.get(MODE_KEY))[MODE_KEY] as Partial<RawCombatCaptureModeState> | undefined;
   return {
     enabled: stored?.enabled === true,
     ownerTabId: Number.isInteger(stored?.ownerTabId) ? stored?.ownerTabId : undefined,
     startedAt: typeof stored?.startedAt === 'number' ? stored.startedAt : undefined,
-    skippedSensitive: typeof stored?.skippedSensitive === 'number' ? stored.skippedSensitive : 0,
+    redactedSensitiveFields: typeof stored?.redactedSensitiveFields === 'number'
+      ? stored.redactedSensitiveFields
+      : 0,
   };
 }
 
