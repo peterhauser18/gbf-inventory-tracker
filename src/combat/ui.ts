@@ -154,7 +154,7 @@ function renderSectionIfChanged(force = false): void {
   if (!force && markup === lastSectionMarkup) {
     if (selected === 'combat') applyCombatLiveUiFixes(section);
     applySharedCombatPresentationFixes(section);
-    void decorateCombatLoadouts(section);
+    decorateLoadouts(section);
     return;
   }
   const preservedLoadouts = detachCombatLoadouts(section);
@@ -164,7 +164,15 @@ function renderSectionIfChanged(force = false): void {
   if (selected === 'combat') applyCombatLiveUiFixes(section);
   applySharedCombatPresentationFixes(section);
   restoreCombatLoadouts(section, preservedLoadouts);
-  void decorateCombatLoadouts(section);
+  decorateLoadouts(section);
+}
+
+function decorateLoadouts(section: HTMLElement): void {
+  void decorateCombatLoadouts(section)
+    .then(() => {
+      if (section.isConnected) applySharedCombatPresentationFixes(section);
+    })
+    .catch(() => {});
 }
 
 function loadLayoutPreference(): CombatLayoutPreset {
