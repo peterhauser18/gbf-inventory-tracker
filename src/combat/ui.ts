@@ -1,6 +1,7 @@
 import './raids-v2.css';
 import './ui-v2.css';
 import './cockpit-loadout-fill.css';
+import './cockpit-weapon-runtime-polish.css';
 import { CombatDashboardControllerV2 } from './dashboard-multi-active.ts';
 import type { CombatLayoutPreset } from './layouts.ts';
 import { installCombatRaidInteractionUx } from './interaction-ux.ts';
