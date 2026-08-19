@@ -13,3 +13,168 @@
 .attack-modes-compact { grid-column: span 4; }
 @media (max-width: 850px) { .attack-modes-compact { grid-column: span 1; } }
 @media (max-width: 760px) { .active-combat-footer { align-items: stretch; } .active-combat-actions { width: 100%; margin-left: 0; } .active-combat-actions button { flex: 1; } }
+
+/* Compact cockpit follow-up: 700x700 is a target, not a hard height cap. */
+.active-combat-card .preset-combat-cockpit {
+  height: clamp(620px, calc(100dvh - 260px), 820px);
+  max-height: none;
+  grid-template-rows: auto minmax(0, 1.25fr) minmax(0, .85fr) 34px;
+  overflow: hidden;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-table {
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-row {
+  min-height: 36px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-loadout {
+  min-height: 0;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-loadout-panels {
+  height: calc(100% - 30px);
+  min-height: 0;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-loadout-panel {
+  height: 100%;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-loadout-panel {
+  padding: 6px 7px 8px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-weapon-grid-shell {
+  grid-template-columns: repeat(5, minmax(76px, 1fr));
+  gap: 6px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-additional-weapons {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  margin-top: 7px;
+  padding-top: 7px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-additional-label {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 3px 5px;
+  background: transparent;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-additional-label strong {
+  font-size: 9px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-additional-label span {
+  font-size: 8px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-additional-grid {
+  grid-template-columns: repeat(5, minmax(76px, 1fr));
+  gap: 6px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-calculator {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-calculator-summary,
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-enhancement-row {
+  display: none;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts {
+  display: block;
+  margin-top: 0;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts.unknown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  font-size: 9px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-boost-heading {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 9px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-boost-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 6px;
+  margin-top: 0;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-boost-chip {
+  padding: 4px 7px;
+  border-radius: 7px;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-boost-chip span,
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-boost-chip strong {
+  font-size: 9px;
+}
+
+@media (max-width: 760px) {
+  .active-combat-card .preset-combat-cockpit {
+    height: clamp(620px, calc(100dvh - 235px), 820px);
+    grid-template-rows: auto minmax(0, 1.25fr) minmax(0, .85fr) 34px;
+  }
+
+  .active-combat-card .preset-combat-cockpit .cockpit-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .active-combat-card .preset-combat-cockpit .combat-raid-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .active-combat-card .preset-combat-cockpit .combat-header-facts {
+    grid-row: auto;
+  }
+
+  .active-combat-card .preset-combat-cockpit .boss-hp-wide {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
+
+  .active-combat-card .preset-combat-cockpit .combat-live-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    min-height: 52px;
+  }
+
+  .active-combat-card .preset-combat-cockpit .live-stat {
+    align-content: center;
+    min-height: 52px;
+    padding: 7px 10px;
+  }
+
+  .active-combat-card .preset-combat-cockpit .live-stat:nth-child(4),
+  .active-combat-card .preset-combat-cockpit .live-stat:nth-child(5),
+  .active-combat-card .preset-combat-cockpit .live-stat:nth-child(6) {
+    display: none;
+  }
+
+  .active-combat-card .preset-combat-cockpit .cockpit-loadout-panels {
+    height: calc(100% - 30px);
+  }
+
+  .active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-boost-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
