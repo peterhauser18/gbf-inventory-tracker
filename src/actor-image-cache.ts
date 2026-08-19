@@ -8,8 +8,9 @@ const ACTOR_IMAGE_HOSTS = new Set([
   'game.granbluefantasy.jp',
   'prd-game-a-granbluefantasy.akamaized.net',
 ]);
-const COMPACT_ACTOR_IMAGE_PATH = /^\/assets(?:_en)?(?:\/\d+)?\/img\/sp\/assets\/(?:leader|npc)\/s\/([A-Za-z0-9_-]+)\.(?:png|jpe?g|webp)$/i;
+const ACTOR_IMAGE_PATH = /^\/assets(?:_en)?(?:\/\d+)?\/img\/sp\/assets\/(leader|npc)\/(s|m|ds)\/([A-Za-z0-9_-]+)\.(?:png|jpe?g|webp)$/i;
 const SUPPORTED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const LEADER_FALLBACK_VARIANTS = ['m', 'ds'] as const;
 const MAX_ENTRIES = 240;
 
 type CacheLike = Pick<Cache, 'match' | 'put' | 'keys' | 'delete'>;
@@ -36,8 +37,20 @@ export function parseObservedActorImageResponse(
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:' || !ACTOR_IMAGE_HOSTS.has(parsed.hostname.toLowerCase())) return null;
-    const assetId = COMPACT_ACTOR_IMAGE_PATH.exec(parsed.pathname)?.[1];
-    if (!assetId) return null;
+    const match = ACTOR_IMAGE_PATH.exec(parsed.pathname);
+    const family = match?.[1]?.toLowerCase();
+    const variant = match?.[2]?.toLowerCase();
+    const observedAssetId = match?.[3];
+    if (!family || !variant || !observedAssetId) return null;
+
+    // NPC `s` is the compact GBF party/combat asset. Reject larger NPC variants so
+    // they cannot overwrite the card-sized portrait in the local cache. MC/leader
+    // may only be observed as a larger local variant, so retain those under a
+    // fallback-only cache id while still preferring `leader/s` when it exists.
+    if (family === 'npc' && variant !== 's') return null;
+    const assetId = family === 'leader' && variant !== 's'
+      ? leaderFallbackAssetId(observedAssetId, variant)
+      : observedAssetId;
     return { assetId, url: parsed.toString(), mimeType: normalizedMime };
   } catch {
     return null;
@@ -79,12 +92,13 @@ export async function readObservedActorImageBlob(
   if (!cacheStorage || !safeAssetId(assetId)) return undefined;
   try {
     const cache = await cacheStorage.open(OBSERVED_ACTOR_IMAGE_CACHE_NAME);
-    const response = await cache.match(actorImageCacheKey(assetId));
-    if (!response?.ok) return undefined;
-    const contentType = response.headers.get('content-type')?.toLowerCase();
-    if (contentType && !SUPPORTED_MIME_TYPES.has(contentType)) return undefined;
-    const blob = await response.blob();
-    return blob.size > 0 ? blob : undefined;
+    const preferred = await readCachedBlob(cache, actorImageCacheKey(assetId));
+    if (preferred) return preferred;
+    for (const variant of LEADER_FALLBACK_VARIANTS) {
+      const fallback = await readCachedBlob(cache, actorImageCacheKey(leaderFallbackAssetId(assetId, variant)));
+      if (fallback) return fallback;
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -109,6 +123,19 @@ export function actorImageCacheKey(assetId: string): string {
   return new URL(`${CACHE_KEY_PREFIX}${encodeURIComponent(assetId)}`, CACHE_KEY_ORIGIN).toString();
 }
 
+async function readCachedBlob(cache: CacheLike, key: string): Promise<Blob | undefined> {
+  const response = await cache.match(key);
+  if (!response?.ok) return undefined;
+  const contentType = response.headers.get('content-type')?.toLowerCase();
+  if (contentType && !SUPPORTED_MIME_TYPES.has(contentType)) return undefined;
+  const blob = await response.blob();
+  return blob.size > 0 ? blob : undefined;
+}
+
+function leaderFallbackAssetId(assetId: string, variant: string): string {
+  return `leader_${variant}_${assetId}`;
+}
+
 async function prune(cache: CacheLike): Promise<void> {
   try {
     const keys = await cache.keys();
@@ -121,7 +148,7 @@ async function prune(cache: CacheLike): Promise<void> {
 }
 
 function safeAssetId(value: string): boolean {
-  return value.length > 0 && value.length <= 80 && /^[A-Za-z0-9_-]+$/.test(value);
+  return value.length > 0 && value.length <= 100 && /^[A-Za-z0-9_-]+$/.test(value);
 }
 
 function decodeBase64(encoded: string): Uint8Array {
