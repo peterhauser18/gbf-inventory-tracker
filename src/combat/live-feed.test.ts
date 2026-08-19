@@ -109,6 +109,31 @@ test('memberJoin extends the known participant set and carries exact ranking upd
   ]);
 });
 
+test('later mvpUpdate snapshots replace stale exact ranking values', () => {
+  clearLiveBattleFeedParticipantSnapshot();
+  rememberLiveParticipantIdentities('46421463095', {
+    '100': { nickname: 'Host', status: 'active' },
+    '200': { nickname: 'Guest', status: 'active' },
+  });
+  assert.ok(liveBattleFeedRecord(
+    '46421463095',
+    'ws-4',
+    '42["raid",{"mvpUpdate":{"mvpList":[{"user_id":"100","rank":1,"point":"1000"},{"user_id":"200","rank":2,"point":"500"}]}}]',
+    50,
+  ));
+
+  const next = liveBattleFeedRecord(
+    '46421463095',
+    'ws-4',
+    '42["raid",{"mvpUpdate":{"mvpList":[{"user_id":"200","rank":1,"point":"900"}]}}]',
+    51,
+  );
+  assert.ok(next);
+  assert.deepEqual((next.record.body as { mvp_info: unknown[] }).mvp_info, [
+    { user_id: '200', nickname: 'Guest', rank: 1, point: 900 },
+  ]);
+});
+
 test('non-Socket.IO, malformed and unknown live frames stay ignored', () => {
   assert.equal(liveBattleFeedRecord('1', 'ws', '{}', 1), null);
   assert.equal(liveBattleFeedRecord('1', 'ws', '42not-json', 1), null);

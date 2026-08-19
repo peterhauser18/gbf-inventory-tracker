@@ -72,6 +72,7 @@ export function liveParticipantSnapshotRecord(
   applyRankingToIdentities(
     participants,
     Array.isArray(body.mvp_info) ? body.mvp_info.filter(obj) : [],
+    false,
   );
   rememberLiveParticipantIdentities(instanceId, participants);
   return {
@@ -138,7 +139,7 @@ export function liveBattleFeedRecord(
   if (!current.size) return null;
 
   const participants = Object.fromEntries(current);
-  applyRankingToIdentities(participants, mvpList);
+  applyRankingToIdentities(participants, mvpList, true);
   participantIdentityByRaid.set(instanceId, new Map(Object.entries(participants)));
   trimIdentityRaids();
   return {
@@ -250,23 +251,38 @@ function participantIdentity(
 }
 
 function membersFromIdentities(participants: Record<string, LiveParticipantIdentity>): Obj[] {
-  return Object.entries(participants).map(([userId, participant]) => ({
-    user_id: userId,
-    nickname: participant.nickname,
-    level: participant.level,
-    is_host: participant.host,
-    is_dead: participant.status === 'dead',
-    retired_flag: participant.status === 'retired',
-    ...(Object.prototype.hasOwnProperty.call(participant, 'hpPercent')
-      ? { hp_ratio: participant.hpPercent }
-      : {}),
-  }));
+  return Object.entries(participants).map(([userId, participant]) => {
+    const status = participant.status === 'dead'
+      ? { is_dead: true, retired_flag: false }
+      : participant.status === 'retired'
+        ? { is_dead: false, retired_flag: true }
+        : participant.status === 'active'
+          ? { is_dead: false, retired_flag: false }
+          : {};
+    return {
+      user_id: userId,
+      nickname: participant.nickname,
+      level: participant.level,
+      is_host: participant.host,
+      ...status,
+      ...(Object.prototype.hasOwnProperty.call(participant, 'hpPercent')
+        ? { hp_ratio: participant.hpPercent }
+        : {}),
+    };
+  });
 }
 
 function applyRankingToIdentities(
   participants: Record<string, LiveParticipantIdentity>,
   ranking: Obj[],
+  replacePrevious: boolean,
 ): void {
+  if (replacePrevious) {
+    for (const [userId, participant] of Object.entries(participants)) {
+      const { placement: _placement, honors: _honors, ...rest } = participant;
+      participants[userId] = rest;
+    }
+  }
   for (const entry of ranking) {
     const userId = str(entry.user_id);
     if (!userId) continue;

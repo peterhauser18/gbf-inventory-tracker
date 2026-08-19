@@ -118,7 +118,7 @@ export async function handleLiveBattleFeedDebuggerEvent(
 async function captureStartParticipants(tabId: number, requestId: string, observedAt: number): Promise<void> {
   // Let the primary capture path ingest start.json first. This is a second local
   // CDP body read only; it does not issue or replay any GBF request.
-  await delay(125);
+  await delay(250);
   const responseBody = await readResponseBodyWithRetry({
     getResponseBody: async (id) => await chrome.debugger.sendCommand(
       { tabId },
