@@ -89,13 +89,16 @@ function labelCockpitSummons(root: HTMLElement): void {
 
 function addSummonRole(card: HTMLElement | undefined, role: 'Main' | 'Support'): void {
   if (!card) return;
-  let label = card.querySelector<HTMLElement>(':scope > .summon-role-label');
+  const image = card.querySelector<HTMLElement>('.combat-image');
+  if (!image) return;
+  let label = card.querySelector<HTMLElement>('.summon-role-label');
   if (!label) {
     label = document.createElement('span');
     label.className = 'summon-role-label';
-    card.prepend(label);
   }
   label.textContent = role;
+  label.classList.toggle('support', role === 'Support');
+  image.append(label);
   if (role === 'Support') card.classList.add('supporter-slot');
 }
 
