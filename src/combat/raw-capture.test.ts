@@ -19,14 +19,12 @@ const combatMeta: ObservedResponse = {
 };
 
 test('raw combat persistence is opt-in, owner-tab scoped, and limited to canonically verified combat responses', () => {
-  const expectedOwner = 'chrome-extension://extension-id/combat.html';
-  const owner = `${expectedOwner}?rawCapture=1`;
   const active = rawCombatCaptureState(42, 100);
 
-  assert.equal(shouldPersistRawCombatResponse(active, owner, expectedOwner, combatMeta, true), true);
-  assert.equal(shouldPersistRawCombatResponse({ ...active, enabled: false }, owner, expectedOwner, combatMeta, true), false);
-  assert.equal(shouldPersistRawCombatResponse(active, expectedOwner, expectedOwner, combatMeta, true), false);
-  assert.equal(shouldPersistRawCombatResponse(active, owner, expectedOwner, combatMeta, false), false);
+  assert.equal(shouldPersistRawCombatResponse(active, true, combatMeta, true), true);
+  assert.equal(shouldPersistRawCombatResponse({ ...active, enabled: false }, true, combatMeta, true), false);
+  assert.equal(shouldPersistRawCombatResponse(active, false, combatMeta, true), false);
+  assert.equal(shouldPersistRawCombatResponse(active, true, combatMeta, false), false);
 });
 
 test('raw capture preserves complete gameplay JSON and strips URL query metadata', () => {
@@ -83,6 +81,7 @@ test('popup places Raw Capture Mode first in Developer and raw page exposes expo
   assert.match(rawCaptureSource, /chrome\.tabs\.onRemoved\.addListener/);
   assert.match(rawCaptureSource, /clearRawCombatCaptureStorage\(\)/);
   assert.match(rawCaptureSource, /store\.clear\(\)/);
+  assert.doesNotMatch(rawCaptureSource, /\.url;/, 'owner-tab lifecycle must not require sensitive Tab.url access');
   assert.doesNotMatch(rawCaptureSource, /requestHeaders|responseHeaders|authorizationHeader|cookieHeader/);
   assert.doesNotMatch(rawCaptureSource, /fetch\(|XMLHttpRequest|webRequest|chrome\.debugger/);
   assert.doesNotMatch(combatEntry, /fetch\(|XMLHttpRequest|webRequest|chrome\.debugger/);
