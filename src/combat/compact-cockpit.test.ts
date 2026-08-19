@@ -62,7 +62,7 @@ test('cockpit summons label main and support without the old divider line', () =
   assert.match(sharedPresentation, /addSummonRole\(cards\[0\], 'Main'\)/);
   assert.match(sharedPresentation, /addSummonRole\(cards\[5\], 'Support'\)/);
   assert.match(liveUiCss, /\.summon-card\.supporter-slot\s*\{[^}]*border-left:\s*0;/s);
-  assert.match(uiV2Css, /\.summon-role-label\s*\{/);
+  assert.match(uiV2Css, /\.preset-combat-cockpit \.summon-role-label\s*\{/);
 });
 
 test('compact Weapons view mirrors the game grid and keeps skill boosts visible', () => {
