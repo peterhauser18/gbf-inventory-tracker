@@ -43,7 +43,7 @@ async function installRawCaptureMode(): Promise<void> {
     <div class="raw-capture-copy">
       <strong>RAW CAPTURE MODE</strong>
       <span id="raw-capture-status">Starting local raw combat capture…</span>
-      <small>Stores complete verified combat JSON response bodies locally for parser debugging. Credential-like response fields are skipped rather than persisted.</small>
+      <small>Stores verified combat JSON response bodies locally for parser debugging. Credential-like field values are replaced with [redacted] while the rest of each response is retained.</small>
     </div>
     <div class="raw-capture-actions">
       <button id="raw-capture-export" type="button" disabled>Export Raw JSON</button>
@@ -67,7 +67,7 @@ async function installRawCaptureMode(): Promise<void> {
     const current = await getRawCombatCaptureStatus();
     exportButton.disabled = current.count === 0;
     status.textContent = current.enabled
-      ? `${current.count} raw combat response${current.count === 1 ? '' : 's'} retained locally${current.skippedSensitive ? `; ${current.skippedSensitive} credential-like response${current.skippedSensitive === 1 ? '' : 's'} skipped` : ''}.`
+      ? `${current.count} raw combat response${current.count === 1 ? '' : 's'} retained locally${current.redactedSensitiveFields ? `; ${current.redactedSensitiveFields} credential-like field${current.redactedSensitiveFields === 1 ? '' : 's'} redacted` : ''}.`
       : 'Raw capture is inactive. Re-open this mode from the extension popup to start a fresh session.';
   };
 
