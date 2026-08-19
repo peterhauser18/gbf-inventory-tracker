@@ -20,7 +20,7 @@ test('raid join selection reads user_deck_priority and the target raid id', () =
   assert.deepEqual(selection, { deckId: '151', raidId: '46423315602', source: 'join' });
 });
 
-test('deck selection parser fails closed for unrelated, foreign, malformed, or non-POST requests', () => {
+test('deck selection parser fails closed for unrelated, foreign, malformed, incomplete, or non-POST requests', () => {
   assert.equal(parseObservedDeckSelectionRequest(
     'https://game.granbluefantasy.jp/quest/create_quest',
     'GET',
@@ -45,5 +45,10 @@ test('deck selection parser fails closed for unrelated, foreign, malformed, or n
     'https://game.granbluefantasy.jp/quest/create_quest',
     'POST',
     JSON.stringify({ deck_id: 0 }),
+  ), null);
+  assert.equal(parseObservedDeckSelectionRequest(
+    'https://game.granbluefantasy.jp/quest/raid_deck_data_create',
+    'POST',
+    JSON.stringify({ user_deck_priority: 151 }),
   ), null);
 });
