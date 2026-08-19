@@ -6,7 +6,7 @@ import {
 import type { ObservedResponse } from '../capture/types.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-raw-combat';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const RECORD_STORE = 'records';
 const MODE_KEY = 'gbfit:raw-combat-capture-mode';
 
@@ -238,10 +238,12 @@ async function saveModeState(state: RawCombatCaptureModeState): Promise<void> {
 async function openRawCaptureDatabase(): Promise<IDBDatabase> {
   return await new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
       if (!db.objectStoreNames.contains(RECORD_STORE)) {
         db.createObjectStore(RECORD_STORE, { keyPath: 'id' });
+      } else if (event.oldVersion < DB_VERSION) {
+        request.transaction?.objectStore(RECORD_STORE).clear();
       }
     };
     request.onsuccess = () => resolve(request.result);
