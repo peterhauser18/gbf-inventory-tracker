@@ -1,4 +1,4 @@
-import { ingestObservedLoadoutRecord } from '../combat/loadout.ts';
+import { ingestObservedLoadoutRecord } from '../combat/loadout-observer.ts';
 import {
   maybeStoreRawCombatReadFailure,
   maybeStoreRawCombatResponse,

@@ -51,6 +51,8 @@ export interface RaidWeaponSkillSnapshot {
   boosts: RaidWeaponSkillBoost[];
 }
 
+export type RaidWeaponGridSource = 'observed' | 'cached';
+
 export interface RaidLoadoutSnapshot {
   quality: DataQuality;
   observedAt: number;
@@ -67,6 +69,8 @@ export interface RaidLoadoutSnapshot {
   jobId?: string;
   jobName?: string;
   weaponGridQuality: DataQuality;
+  weaponGridSource?: RaidWeaponGridSource;
+  weaponGridObservedAt?: number;
   weapons: RaidLoadoutWeapon[];
   additionalWeaponsActive?: boolean;
   calculator: RaidWeaponSkillSnapshot;

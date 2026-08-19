@@ -98,14 +98,15 @@ function placeLoadout(target: RenderTarget, next: HTMLDetailsElement): void {
 function loadoutSummary(loadout: RaidLoadoutSnapshot | undefined): string {
   if (!loadout || loadout.weaponGridQuality === 'unknown') return 'Weapon Grid · Unknown';
   const kind = loadout.weapons.some((weapon) => weapon.slot > 10) ? 'EX' : 'Normal';
-  return `Weapon Grid · ${kind} · ${loadout.weapons.length} weapons`;
+  const provenance = loadout.weaponGridSource === 'cached' ? ' · Cached' : '';
+  return `Weapon Grid · ${kind} · ${loadout.weapons.length} weapons${provenance}`;
 }
 
 function renderLoadout(loadout: RaidLoadoutSnapshot | undefined): string {
   if (!loadout || loadout.weaponGridQuality === 'unknown') {
     return `<div class="combat-loadout-unknown">
       <div><p class="eyebrow">BATTLE LOADOUT</p><h3>Weapon Grid — Unknown</h3></div>
-      <span>Waiting for a matching passive Party deck observation.</span>
+      <span>Waiting for a matching cached or fresh passive Party deck observation.</span>
     </div>`;
   }
 
@@ -115,9 +116,12 @@ function renderLoadout(loadout: RaidLoadoutSnapshot | undefined): string {
   const totalHp = sumWeaponStat(loadout.weapons, 'hp');
   const totalAttack = sumWeaponStat(loadout.weapons, 'attack');
   const exLabel = additional.length ? `EX · ${loadout.weapons.length} weapons` : `${loadout.weapons.length} weapons`;
+  const provenance = loadout.weaponGridSource === 'cached'
+    ? `<span class="muted">Previously observed${loadout.weaponGridObservedAt ? ` · ${escapeHtml(formatObservedAt(loadout.weaponGridObservedAt))}` : ''}</span>`
+    : '';
 
   return `<div class="combat-loadout-head">
-      <div><p class="eyebrow">BATTLE LOADOUT</p><h3>Weapon Grid</h3><span class="muted">${escapeHtml(exLabel)}${loadout.deckId ? ` · Deck ${escapeHtml(loadout.deckId)}` : ''}</span></div>
+      <div><p class="eyebrow">BATTLE LOADOUT</p><h3>Weapon Grid</h3><span class="muted">${escapeHtml(exLabel)}${loadout.deckId ? ` · Deck ${escapeHtml(loadout.deckId)}` : ''}</span>${provenance}</div>
       <div class="combat-loadout-totals"><div><span>Total HP</span><strong>${formatNumber(totalHp)}</strong></div><div><span>Total ATK</span><strong>${formatNumber(totalAttack)}</strong></div></div>
     </div>
     <div class="combat-weapon-grid-shell">
@@ -172,7 +176,14 @@ function renderBoost(boost: RaidWeaponSkillBoost): string {
 }
 
 function loadoutFingerprint(loadout: RaidLoadoutSnapshot | undefined): string {
-  return loadout ? `${loadout.updatedAt}:${loadout.weaponGridQuality}:${loadout.calculator.quality}:${loadout.weapons.length}` : 'missing';
+  return loadout
+    ? `${loadout.updatedAt}:${loadout.weaponGridQuality}:${loadout.weaponGridSource ?? 'none'}:${loadout.weaponGridObservedAt ?? 0}:${loadout.calculator.quality}:${loadout.weapons.length}`
+    : 'missing';
+}
+
+function formatObservedAt(value: number): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'unknown time' : date.toLocaleString();
 }
 
 function sumWeaponStat(weapons: readonly RaidLoadoutWeapon[], key: 'hp' | 'attack'): number | undefined {

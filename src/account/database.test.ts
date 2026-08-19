@@ -69,7 +69,7 @@ test('newer explicit values replace older values for the same technical identity
   assert.equal(merged.snapshot.characters[0]?.level, 50);
 });
 
-test('complete roster coverage replaces stale members while partial coverage cannot', () => {
+test('complete roster coverage stays known under later partial enrichment and a later complete scan can replace stale members', () => {
   const first = createAccountDatabase(snapshot(100, {
     characterQuality: 'known',
     characters: [
@@ -82,7 +82,8 @@ test('complete roster coverage replaces stale members while partial coverage can
     characters: [{ id: 'a', masterId: '1', updatedAt: 200 }],
   }));
   assert.deepEqual(partial.snapshot.characters.map((value) => value.id), ['a', 'stale']);
-  assert.equal(partial.snapshot.quality.characters, 'partial');
+  assert.equal(partial.snapshot.quality.characters, 'known');
+  assert.equal(partial.observedAt.characters, 200);
 
   const complete = mergeAccountDatabase(partial, snapshot(300, {
     characterQuality: 'known',
