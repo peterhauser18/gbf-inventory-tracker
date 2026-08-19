@@ -4,10 +4,11 @@ import { readFileSync } from 'node:fs';
 
 const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 
-test('combat layout selection defaults to Combat Cockpit and persists locally', () => {
-  assert.match(ui, /const LAYOUT_KEY = 'gbfit:combat-layout'/);
-  assert.match(ui, /\?\? 'combat-cockpit'/);
-  assert.match(ui, /return 'combat-cockpit'/);
-  assert.match(ui, /localStorage\.setItem\(LAYOUT_KEY, layout\)/);
-  assert.match(ui, /COMBAT_LAYOUT_PRESETS\.map/);
+test('Combat and Raid History use the fixed Combat Cockpit layout without persisted layout selection', () => {
+  assert.match(ui, /const layout: CombatLayoutPreset = 'combat-cockpit'/);
+  assert.match(ui, /controller\.renderCombat\(layout\)/);
+  assert.match(ui, /controller\.renderRaids\(query, layout\)/);
+  assert.doesNotMatch(ui, /const LAYOUT_KEY = 'gbfit:combat-layout'/);
+  assert.doesNotMatch(ui, /localStorage\.setItem\(LAYOUT_KEY, layout\)/);
+  assert.doesNotMatch(ui, /COMBAT_LAYOUT_PRESETS\.map|combat-layout-select|loadLayoutPreference/);
 });
