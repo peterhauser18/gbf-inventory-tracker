@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - validation/issue-124-be380
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
