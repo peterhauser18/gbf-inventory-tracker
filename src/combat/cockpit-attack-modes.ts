@@ -66,15 +66,17 @@ function normalizeRow(row: HTMLElement, analysis: CharacterCombatAnalysis | unde
   for (const mode of [analysis?.single, analysis?.double, analysis?.triple]) {
     const cell = document.createElement('span');
     cell.className = 'cockpit-attack-mode';
+    cell.title = 'Share of normal attacks whose SA/DA/TA mode was observed';
     cell.textContent = attackModeLabel(mode, total);
     row.insertBefore(cell, crit);
   }
 }
 
 function attackModeLabel(mode: AttackModeSummary | undefined, total: number): string {
-  if (!mode || total <= 0) return '—';
-  const percent = mode.count / total * 100;
-  return `${mode.count} (${formatPercent(percent)}%)`;
+  if (total <= 0) return '—';
+  const count = mode?.count ?? 0;
+  const percent = count / total * 100;
+  return `${count} (${formatPercent(percent)}%)`;
 }
 
 function formatPercent(value: number): string {
