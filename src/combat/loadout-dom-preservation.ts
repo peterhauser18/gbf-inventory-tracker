@@ -1,17 +1,41 @@
-export type PreservedCombatLoadout = {
-  owner: string;
-  node: HTMLDetailsElement;
-};
+export type PreservedCombatLoadout =
+  | {
+      owner: string;
+      kind: 'weapon-panel';
+      node: HTMLElement;
+    }
+  | {
+      owner: string;
+      kind: 'loadout';
+      node: HTMLDetailsElement;
+    };
 
 const cockpitViewByGroup = new Map<string, number>();
 
 export function detachCombatLoadouts(root: HTMLElement): PreservedCombatLoadout[] {
   rememberCockpitViews(root);
   const preserved: PreservedCombatLoadout[] = [];
+
+  // The weapon grid is static for a running raid. Preserve the entire scrollable
+  // Weapons panel as one DOM island while the surrounding live combat markup is
+  // refreshed. Keeping the same element preserves its scroll position and loaded
+  // image nodes without making turn/attack updates redraw the grid.
+  for (const card of root.querySelectorAll<HTMLElement>('[data-active-combat-key]')) {
+    const key = card.dataset.activeCombatKey;
+    if (!key) continue;
+    const panel = card.querySelector<HTMLElement>('.cockpit-loadout-panel[data-cockpit-loadout-panel="weapons"]');
+    if (!panel) continue;
+    preserved.push({ owner: `active:${key}`, kind: 'weapon-panel', node: panel });
+    panel.remove();
+  }
+
+  // Preserve standalone/history loadout details, plus non-cockpit active layouts.
+  // Active Combat Cockpit loadouts inside the preserved Weapons panel are already
+  // detached with their parent and therefore are intentionally not visited here.
   for (const node of root.querySelectorAll<HTMLDetailsElement>('.combat-loadout-section[data-loadout-owner]')) {
     const owner = node.dataset.loadoutOwner;
     if (!owner) continue;
-    preserved.push({ owner, node });
+    preserved.push({ owner, kind: 'loadout', node });
     node.remove();
   }
   return preserved;
@@ -19,7 +43,16 @@ export function detachCombatLoadouts(root: HTMLElement): PreservedCombatLoadout[
 
 export function restoreCombatLoadouts(root: HTMLElement, preserved: readonly PreservedCombatLoadout[]): void {
   restoreCockpitViews(root);
+
   for (const entry of preserved) {
+    if (entry.kind !== 'weapon-panel') continue;
+    const target = findTarget(root, entry.owner);
+    if (!target) continue;
+    restorePreservedWeaponPanel(target, entry.node);
+  }
+
+  for (const entry of preserved) {
+    if (entry.kind !== 'loadout') continue;
     const target = findTarget(root, entry.owner);
     if (!target) continue;
     placePreservedLoadout(entry.owner, target, entry.node);
@@ -61,6 +94,12 @@ function findTarget(root: HTMLElement, owner: string): HTMLElement | undefined {
   }
 
   return undefined;
+}
+
+function restorePreservedWeaponPanel(mount: HTMLElement, panel: HTMLElement): void {
+  const replacement = mount.querySelector<HTMLElement>('.cockpit-loadout-panel[data-cockpit-loadout-panel="weapons"]');
+  if (!replacement) return;
+  replacement.replaceWith(panel);
 }
 
 function placePreservedLoadout(owner: string, mount: HTMLElement, node: HTMLDetailsElement): void {
@@ -107,7 +146,5 @@ function placePreservedLoadout(owner: string, mount: HTMLElement, node: HTMLDeta
     return;
   }
 
-  const activeLabel = mount.querySelector<HTMLElement>(':scope > .active-combat-card-label');
-  if (activeLabel) activeLabel.after(node);
-  else mount.prepend(node);
+  mount.prepend(node);
 }
