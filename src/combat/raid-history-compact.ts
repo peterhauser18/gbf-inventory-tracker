@@ -6,31 +6,32 @@ let currentPage = 1;
 let lastQuery = '';
 
 export function applyCompactRaidHistory(root: HTMLElement, query: string): void {
-  const list = root.querySelector<HTMLElement>('.raid-list');
-  if (!list) return;
-
   if (query !== lastQuery) {
     lastQuery = query;
     currentPage = 1;
   }
 
-  const cards = [...list.querySelectorAll<HTMLElement>(':scope > .raid-card')];
-  const totalPages = Math.max(1, Math.ceil(cards.length / RAIDS_PER_PAGE));
-  currentPage = Math.min(Math.max(1, currentPage), totalPages);
-
-  const start = (currentPage - 1) * RAIDS_PER_PAGE;
-  const end = start + RAIDS_PER_PAGE;
-  cards.forEach((card, index) => {
-    card.hidden = index < start || index >= end;
-  });
-
+  const toolbar = root.querySelector<HTMLElement>('.raid-toolbar');
+  const list = root.querySelector<HTMLElement>('.raid-list');
   root.querySelector('[data-raid-pagination]')?.remove();
-  if (cards.length > RAIDS_PER_PAGE) {
-    const pagination = renderPagination(totalPages);
-    list.insertAdjacentElement('afterend', pagination);
+
+  if (list) {
+    const cards = [...list.querySelectorAll<HTMLElement>(':scope > .raid-card')];
+    const totalPages = Math.max(1, Math.ceil(cards.length / RAIDS_PER_PAGE));
+    currentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+    const start = (currentPage - 1) * RAIDS_PER_PAGE;
+    const end = start + RAIDS_PER_PAGE;
+    cards.forEach((card, index) => {
+      card.hidden = index < start || index >= end;
+    });
+
+    if (cards.length > RAIDS_PER_PAGE) {
+      const pagination = renderPagination(totalPages);
+      list.insertAdjacentElement('afterend', pagination);
+    }
   }
 
-  const toolbar = root.querySelector<HTMLElement>('.raid-toolbar');
   if (toolbar) {
     toolbar.classList.add('raid-toolbar-bottom');
     root.append(toolbar);
