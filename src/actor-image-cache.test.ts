@@ -2,17 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseObservedActorImageResponse } from './actor-image-cache.ts';
 
-test('accepts already-loaded GBF MC and character portrait image responses', () => {
+test('accepts only already-loaded compact GBF MC and character portrait image responses', () => {
   assert.deepEqual(
     parseObservedActorImageResponse(
-      'https://game.granbluefantasy.jp/assets/img/sp/assets/leader/ds/311303_sw_1_01.jpg',
+      'https://game.granbluefantasy.jp/assets/img/sp/assets/leader/s/311303_sw_1_01.jpg',
       'Image',
       'image/jpeg',
       200,
     ),
     {
       assetId: '311303_sw_1_01',
-      url: 'https://game.granbluefantasy.jp/assets/img/sp/assets/leader/ds/311303_sw_1_01.jpg',
+      url: 'https://game.granbluefantasy.jp/assets/img/sp/assets/leader/s/311303_sw_1_01.jpg',
       mimeType: 'image/jpeg',
     },
   );
@@ -27,21 +27,29 @@ test('accepts already-loaded GBF MC and character portrait image responses', () 
   );
 });
 
-test('rejects non-image, failed, foreign and unrelated responses', () => {
+test('rejects larger actor variants plus non-image, failed, foreign and unrelated responses', () => {
+  for (const variant of ['m', 'ds']) {
+    assert.equal(parseObservedActorImageResponse(
+      `https://game.granbluefantasy.jp/assets/img/sp/assets/npc/${variant}/3040427000_01.jpg`,
+      'Image',
+      'image/jpeg',
+      200,
+    ), null);
+  }
   assert.equal(parseObservedActorImageResponse(
-    'https://game.granbluefantasy.jp/assets/img/sp/assets/leader/ds/311303_sw_1_01.jpg',
+    'https://game.granbluefantasy.jp/assets/img/sp/assets/leader/s/311303_sw_1_01.jpg',
     'XHR',
     'image/jpeg',
     200,
   ), null);
   assert.equal(parseObservedActorImageResponse(
-    'https://game.granbluefantasy.jp/assets/img/sp/assets/leader/ds/311303_sw_1_01.jpg',
+    'https://game.granbluefantasy.jp/assets/img/sp/assets/leader/s/311303_sw_1_01.jpg',
     'Image',
     'image/jpeg',
     404,
   ), null);
   assert.equal(parseObservedActorImageResponse(
-    'https://example.com/assets/img/sp/assets/npc/ds/3040427000.jpg',
+    'https://example.com/assets/img/sp/assets/npc/s/3040427000.jpg',
     'Image',
     'image/jpeg',
     200,
