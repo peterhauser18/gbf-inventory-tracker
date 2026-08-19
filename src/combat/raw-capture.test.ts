@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildRawCombatCaptureExport,
   buildRawCombatCaptureRecord,
+  buildRawCombatReadFailure,
   countSensitiveJsonKeys,
   rawCombatCaptureState,
   shouldPersistRawCombatResponse,
@@ -42,6 +43,19 @@ test('raw capture preserves complete gameplay JSON and strips URL query metadata
   assert.equal(record.redactedSensitiveFields, 0);
   assert.deepEqual(record.body, body);
   assert.deepEqual(Object.keys(record).sort(), ['body', 'capturedAt', 'id', 'redactedSensitiveFields', 'url']);
+});
+
+test('response-body read failures export only sanitized path, time and fixed reason', () => {
+  const failure = buildRawCombatReadFailure(combatMeta, 15);
+  const bundle = buildRawCombatCaptureExport(rawCombatCaptureState(42, 10), [], 20, [failure]);
+
+  assert.equal(bundle.version, 2);
+  assert.deepEqual(bundle.readFailures, [{
+    capturedAt: 15,
+    url: 'https://game.granbluefantasy.jp/rest/multiraid/normal_attack_result.json',
+    reason: 'response-body-unavailable',
+  }]);
+  assert.equal(JSON.stringify(bundle).includes('combat-request-1'), false);
 });
 
 test('credential-like response values are redacted in place without dropping gameplay evidence', () => {
@@ -94,6 +108,7 @@ test('raw export omits internal request ids and preserves ordered redacted bodie
   ], 30);
 
   assert.equal(bundle.format, 'gbf-tool-raw-combat-capture');
+  assert.equal(bundle.version, 2);
   assert.equal(bundle.redactedSensitiveFields, 2);
   assert.deepEqual(bundle.records, [
     {
@@ -109,6 +124,7 @@ test('raw export omits internal request ids and preserves ordered redacted bodie
       body: { second: true },
     },
   ]);
+  assert.deepEqual(bundle.readFailures, []);
   assert.equal(JSON.stringify(bundle).includes('combat-request-1'), false);
 });
 
@@ -126,8 +142,10 @@ test('popup places Raw Capture Mode first in Developer and raw page exposes expo
   assert.match(combatEntry, /Clear Raw Capture/);
   assert.match(combatEntry, /replaced with \[redacted\]/);
   assert.match(observer, /classifyObservedResponseUrl\(meta\.url\) === 'combat'/);
+  assert.match(observer, /maybeStoreRawCombatReadFailure/);
   assert.match(rawCaptureSource, /redactSensitiveJson\(body\)/);
   assert.match(rawCaptureSource, /countSensitiveJsonKeys\(body\)/);
+  assert.match(rawCaptureSource, /READ_FAILURE_STORE = 'read-failures'/);
   assert.match(rawCaptureSource, /chrome\.tabs\.onRemoved\.addListener/);
   assert.match(rawCaptureSource, /clearRawCombatCaptureStorage\(\)/);
   assert.match(rawCaptureSource, /store\.clear\(\)/);
