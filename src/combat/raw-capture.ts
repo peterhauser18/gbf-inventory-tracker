@@ -7,6 +7,12 @@ const DB_VERSION = 1;
 const RECORD_STORE = 'records';
 const MODE_KEY = 'gbfit:raw-combat-capture-mode';
 
+if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    void clearRawCombatCaptureForOwner(tabId);
+  });
+}
+
 export interface RawCombatCaptureModeState {
   enabled: boolean;
   ownerTabId?: number;
@@ -156,13 +162,13 @@ export async function maybeStoreRawCombatResponse(
   try {
     ownerUrl = (await chrome.tabs.get(state.ownerTabId)).url;
   } catch {
-    await saveModeState({ ...state, enabled: false });
+    await expireRawCombatCapture(state);
     return false;
   }
 
   const expectedOwnerUrl = chrome.runtime.getURL('combat.html');
   if (!shouldPersistRawCombatResponse(state, ownerUrl, expectedOwnerUrl, meta)) {
-    await saveModeState({ ...state, enabled: false });
+    await expireRawCombatCapture(state);
     return false;
   }
 
@@ -204,6 +210,17 @@ export function containsSensitiveJsonKey(value: unknown): boolean {
     if (isSensitiveJsonKey(key) || containsSensitiveJsonKey(nested)) return true;
   }
   return false;
+}
+
+async function clearRawCombatCaptureForOwner(tabId: number): Promise<void> {
+  const state = await loadModeState();
+  if (state.ownerTabId !== tabId) return;
+  await expireRawCombatCapture(state);
+}
+
+async function expireRawCombatCapture(state: RawCombatCaptureModeState): Promise<void> {
+  await clearRawCombatCaptureStorage();
+  await saveModeState({ enabled: false, skippedSensitive: state.skippedSensitive });
 }
 
 async function loadModeState(): Promise<RawCombatCaptureModeState> {
