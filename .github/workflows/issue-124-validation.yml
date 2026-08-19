@@ -1,0 +1,24 @@
+name: Issue 124 validation
+
+on:
+  push:
+    branches:
+      - validation/issue-124-be380
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+      - run: git diff --check fc1ebe7232cc0b0e8381dc2e171f3e0a72ada2fe be380e91a2741ee4c2f70c4cb11dcca51bb71f1f
