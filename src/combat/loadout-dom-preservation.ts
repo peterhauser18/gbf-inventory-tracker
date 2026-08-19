@@ -3,7 +3,10 @@ export type PreservedCombatLoadout = {
   node: HTMLDetailsElement;
 };
 
+const cockpitViewByGroup = new Map<string, number>();
+
 export function detachCombatLoadouts(root: HTMLElement): PreservedCombatLoadout[] {
+  rememberCockpitViews(root);
   const preserved: PreservedCombatLoadout[] = [];
   for (const node of root.querySelectorAll<HTMLDetailsElement>('.combat-loadout-section[data-loadout-owner]')) {
     const owner = node.dataset.loadoutOwner;
@@ -15,10 +18,30 @@ export function detachCombatLoadouts(root: HTMLElement): PreservedCombatLoadout[
 }
 
 export function restoreCombatLoadouts(root: HTMLElement, preserved: readonly PreservedCombatLoadout[]): void {
+  restoreCockpitViews(root);
   for (const entry of preserved) {
     const target = findTarget(root, entry.owner);
     if (!target) continue;
     placePreservedLoadout(entry.owner, target, entry.node);
+  }
+}
+
+function rememberCockpitViews(root: HTMLElement): void {
+  for (const cockpit of root.querySelectorAll<HTMLElement>('[data-cockpit-loadout]')) {
+    const inputs = [...cockpit.querySelectorAll<HTMLInputElement>('.cockpit-tab-input')];
+    const group = inputs[0]?.name;
+    const selected = inputs.findIndex((input) => input.checked);
+    if (group && selected >= 0) cockpitViewByGroup.set(group, selected);
+  }
+}
+
+function restoreCockpitViews(root: HTMLElement): void {
+  for (const cockpit of root.querySelectorAll<HTMLElement>('[data-cockpit-loadout]')) {
+    const inputs = [...cockpit.querySelectorAll<HTMLInputElement>('.cockpit-tab-input')];
+    const group = inputs[0]?.name;
+    const selected = group ? cockpitViewByGroup.get(group) : undefined;
+    const input = selected === undefined ? undefined : inputs[selected];
+    if (input) input.checked = true;
   }
 }
 
@@ -41,6 +64,13 @@ function findTarget(root: HTMLElement, owner: string): HTMLElement | undefined {
 }
 
 function placePreservedLoadout(owner: string, mount: HTMLElement, node: HTMLDetailsElement): void {
+  const cockpitWeaponSlot = mount.querySelector<HTMLElement>('[data-cockpit-weapon-slot]');
+  if (cockpitWeaponSlot) {
+    node.open = true;
+    cockpitWeaponSlot.replaceChildren(node);
+    return;
+  }
+
   if (!owner.startsWith('active:')) {
     mount.prepend(node);
     return;

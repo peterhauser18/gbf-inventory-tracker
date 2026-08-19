@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const layouts = readFileSync(new URL('./layouts.ts', import.meta.url), 'utf8');
 const layoutsCss = readFileSync(new URL('./layouts.css', import.meta.url), 'utf8');
 const loadoutUi = readFileSync(new URL('./loadout-ui.ts', import.meta.url), 'utf8');
+const loadoutPreservation = readFileSync(new URL('./loadout-dom-preservation.ts', import.meta.url), 'utf8');
 
 test('Combat Cockpit is a bounded compact dashboard instead of stacked long sections', () => {
   assert.match(layouts, /class="cockpit-summary"/);
@@ -27,6 +28,9 @@ test('Combat Cockpit shares one lower slot between characters, summons, and weap
   assert.match(layoutsCss, /cockpit-tab-input:nth-of-type\(3\):checked/);
   assert.match(loadoutUi, /querySelector<HTMLElement>\('\[data-cockpit-weapon-slot\]'\)/);
   assert.match(loadoutUi, /cockpitWeaponSlot\.replaceChildren\(next\)/);
+  assert.match(loadoutPreservation, /cockpitWeaponSlot\.replaceChildren\(node\)/);
+  assert.match(loadoutPreservation, /rememberCockpitViews\(root\)/);
+  assert.match(loadoutPreservation, /restoreCockpitViews\(root\)/);
   assert.match(layouts, /Weapon Grid — Unknown\. Waiting for a matching passive Party deck observation\./);
 });
 
