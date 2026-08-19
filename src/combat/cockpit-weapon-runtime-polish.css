@@ -11,21 +11,42 @@
   margin: 8px 4px 0;
 }
 
-/* Character cards use the same visual treatment as Summons: preserve the compact
-   GBF asset ratio, keep the image clean, and put the name directly underneath. */
-.preset-combat-cockpit .cockpit-characters-panel .party-cards-compact {
-  align-items: stretch !important;
-  grid-auto-rows: minmax(0, 1fr) !important;
+/* Character and Summon cards stay compact at the top of the available panel.
+   Their labels follow the image immediately instead of being pushed to the
+   bottom by the viewport-filling loadout container. */
+.preset-combat-cockpit .cockpit-characters-panel .party-cards-compact,
+.preset-combat-cockpit .cockpit-summons-panel .summon-strip {
+  height: auto !important;
+  align-content: start !important;
+  align-items: start !important;
+  grid-auto-rows: auto !important;
+}
+
+.preset-combat-cockpit .cockpit-characters-panel .party-card,
+.preset-combat-cockpit .cockpit-summons-panel .summon-card {
+  height: auto !important;
+  min-height: 0;
+  align-self: start;
 }
 
 .preset-combat-cockpit .cockpit-characters-panel .party-card {
-  min-height: 0;
-  grid-template-rows: minmax(0, 1fr) auto !important;
+  grid-template-rows: auto auto !important;
   background: transparent;
 }
 
-.preset-combat-cockpit .cockpit-characters-panel .party-card-visual,
+.preset-combat-cockpit .cockpit-characters-panel .party-card-visual {
+  position: relative;
+  width: 100%;
+  height: auto !important;
+  aspect-ratio: 1 / 2;
+  min-height: 0 !important;
+  overflow: hidden;
+  background: transparent !important;
+}
+
 .preset-combat-cockpit .cockpit-characters-panel .party-card-visual .combat-image {
+  width: 100%;
+  height: 100% !important;
   min-height: 0 !important;
   background: transparent !important;
 }
@@ -39,7 +60,8 @@
 
 .preset-combat-cockpit .cockpit-characters-panel .party-card-copy {
   display: block;
-  padding: 4px 5px 5px;
+  min-height: 0;
+  padding: 4px 5px 3px;
   background: transparent;
 }
 
@@ -51,12 +73,29 @@
   white-space: nowrap;
 }
 
-.preset-combat-cockpit .cockpit-characters-panel .party-card.dead .state-tag {
-  position: absolute;
-  z-index: 4;
-  top: 4px;
-  right: 4px;
-  margin: 0;
+.preset-combat-cockpit .cockpit-characters-panel .party-card-copy > .actor-hp,
+.preset-combat-cockpit .cockpit-characters-panel .party-card-copy > .party-card-damage {
+  display: none !important;
+}
+
+.preset-combat-cockpit .cockpit-summons-panel .summon-card {
+  grid-template-rows: auto auto auto !important;
+}
+
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image {
+  position: relative;
+  width: 100%;
+  height: auto !important;
+  aspect-ratio: 1 / 2;
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  object-position: center center !important;
 }
 
 /* Weapon labels are easier to scan when centered under each grid card. */
