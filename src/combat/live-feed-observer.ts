@@ -23,6 +23,7 @@ type PendingStart = {
 type PersistedIdentities = Record<string, Record<string, LiveParticipantIdentity>>;
 
 const LIVE_IDENTITIES_KEY = 'gbfit:combat-live-feed-identities';
+const LIVE_SOCKETS_KEY = 'gbfit:combat-live-feed-sockets';
 const sockets = new Map<string, LiveBattleFeedSocket>();
 const pendingStarts = new Map<string, PendingStart>();
 const restoredIdentityRaids = new Set<string>();
@@ -80,7 +81,9 @@ export async function handleLiveBattleFeedDebuggerEvent(
     const requestId = event?.requestId;
     const instanceId = event?.url ? liveBattleFeedInstanceId(event.url) : undefined;
     if (!requestId || !instanceId || !await isObservedGbfTab(tabId)) return;
-    sockets.set(requestId, { requestId, instanceId, tabId });
+    const socket = { requestId, instanceId, tabId };
+    sockets.set(requestId, socket);
+    await persistSocket(socket);
     return;
   }
 
@@ -89,11 +92,12 @@ export async function handleLiveBattleFeedDebuggerEvent(
 
   if (method === 'Network.webSocketClosed') {
     sockets.delete(requestId);
+    await removePersistedSocket(requestId);
     return;
   }
 
   if (method !== 'Network.webSocketFrameReceived') return;
-  const socket = sockets.get(requestId);
+  const socket = sockets.get(requestId) ?? await restoreSocket(requestId);
   if (!socket || socket.tabId !== tabId) return;
 
   const response = obj((params as { response?: unknown } | undefined)?.response)
@@ -142,6 +146,31 @@ async function waitForActiveInstance(instanceId: string): Promise<boolean> {
   return false;
 }
 
+async function persistSocket(socket: LiveBattleFeedSocket): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.session) return;
+  const stored = (await chrome.storage.session.get(LIVE_SOCKETS_KEY))[LIVE_SOCKETS_KEY] as Record<string, LiveBattleFeedSocket> | undefined;
+  const next = { ...(stored ?? {}), [socket.requestId]: socket };
+  await chrome.storage.session.set({ [LIVE_SOCKETS_KEY]: next });
+}
+
+async function restoreSocket(requestId: string): Promise<LiveBattleFeedSocket | undefined> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.session) return undefined;
+  const stored = (await chrome.storage.session.get(LIVE_SOCKETS_KEY))[LIVE_SOCKETS_KEY] as Record<string, LiveBattleFeedSocket> | undefined;
+  const socket = stored?.[requestId];
+  if (!socket || socket.requestId !== requestId || !Number.isInteger(socket.tabId) || !socket.instanceId) return undefined;
+  sockets.set(requestId, socket);
+  return socket;
+}
+
+async function removePersistedSocket(requestId: string): Promise<void> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.session) return;
+  const stored = (await chrome.storage.session.get(LIVE_SOCKETS_KEY))[LIVE_SOCKETS_KEY] as Record<string, LiveBattleFeedSocket> | undefined;
+  if (!stored?.[requestId]) return;
+  const next = { ...stored };
+  delete next[requestId];
+  await chrome.storage.session.set({ [LIVE_SOCKETS_KEY]: next });
+}
+
 async function restoreParticipantIdentities(instanceId: string): Promise<void> {
   if (restoredIdentityRaids.has(instanceId) || Object.keys(liveParticipantIdentities(instanceId)).length > 0) {
     restoredIdentityRaids.add(instanceId);
@@ -172,7 +201,7 @@ async function clearPersistedIdentities(): Promise<void> {
   restoredIdentityRaids.clear();
   clearLiveBattleFeedParticipantSnapshot();
   if (typeof chrome !== 'undefined' && chrome.storage?.session) {
-    await chrome.storage.session.remove(LIVE_IDENTITIES_KEY);
+    await chrome.storage.session.remove([LIVE_IDENTITIES_KEY, LIVE_SOCKETS_KEY]);
   }
 }
 
