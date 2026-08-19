@@ -1,5 +1,10 @@
 import { ingestAccountRecord } from './account/ingest.ts';
 import { loadAccountDatabase, resetAccountDatabase, saveAccountDatabase } from './account/storage.ts';
+import {
+  clearObservedActorImageCache,
+  parseObservedActorImageResponse,
+  storeObservedActorImageBody,
+} from './actor-image-cache.ts';
 import { CaptureEventBuffer } from './capture/event-buffer.ts';
 import {
   processObservedResponse,
@@ -55,6 +60,7 @@ const CAPTURE_NETWORK_METHODS = new Set([
 const pendingResponses = new CaptureEventBuffer();
 const pendingTreasureIcons = new Map<string, { itemId: string }>();
 const pendingEnemyIcons = new Map<string, { enemyId: string; mimeType: string }>();
+const pendingActorImages = new Map<string, { assetId: string; mimeType: string }>();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
 let targetQueue: Promise<void> = Promise.resolve();
@@ -181,6 +187,7 @@ async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
   if (mode === 'all-except-account') {
     await clearObservedTreasureIconCache();
     await clearObservedEnemyIconCache();
+    await clearObservedActorImageCache();
   }
   await setRuntimeState({ active: false });
 }
@@ -200,6 +207,7 @@ async function startObservation(explicitTabId?: number): Promise<CaptureStatusRe
     pendingResponses.clear();
     pendingTreasureIcons.clear();
     pendingEnemyIcons.clear();
+    pendingActorImages.clear();
     await clearCombatParseContext();
     await chrome.debugger.attach(target, DEBUGGER_PROTOCOL_VERSION);
     await startCaptureScan(scanId);
@@ -250,6 +258,7 @@ async function stopObservation(): Promise<CaptureStatusResponse> {
   pendingResponses.clear();
   pendingTreasureIcons.clear();
   pendingEnemyIcons.clear();
+  pendingActorImages.clear();
   await finishCaptureScan(state.scanId);
   await clearCombatParseContext();
   if (state.tabId !== undefined) {
@@ -289,6 +298,7 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
   pendingResponses.clear();
   pendingTreasureIcons.clear();
   pendingEnemyIcons.clear();
+  pendingActorImages.clear();
   await setRuntimeState(preservedState);
 
   if (previousTabId !== undefined) {
@@ -389,6 +399,7 @@ async function releaseUnavailableTarget(tabId: number, reason: string): Promise<
   pendingResponses.clear();
   pendingTreasureIcons.clear();
   pendingEnemyIcons.clear();
+  pendingActorImages.clear();
   const next: RuntimeState = {
     ...state,
     active: true,
@@ -420,6 +431,7 @@ async function handleDebuggerEvent(
       pendingResponses.forget(requestId);
       pendingTreasureIcons.delete(requestId);
       pendingEnemyIcons.delete(requestId);
+      pendingActorImages.delete(requestId);
     }
     return;
   }
@@ -453,6 +465,19 @@ async function handleDebuggerEvent(
       const state = await getRuntimeState();
       if (!state.active || state.tabId !== tabId || !state.scanId) return;
       pendingEnemyIcons.set(requestId, { enemyId: enemyIcon.enemyId, mimeType: enemyIcon.mimeType });
+      return;
+    }
+
+    const actorImage = parseObservedActorImageResponse(
+      url,
+      event?.type,
+      event?.response?.mimeType,
+      event?.response?.status,
+    );
+    if (actorImage) {
+      const state = await getRuntimeState();
+      if (!state.active || state.tabId !== tabId || !state.scanId) return;
+      pendingActorImages.set(requestId, { assetId: actorImage.assetId, mimeType: actorImage.mimeType });
       return;
     }
 
@@ -491,6 +516,15 @@ async function handleDebuggerEvent(
     const state = await getRuntimeState();
     if (!state.active || state.tabId !== tabId || !state.scanId) return;
     void captureObservedEnemyIcon(tabId, requestId, pendingEnemyIcon.enemyId, pendingEnemyIcon.mimeType);
+    return;
+  }
+
+  const pendingActorImage = pendingActorImages.get(requestId);
+  pendingActorImages.delete(requestId);
+  if (pendingActorImage) {
+    const state = await getRuntimeState();
+    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    void captureObservedActorImage(tabId, requestId, pendingActorImage.assetId, pendingActorImage.mimeType);
     return;
   }
 
@@ -536,6 +570,27 @@ async function captureObservedEnemyIcon(
     await storeObservedEnemyIconBody(enemyId, mimeType, body);
   } catch {
     // Enemy images are optional local visuals copied only from responses already loaded by the game.
+  }
+}
+
+async function captureObservedActorImage(
+  tabId: number,
+  requestId: string,
+  assetId: string,
+  mimeType: string,
+): Promise<void> {
+  try {
+    const body = await readResponseBodyWithRetry({
+      getResponseBody: async (id): Promise<DebuggerResponseBody> =>
+        (await chrome.debugger.sendCommand(
+          { tabId },
+          'Network.getResponseBody',
+          { requestId: id },
+        )) as DebuggerResponseBody,
+    }, requestId);
+    await storeObservedActorImageBody(assetId, mimeType, body);
+  } catch {
+    // Actor images are optional local visuals copied only from responses already loaded by the game.
   }
 }
 
@@ -641,6 +696,7 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   pendingResponses.clear();
   pendingTreasureIcons.clear();
   pendingEnemyIcons.clear();
+  pendingActorImages.clear();
   if (reason === 'canceled_by_user') {
     await clearCombatParseContext();
     await finishCaptureScan(state.scanId);
