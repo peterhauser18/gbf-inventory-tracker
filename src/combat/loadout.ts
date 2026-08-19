@@ -58,9 +58,11 @@ export async function rememberObservedBattleDeckSelection(
   instanceId: string,
   deckId: string,
 ): Promise<void> {
-  if (!scanId || !safeNumericId(instanceId, 120) || !safeNumericId(deckId, 40)) return;
+  const normalizedInstanceId = safeNumericId(instanceId, 120);
+  const normalizedDeckId = safeNumericId(deckId, 40);
+  if (!scanId || !normalizedInstanceId || !normalizedDeckId) return;
   const state = await currentDeckState(scanId);
-  state.selectedDeckIds[instanceId] = deckId;
+  state.selectedDeckIds[normalizedInstanceId] = normalizedDeckId;
   await saveDeckState(state);
 }
 
