@@ -7,6 +7,8 @@ const layoutsCss = readFileSync(new URL('./layouts.css', import.meta.url), 'utf8
 const liveUiCss = readFileSync(new URL('./live-ui-fixes.css', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 const uiV2Css = readFileSync(new URL('./ui-v2.css', import.meta.url), 'utf8');
+const runtimePolishCss = readFileSync(new URL('./cockpit-weapon-runtime-polish.css', import.meta.url), 'utf8');
+const dashboardMultiActive = readFileSync(new URL('./dashboard-multi-active.ts', import.meta.url), 'utf8');
 const loadoutFillCss = readFileSync(new URL('./cockpit-loadout-fill.css', import.meta.url), 'utf8');
 const sharedPresentation = readFileSync(new URL('./shared-presentation-fixes.ts', import.meta.url), 'utf8');
 const stableDom = readFileSync(new URL('./live-dom-preservation.ts', import.meta.url), 'utf8');
@@ -28,14 +30,17 @@ test('Combat Cockpit is a bounded compact dashboard instead of stacked long sect
   );
   assert.match(layoutsCss, /\.preset-combat-cockpit\s*\{[^}]*overflow:\s*hidden/s);
   assert.match(layoutsCss, /\.preset-combat-cockpit \.cockpit-table\s*\{[^}]*overflow:\s*auto/s);
-  assert.match(uiV2Css, /\.active-combat-card \.preset-combat-cockpit\s*\{[^}]*height:\s*clamp\(620px,[^}]*max-height:\s*none[^}]*grid-template-rows:/s);
+  assert.match(runtimePolishCss, /\.active-combat-card \.preset-combat-cockpit\s*\{[^}]*height:\s*clamp\(620px,\s*calc\(100dvh - 165px\),\s*920px\)/s);
   assert.match(uiV2Css, /\.active-combat-card \.preset-combat-cockpit \.cockpit-loadout-panels\s*\{[^}]*height:\s*calc\(100% - 30px\)/s);
 });
 
-test('standalone Combat omits the redundant title and description block', () => {
+test('standalone Combat omits redundant page and active-raid chrome', () => {
   assert.match(ui, /const header = selected === 'combat'\s*\? ''/s);
   assert.doesNotMatch(ui, /Live read-only raid analytics from already-received supported combat responses\./);
   assert.doesNotMatch(ui, /<p class="eyebrow">COMBAT<\/p><h2>Combat<\/h2>/);
+  assert.doesNotMatch(dashboardMultiActive, /active-combat-card-label/);
+  assert.doesNotMatch(dashboardMultiActive, /Local parser state only\. Manual finalization sends no GBF request\./);
+  assert.match(dashboardMultiActive, /active-combat-actions active-combat-actions-only/);
 });
 
 test('aggressive live refresh preserves loaded visuals and expanded state instead of flickering', () => {
@@ -58,6 +63,16 @@ test('known weapon grids survive transient unknown refreshes and roster tabs fil
   assert.match(loadoutFillCss, /\.party-card-visual \.combat-image\s*\{[^}]*height:\s*100%/s);
   assert.match(loadoutFillCss, /\.summon-card \.combat-image\s*\{[^}]*height:\s*100% !important/s);
   assert.match(finalPolishCss, /\.preset-combat-cockpit \.party-cards-compact,[\s\S]*\.summon-strip\s*\{[^}]*height:\s*100%/s);
+});
+
+test('weapon grid does not rebuild for timestamp-only refreshes and preserves scroll on real replacements', () => {
+  const fingerprintFunction = /function loadoutFingerprint[\s\S]*?\n}\n\nfunction rememberLoadoutScroll/.exec(loadoutUi)?.[0] ?? '';
+  assert.doesNotMatch(fingerprintFunction, /updatedAt|observedAt/);
+  assert.match(fingerprintFunction, /weapons:\s*loadout\.weapons\.map/);
+  assert.match(fingerprintFunction, /calculator:/);
+  assert.match(loadoutUi, /rememberLoadoutScroll\(target\.mount\)/);
+  assert.match(loadoutUi, /restoreLoadoutScroll\(scroll\)/);
+  assert.match(loadoutUi, /requestAnimationFrame\(\(\) =>/);
 });
 
 test('character drill-down is removed and SA DA TA counts with percentages are added while Echo stays visible', () => {
@@ -94,14 +109,16 @@ test('cockpit summons label main and support without the old divider line', () =
   assert.match(uiV2Css, /\.preset-combat-cockpit \.summon-role-label\s*\{/);
 });
 
-test('compact Weapons view mirrors the game grid and keeps skill boosts visible', () => {
+test('compact Weapons view mirrors the game grid without per-weapon skill text and keeps boosts collapsed by default', () => {
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-weapon-grid-shell\s*\{[^}]*grid-template-columns:\s*minmax\(118px,[^}]*minmax\(0, 2\.28fr\)/s);
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-regular-weapons\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-additional-weapons\s*\{[^}]*grid-template-columns:\s*minmax\(118px,/s);
   assert.match(uiV2Css, /cockpit-weapon-slot \.combat-additional-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
-  assert.match(uiV2Css, /cockpit-weapon-slot \.combat-calculator\s*\{[^}]*display:\s*block/s);
-  assert.match(uiV2Css, /cockpit-weapon-slot \.combat-calculator-summary,[\s\S]*combat-enhancement-row\s*\{\s*display:\s*none;/s);
-  assert.match(uiV2Css, /cockpit-weapon-slot \.combat-skill-boosts\s*\{[^}]*display:\s*block/s);
+  assert.doesNotMatch(loadoutUi, /combat-weapon-skills|data-loadout-weapon-skills|loadWikiGameplayFamily/);
+  assert.match(loadoutUi, /<details class="combat-skill-boosts"/);
+  assert.match(loadoutUi, /skillBoostsOpen \? ' open' : ''/);
+  assert.match(runtimePolishCss, /\.combat-skill-boosts > summary/);
+  assert.match(runtimePolishCss, /\.combat-skill-boosts\[open\] > summary::after/);
 });
 
 test('live roster keeps all six observed original actors and makes deaths/backline explicit', () => {
