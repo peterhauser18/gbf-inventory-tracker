@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { enrichVerifiedOwnHonors } from './verified-combat-semantics.ts';
-import type { VerifiedCombatObservation } from './multiraid.ts';
+import type { CapturedResponseRecord } from '../capture/types.ts';
+import {
+  mergeVerifiedMultiraidObservation,
+  parseVerifiedMultiraidObservation,
+  type CombatParseContext,
+  type VerifiedCombatObservation,
+} from './multiraid.ts';
+import { enrichVerifiedOwnHonors, enrichVerifiedScenarioSemantics } from './verified-combat-semantics.ts';
 
 function observation(accountDisplayName: string, participants: Array<{ name: string; honors?: number }>): VerifiedCombatObservation {
   return {
@@ -21,6 +27,45 @@ function observation(accountDisplayName: string, participants: Array<{ name: str
     },
   };
 }
+
+function memberRecord(body: unknown): CapturedResponseRecord {
+  return {
+    id: 'scan:members',
+    scanId: 'scan',
+    meta: {
+      requestId: 'members',
+      url: 'https://game.granbluefantasy.jp/rest/multiraid/multi_member_info',
+      resourceType: 'xhr',
+      capturedAt: 2000,
+    },
+    body,
+    categories: [],
+  };
+}
+
+test('verified member response persists exact own Honors when display-name ownership is unique', () => {
+  const context: CombatParseContext = {
+    raidTechnicalId: '305211',
+    instanceId: 'raid-instance',
+    actorSlots: [],
+    accountDisplayName: 'Skyfarer',
+  };
+  const record = memberRecord({
+    multi_member_info: [
+      { nickname: 'Skyfarer', level: 375 },
+      { nickname: 'Other', level: 350 },
+    ],
+    mvp_info: [
+      { nickname: 'Skyfarer', rank: 1, point: '12345' },
+      { nickname: 'Other', rank: 2, point: '9000' },
+    ],
+  });
+  const parsed = parseVerifiedMultiraidObservation(record, context);
+  assert.ok(parsed);
+  enrichVerifiedScenarioSemantics(record.body, parsed);
+  const raid = mergeVerifiedMultiraidObservation(null, parsed);
+  assert.equal(raid.participants?.honors, 12345);
+});
 
 test('unique proven account participant Honors are copied into normalized participant state', () => {
   const value = observation('Skyfarer', [
