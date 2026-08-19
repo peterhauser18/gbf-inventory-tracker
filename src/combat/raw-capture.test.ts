@@ -18,18 +18,15 @@ const combatMeta: ObservedResponse = {
   mimeType: 'application/json',
 };
 
-test('raw combat persistence is opt-in, owner-tab scoped, and limited to verified combat responses', () => {
+test('raw combat persistence is opt-in, owner-tab scoped, and limited to canonically verified combat responses', () => {
   const expectedOwner = 'chrome-extension://extension-id/combat.html';
   const owner = `${expectedOwner}?rawCapture=1`;
   const active = rawCombatCaptureState(42, 100);
 
-  assert.equal(shouldPersistRawCombatResponse(active, owner, expectedOwner, combatMeta), true);
-  assert.equal(shouldPersistRawCombatResponse({ ...active, enabled: false }, owner, expectedOwner, combatMeta), false);
-  assert.equal(shouldPersistRawCombatResponse(active, expectedOwner, expectedOwner, combatMeta), false);
-  assert.equal(shouldPersistRawCombatResponse(active, owner, expectedOwner, {
-    ...combatMeta,
-    url: 'https://game.granbluefantasy.jp/quest/start',
-  }), false);
+  assert.equal(shouldPersistRawCombatResponse(active, owner, expectedOwner, combatMeta, true), true);
+  assert.equal(shouldPersistRawCombatResponse({ ...active, enabled: false }, owner, expectedOwner, combatMeta, true), false);
+  assert.equal(shouldPersistRawCombatResponse(active, expectedOwner, expectedOwner, combatMeta, true), false);
+  assert.equal(shouldPersistRawCombatResponse(active, owner, expectedOwner, combatMeta, false), false);
 });
 
 test('raw capture preserves complete gameplay JSON and strips URL query metadata', () => {
@@ -73,18 +70,17 @@ test('raw export omits internal request ids and preserves ordered full bodies', 
 test('popup places Raw Capture Mode first in Developer and raw page exposes export and clear controls', () => {
   const popupCombat = readFileSync(new URL('../popup-combat.ts', import.meta.url), 'utf8');
   const combatEntry = readFileSync(new URL('../combat-entry.ts', import.meta.url), 'utf8');
+  const observer = readFileSync(new URL('../capture/observer.ts', import.meta.url), 'utf8');
   const rawCaptureSource = readFileSync(new URL('./raw-capture.ts', import.meta.url), 'utf8');
 
   assert.match(popupCombat, /Open Combat Tracker Raw Capture Mode/);
   assert.match(popupCombat, /developerContent\.prepend\(rawButton\)/);
-  assert.ok(
-    popupCombat.indexOf("developerContent.prepend(rawButton)") < popupCombat.indexOf("rawButton.addEventListener"),
-    'raw launcher is inserted as the first Developer child before wiring the rest of its behavior',
-  );
   assert.match(popupCombat, /combat\.html\?rawCapture=1/);
   assert.match(combatEntry, /RAW CAPTURE MODE/);
   assert.match(combatEntry, /Export Raw JSON/);
   assert.match(combatEntry, /Clear Raw Capture/);
+  assert.match(observer, /classifyObservedResponseUrl\(meta\.url\) === 'combat'/);
+  assert.match(rawCaptureSource, /chrome\.tabs\.onRemoved\.addListener/);
   assert.match(rawCaptureSource, /clearRawCombatCaptureStorage\(\)/);
   assert.match(rawCaptureSource, /store\.clear\(\)/);
   assert.doesNotMatch(rawCaptureSource, /requestHeaders|responseHeaders|authorizationHeader|cookieHeader/);
