@@ -31,11 +31,6 @@ export function applyCompactRaidHistory(root: HTMLElement, query: string): void 
     if (cards.length > RAIDS_PER_PAGE) {
       const pagination = renderPagination(totalPages, root);
       root.before(pagination);
-
-      // Previous placement was intentionally removed because it put pagination
-      // inside the raid list near the final visible card instead of under Search:
-      // const lastVisibleRaid = cards[Math.min(end, cards.length) - 1];
-      // list.insertBefore(pagination, lastVisibleRaid);
     }
   }
 
