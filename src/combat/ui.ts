@@ -7,6 +7,7 @@ import { installCombatMultiActiveCompat } from './multi-active-compat.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 import { decorateCombatLoadouts } from './loadout-ui.ts';
 import { detachCombatLoadouts, restoreCombatLoadouts } from './loadout-dom-preservation.ts';
+import { detachStableCombatDom, restoreStableCombatDom } from './live-dom-preservation.ts';
 import { applySharedCombatPresentationFixes } from './shared-presentation-fixes.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
@@ -158,12 +159,14 @@ function renderSectionIfChanged(force = false): void {
     return;
   }
   const preservedLoadouts = detachCombatLoadouts(section);
+  const preservedStableDom = selected === 'combat' ? detachStableCombatDom(section) : undefined;
   lastSectionMarkup = markup;
   section.innerHTML = markup;
   controller.bind(section);
+  restoreCombatLoadouts(section, preservedLoadouts);
+  if (preservedStableDom) restoreStableCombatDom(section, preservedStableDom);
   if (selected === 'combat') applyCombatLiveUiFixes(section);
   applySharedCombatPresentationFixes(section);
-  restoreCombatLoadouts(section, preservedLoadouts);
   decorateLoadouts(section);
 }
 
