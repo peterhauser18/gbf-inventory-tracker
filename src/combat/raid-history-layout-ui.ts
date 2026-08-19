@@ -3,7 +3,11 @@ import { renderCombatLayout, type CombatLayoutPreset } from './layouts.ts';
 import type { RaidLoadoutMember, RaidLoadoutSnapshot } from './loadout-types.ts';
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
 import type { RaidHistoryRecord } from './types.ts';
-import { EMPTY_ENTITY_METADATA, type EntityMetadataIndex } from '../dashboard/wiki-metadata.ts';
+import {
+  EMPTY_ENTITY_METADATA,
+  wikiEntityImageUrl,
+  type EntityMetadataIndex,
+} from '../dashboard/wiki-metadata.ts';
 import { isTechnicalMainCharacterLabel } from './shared-presentation-fixes.ts';
 
 export type RaidWithLoadout = RaidHistoryRecord & { loadout?: RaidLoadoutSnapshot };
@@ -114,15 +118,33 @@ function renderHistoricalQuality(loadout: RaidLoadoutSnapshot | undefined): stri
 }
 
 function annotateHistoricalSummons(markup: string, loadout: RaidLoadoutSnapshot | undefined): string {
-  if (!loadout?.summons.some((summon) => summon.support)) return markup;
+  if (!loadout?.summons.length) return markup;
   let index = 0;
   return markup.replace(/<article class="summon-card">[\s\S]*?<\/article>/g, (card) => {
     const summon = loadout.summons[index++];
-    if (!summon?.support) return card;
-    return card
-      .replace('<article class="summon-card">', '<article class="summon-card support-summon">')
-      .replace('</article>', '<span class="state-tag" data-support-summon="true">Support</span></article>');
+    if (!summon) return '';
+
+    let next = card;
+    const fallbackImage = historicalSummonImageUrl(summon.id);
+    if (fallbackImage && !/<img\b/i.test(next)) {
+      next = next.replace(
+        /(<span class="combat-image"><span>[\s\S]*?<\/span>)(<\/span>)/,
+        `$1<img data-combat-image src="${escapeAttribute(fallbackImage)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />$2`,
+      );
+    }
+
+    if (summon.support) {
+      next = next
+        .replace('<article class="summon-card">', '<article class="summon-card support-summon">')
+        .replace('</article>', '<span class="state-tag" data-support-summon="true">Support</span></article>');
+    }
+    return next;
   });
+}
+
+function historicalSummonImageUrl(id: string | undefined): string | undefined {
+  if (!id || !/^20\d{8}$/.test(id)) return undefined;
+  return wikiEntityImageUrl('summon', id);
 }
 
 function humanFacingPlayerName(value: string | undefined): string | undefined {
@@ -146,4 +168,8 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
   })[character] ?? character);
+}
+
+function escapeAttribute(value: string): string {
+  return escapeHtml(value);
 }
