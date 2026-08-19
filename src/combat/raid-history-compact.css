@@ -1,7 +1,7 @@
 .raids-compact-header {
   min-height: 54px;
   padding-top: 10px;
-  padding-bottom: 10px;
+  padding-bottom: 6px;
   justify-content: flex-end;
 }
 .raids-compact-header .raid-history-search {
@@ -17,6 +17,10 @@
   gap: 7px;
   width: 100%;
   margin: 14px 0 10px;
+}
+.raids-compact-header + .raid-pagination {
+  margin-top: 0;
+  margin-bottom: 10px;
 }
 .raid-page-button {
   min-width: 38px;
