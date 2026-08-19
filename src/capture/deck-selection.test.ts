@@ -6,7 +6,7 @@ test('host quest selection reads only deck_id from the verified game request', (
   const selection = parseObservedDeckSelectionRequest(
     'https://game.granbluefantasy.jp/quest/create_quest?ignored=1',
     'POST',
-    JSON.stringify({ deck_id: 113, quest_id: 305621, fuel_csrf_token: 'must-not-be-retained' }),
+    JSON.stringify({ deck_id: 113, quest_id: 305621, unrelated_value: 'ignored' }),
   );
   assert.deepEqual(selection, { deckId: '113', source: 'host' });
 });
