@@ -49,14 +49,13 @@ export function rawCombatCaptureState(
 
 export function shouldPersistRawCombatResponse(
   state: RawCombatCaptureModeState,
-  ownerUrl: string | undefined,
-  expectedOwnerUrl: string,
+  ownerTabAvailable: boolean,
   meta: Pick<ObservedResponse, 'resourceType'>,
   verifiedCombat: boolean,
 ): boolean {
   return state.enabled
     && state.ownerTabId !== undefined
-    && isRawCombatCaptureOwnerUrl(ownerUrl, expectedOwnerUrl)
+    && ownerTabAvailable
     && (meta.resourceType === 'xhr' || meta.resourceType === 'fetch')
     && verifiedCombat;
 }
@@ -118,12 +117,6 @@ export async function enableRawCombatCapture(ownerTabId: number, reset = true): 
   await saveModeState(rawCombatCaptureState(ownerTabId, startedAt));
 }
 
-export async function disableRawCombatCapture(ownerTabId?: number): Promise<void> {
-  const state = await loadModeState();
-  if (ownerTabId !== undefined && state.ownerTabId !== ownerTabId) return;
-  await saveModeState({ ...state, enabled: false });
-}
-
 export async function clearRawCombatCapture(): Promise<void> {
   await clearRawCombatCaptureStorage();
   const state = await loadModeState();
@@ -156,19 +149,16 @@ export async function maybeStoreRawCombatResponse(
   const state = await loadModeState();
   if (!state.enabled || state.ownerTabId === undefined) return false;
 
-  let ownerUrl: string | undefined;
+  let ownerTabAvailable = false;
   try {
-    ownerUrl = (await chrome.tabs.get(state.ownerTabId)).url;
+    await chrome.tabs.get(state.ownerTabId);
+    ownerTabAvailable = true;
   } catch {
     await expireRawCombatCapture(state);
     return false;
   }
 
-  const expectedOwnerUrl = chrome.runtime.getURL('combat.html');
-  if (!shouldPersistRawCombatResponse(state, ownerUrl, expectedOwnerUrl, meta, verifiedCombat)) {
-    await expireRawCombatCapture(state);
-    return false;
-  }
+  if (!shouldPersistRawCombatResponse(state, ownerTabAvailable, meta, verifiedCombat)) return false;
 
   const record = buildRawCombatCaptureRecord(meta, rawBody, capturedAt);
   if (!record) {
@@ -188,19 +178,6 @@ export async function maybeStoreRawCombatResponse(
   return true;
 }
 
-export function isRawCombatCaptureOwnerUrl(url: string | undefined, expectedOwnerUrl: string): boolean {
-  if (!url) return false;
-  try {
-    const actual = new URL(url);
-    const expected = new URL(expectedOwnerUrl);
-    return actual.origin === expected.origin
-      && actual.pathname === expected.pathname
-      && actual.searchParams.get('rawCapture') === '1';
-  } catch {
-    return false;
-  }
-}
-
 export function containsSensitiveJsonKey(value: unknown): boolean {
   if (Array.isArray(value)) return value.some((item) => containsSensitiveJsonKey(item));
   if (!value || typeof value !== 'object') return false;
@@ -214,8 +191,8 @@ async function clearStaleRawCombatCapture(): Promise<void> {
   const state = await loadModeState();
   if (!state.enabled || state.ownerTabId === undefined) return;
   try {
-    const ownerUrl = (await chrome.tabs.get(state.ownerTabId)).url;
-    if (isRawCombatCaptureOwnerUrl(ownerUrl, chrome.runtime.getURL('combat.html'))) return;
+    await chrome.tabs.get(state.ownerTabId);
+    return;
   } catch {
     // Missing owner tab means the prior raw session has ended.
   }
