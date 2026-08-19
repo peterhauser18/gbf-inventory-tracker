@@ -1,7 +1,7 @@
 import { ingestObservedLoadoutRecord } from '../combat/loadout.ts';
 import { maybeStoreRawCombatResponse } from '../combat/raw-capture.ts';
 import { buildCapturedResponse } from './policy.ts';
-import { shouldReadObservedResponse } from './route.ts';
+import { classifyObservedResponseUrl, shouldReadObservedResponse } from './route.ts';
 import type {
   CapturedResponseRecord,
   DebuggerResponseBody,
@@ -43,7 +43,12 @@ export async function processObservedResponse(
   if (!record) return null;
 
   try {
-    await maybeStoreRawCombatResponse(meta, rawBody, capturedAt);
+    await maybeStoreRawCombatResponse(
+      meta,
+      rawBody,
+      capturedAt,
+      classifyObservedResponseUrl(meta.url) === 'combat',
+    );
   } catch {
     // Raw capture is optional diagnostics and must never interrupt normal parsing.
   }
