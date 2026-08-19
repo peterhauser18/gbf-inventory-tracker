@@ -47,7 +47,7 @@ function installRawCaptureButton(): void {
   rawButton.id = 'combat-tracker-raw';
   rawButton.className = 'dashboard-button';
   rawButton.type = 'button';
-  rawButton.title = 'Open Combat Tracker Raw Capture Mode. Full verified combat JSON response bodies are retained locally for parser debugging while this tab remains open.';
+  rawButton.title = 'Open Combat Tracker Raw Capture Mode. Verified combat gameplay JSON is retained locally for parser debugging; credential-like response values are redacted in place.';
   rawButton.textContent = 'Open Combat Tracker Raw Capture Mode';
   developerContent.prepend(rawButton);
 
