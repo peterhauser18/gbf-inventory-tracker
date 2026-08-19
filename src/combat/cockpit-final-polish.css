@@ -45,6 +45,37 @@
 .preset-combat-cockpit .party-cards-compact .party-card-history-note {
   display: none !important;
 }
+.preset-combat-cockpit .party-cards-compact .party-card:nth-child(5) .state-tag,
+.preset-combat-cockpit .party-cards-compact .party-card:nth-child(6) .state-tag {
+  display: none !important;
+}
+.preset-combat-cockpit .party-cards-compact .party-card:nth-child(5) .party-card-visual,
+.preset-combat-cockpit .party-cards-compact .party-card:nth-child(6) .party-card-visual {
+  position: relative;
+}
+.preset-combat-cockpit .party-cards-compact .party-card:nth-child(5) .party-card-visual::after,
+.preset-combat-cockpit .party-cards-compact .party-card:nth-child(6) .party-card-visual::after {
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  right: 4px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(7, 15, 22, .82);
+  color: #f3f7fa;
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  pointer-events: none;
+}
+.preset-combat-cockpit .party-cards-compact .party-card:nth-child(5) .party-card-visual::after {
+  content: 'Backline 1';
+}
+.preset-combat-cockpit .party-cards-compact .party-card:nth-child(6) .party-card-visual::after {
+  content: 'Backline 2';
+}
 
 .preset-combat-cockpit .cockpit-characters-panel,
 .preset-combat-cockpit .cockpit-summons-panel {
