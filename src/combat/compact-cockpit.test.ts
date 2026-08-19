@@ -41,8 +41,8 @@ test('character drill-down is removed and SA DA TA counts with percentages are a
   assert.match(sharedPresentation, /removeCockpitSelectedAnalysis\(root\)/);
   assert.match(sharedPresentation, /\.cockpit-selected-analysis/);
   assert.match(attackModes, /for \(const label of \['SA', 'DA', 'TA'\]\)/);
-  assert.match(attackModes, /mode\.count \/ total \* 100/);
-  assert.match(attackModes, /`\$\{mode\.count\} \(\$\{formatPercent\(percent\)\}%\)`/);
+  assert.match(attackModes, /count \/ total \* 100/);
+  assert.match(attackModes, /`\$\{count\} \(\$\{formatPercent\(percent\)\}%\)`/);
   assert.match(attackModesCss, /repeat\(8, minmax\(54px,/);
 });
 
