@@ -1,4 +1,5 @@
 import { ingestObservedLoadoutRecord } from '../combat/loadout.ts';
+import { maybeStoreRawCombatResponse } from '../combat/raw-capture.ts';
 import { buildCapturedResponse } from './policy.ts';
 import { shouldReadObservedResponse } from './route.ts';
 import type {
@@ -41,6 +42,7 @@ export async function processObservedResponse(
   const record = buildCapturedResponse(meta, rawBody, scanId, capturedAt);
   if (!record) return null;
 
+  await maybeStoreRawCombatResponse(meta, rawBody, capturedAt);
   await save(record);
   try {
     await ingestObservedLoadoutRecord(record);
