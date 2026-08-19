@@ -40,7 +40,7 @@ export class CombatDashboardControllerV2 {
       return '<div class="empty"><strong>No active combat parse observed</strong><span>Joined or hosted raids appear here independently after their verified battle start response is observed.</span></div>';
     }
 
-    return `<div class="active-combat-list">${this.active.map((entry, index) => this.renderActiveRaid(entry, index, layout)).join('')}</div>`;
+    return `<div class="active-combat-list">${this.active.map((entry) => this.renderActiveRaid(entry, layout)).join('')}</div>`;
   }
 
   renderRaids(query: string, layout: CombatLayoutPreset): string {
@@ -86,11 +86,9 @@ export class CombatDashboardControllerV2 {
     }
   }
 
-  private renderActiveRaid(entry: ActiveCombatRaid, index: number, layout: CombatLayoutPreset): string {
+  private renderActiveRaid(entry: ActiveCombatRaid, layout: CombatLayoutPreset): string {
     const collapsed = this.collapsedByRaid.get(entry.key) ?? new Set<string>();
     const selectedActorId = this.selectedActorByRaid.get(entry.key) ?? null;
-    const label = this.active.length > 1 ? `Active raid ${index + 1} of ${this.active.length}` : 'Active raid';
-    const role = entry.parse.role === 'host' ? 'Hosted' : entry.parse.role === 'joined' ? 'Joined' : 'Active';
     const layoutMarkup = renderCombatLayout(layout, {
       raid: entry.parse,
       context: entry.context ?? null,
@@ -100,14 +98,10 @@ export class CombatDashboardControllerV2 {
     });
 
     return `<article class="active-combat-card" data-active-combat-key="${escapeAttribute(entry.key)}">
-      <div class="active-combat-card-label"><span>${label}</span><span>${role}</span></div>
       ${layoutMarkup}
-      <div class="active-combat-footer">
-        <span class="muted">Local parser state only. Manual finalization sends no GBF request.</span>
-        <div class="active-combat-actions">
-          <button type="button" data-active-raid-export>Export JSON</button>
-          <button class="danger-outline" type="button" data-active-raid-finalize>Raid manuell abschließen</button>
-        </div>
+      <div class="active-combat-actions active-combat-actions-only">
+        <button type="button" data-active-raid-export>Export JSON</button>
+        <button class="danger-outline" type="button" data-active-raid-finalize>Raid manuell abschließen</button>
       </div>
     </article>`;
   }
