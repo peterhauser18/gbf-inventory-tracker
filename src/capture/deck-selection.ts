@@ -38,11 +38,9 @@ export function parseObservedDeckSelectionRequest(
   }
 
   const deckId = numericId(body.user_deck_priority, 40);
-  if (!deckId) return null;
   const raidId = numericId(body.raid_id, 120);
-  return raidId
-    ? { deckId, raidId, source: 'join' }
-    : { deckId, source: 'join' };
+  if (!deckId || !raidId) return null;
+  return { deckId, raidId, source: 'join' };
 }
 
 function numericId(value: unknown, maxLength: number): string | undefined {
