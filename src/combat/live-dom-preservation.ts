@@ -1,4 +1,5 @@
 export type PreservedCombatImage = {
+  raidKey: string;
   src: string;
   node: HTMLImageElement;
 };
@@ -44,7 +45,10 @@ export function detachStableCombatDom(root: HTMLElement): PreservedStableCombatD
     }
 
     rememberScroll(card, raidKey, '.cockpit-table', scroll);
-    rememberScroll(card, raidKey, '.cockpit-loadout-panel:not([style*="display: none"])', scroll);
+    for (const panel of card.querySelectorAll<HTMLElement>('.cockpit-loadout-panel[data-cockpit-loadout-panel]')) {
+      const key = panel.dataset.cockpitLoadoutPanel;
+      if (key) rememberScroll(card, raidKey, `.cockpit-loadout-panel[data-cockpit-loadout-panel="${cssEscape(key)}"]`, scroll);
+    }
 
     for (const panel of card.querySelectorAll<HTMLDetailsElement>('.cockpit-secondary-panel[data-combat-collapse]')) {
       const section = panel.dataset.combatCollapse;
@@ -55,8 +59,9 @@ export function detachStableCombatDom(root: HTMLElement): PreservedStableCombatD
   const images: PreservedCombatImage[] = [];
   for (const image of root.querySelectorAll<HTMLImageElement>('img[data-combat-image]')) {
     const src = image.getAttribute('src');
-    if (!src || !image.complete || image.naturalWidth <= 0) continue;
-    images.push({ src, node: image });
+    const raidKey = image.closest<HTMLElement>('[data-active-combat-key]')?.dataset.activeCombatKey;
+    if (!raidKey || !src || !image.complete || image.naturalWidth <= 0) continue;
+    images.push({ raidKey, src, node: image });
     image.remove();
   }
 
@@ -74,15 +79,20 @@ export function restoreStableCombatDom(root: HTMLElement, preserved: PreservedSt
 
   const imageQueues = new Map<string, HTMLImageElement[]>();
   for (const entry of preserved.images) {
-    const queue = imageQueues.get(entry.src) ?? [];
+    const key = imageKey(entry.raidKey, entry.src);
+    const queue = imageQueues.get(key) ?? [];
     queue.push(entry.node);
-    imageQueues.set(entry.src, queue);
+    imageQueues.set(key, queue);
   }
-  for (const replacement of root.querySelectorAll<HTMLImageElement>('img[data-combat-image]')) {
-    const src = replacement.getAttribute('src');
-    if (!src) continue;
-    const preservedImage = imageQueues.get(src)?.shift();
-    if (preservedImage) replacement.replaceWith(preservedImage);
+  for (const card of root.querySelectorAll<HTMLElement>('[data-active-combat-key]')) {
+    const raidKey = card.dataset.activeCombatKey;
+    if (!raidKey) continue;
+    for (const replacement of card.querySelectorAll<HTMLImageElement>('img[data-combat-image]')) {
+      const src = replacement.getAttribute('src');
+      if (!src) continue;
+      const preservedImage = imageQueues.get(imageKey(raidKey, src))?.shift();
+      if (preservedImage) replacement.replaceWith(preservedImage);
+    }
   }
 
   for (const entry of preserved.details) {
@@ -116,4 +126,12 @@ function rememberScroll(
 function findRaidCard(root: HTMLElement, raidKey: string): HTMLElement | undefined {
   return [...root.querySelectorAll<HTMLElement>('[data-active-combat-key]')]
     .find((candidate) => candidate.dataset.activeCombatKey === raidKey);
+}
+
+function imageKey(raidKey: string, src: string): string {
+  return `${raidKey}\u0000${src}`;
+}
+
+function cssEscape(value: string): string {
+  return value.replace(/["\\]/g, (character) => `\\${character}`);
 }
