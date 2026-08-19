@@ -6,8 +6,9 @@ import {
 import type { ObservedResponse } from '../capture/types.ts';
 
 const DB_NAME = 'gbf-inventory-tracker-raw-combat';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const RECORD_STORE = 'records';
+const READ_FAILURE_STORE = 'read-failures';
 const MODE_KEY = 'gbfit:raw-combat-capture-mode';
 
 if (typeof chrome !== 'undefined' && chrome.tabs?.onRemoved) {
@@ -32,17 +33,28 @@ export interface RawCombatCaptureRecord {
   body: unknown;
 }
 
+export type RawCombatReadFailureReason = 'response-body-unavailable';
+
+export interface RawCombatReadFailure {
+  id: string;
+  capturedAt: number;
+  url: string;
+  reason: RawCombatReadFailureReason;
+}
+
 export interface RawCombatCaptureExport {
   format: 'gbf-tool-raw-combat-capture';
-  version: 1;
+  version: 2;
   startedAt?: number;
   exportedAt: number;
   redactedSensitiveFields: number;
   records: Array<Omit<RawCombatCaptureRecord, 'id'>>;
+  readFailures: Array<Omit<RawCombatReadFailure, 'id'>>;
 }
 
 export interface RawCombatCaptureStatus extends RawCombatCaptureModeState {
   count: number;
+  readFailureCount: number;
 }
 
 export function rawCombatCaptureState(
@@ -86,20 +98,37 @@ export function buildRawCombatCaptureRecord(
   };
 }
 
+export function buildRawCombatReadFailure(
+  meta: Pick<ObservedResponse, 'requestId' | 'url'>,
+  capturedAt: number,
+  reason: RawCombatReadFailureReason = 'response-body-unavailable',
+): RawCombatReadFailure {
+  return {
+    id: `${capturedAt}:${meta.requestId}:read-failure`,
+    capturedAt,
+    url: sanitizeResponseUrl(meta.url),
+    reason,
+  };
+}
+
 export function buildRawCombatCaptureExport(
   state: RawCombatCaptureModeState,
   records: RawCombatCaptureRecord[],
   exportedAt: number,
+  readFailures: RawCombatReadFailure[] = [],
 ): RawCombatCaptureExport {
   return {
     format: 'gbf-tool-raw-combat-capture',
-    version: 1,
+    version: 2,
     startedAt: state.startedAt,
     exportedAt,
     redactedSensitiveFields: state.redactedSensitiveFields,
     records: [...records]
       .sort((a, b) => a.capturedAt - b.capturedAt || a.id.localeCompare(b.id))
       .map(({ id: _id, ...record }) => record),
+    readFailures: [...readFailures]
+      .sort((a, b) => a.capturedAt - b.capturedAt || a.id.localeCompare(b.id))
+      .map(({ id: _id, ...failure }) => failure),
   };
 }
 
@@ -133,13 +162,21 @@ export async function clearRawCombatCapture(): Promise<void> {
 }
 
 export async function getRawCombatCaptureStatus(): Promise<RawCombatCaptureStatus> {
-  const [state, count] = await Promise.all([loadModeState(), countRawCombatCaptureRecords()]);
-  return { ...state, count };
+  const [state, count, readFailureCount] = await Promise.all([
+    loadModeState(),
+    countRawCombatCaptureRecords(),
+    countRawCombatReadFailures(),
+  ]);
+  return { ...state, count, readFailureCount };
 }
 
 export async function getRawCombatCaptureExport(exportedAt = Date.now()): Promise<RawCombatCaptureExport> {
-  const [state, records] = await Promise.all([loadModeState(), getRawCombatCaptureRecords()]);
-  return buildRawCombatCaptureExport(state, records, exportedAt);
+  const [state, records, readFailures] = await Promise.all([
+    loadModeState(),
+    getRawCombatCaptureRecords(),
+    getRawCombatReadFailures(),
+  ]);
+  return buildRawCombatCaptureExport(state, records, exportedAt, readFailures);
 }
 
 export async function maybeStoreRawCombatResponse(
@@ -148,22 +185,8 @@ export async function maybeStoreRawCombatResponse(
   capturedAt: number,
   verifiedCombat: boolean,
 ): Promise<boolean> {
-  if (typeof chrome === 'undefined' || !chrome.storage?.local || !chrome.tabs) return false;
-  if ((meta.resourceType !== 'xhr' && meta.resourceType !== 'fetch') || !verifiedCombat) return false;
-
-  const state = await loadModeState();
-  if (!state.enabled || state.ownerTabId === undefined) return false;
-
-  let ownerTabAvailable = false;
-  try {
-    await chrome.tabs.get(state.ownerTabId);
-    ownerTabAvailable = true;
-  } catch {
-    await expireRawCombatCapture(state);
-    return false;
-  }
-
-  if (!shouldPersistRawCombatResponse(state, ownerTabAvailable, meta, verifiedCombat)) return false;
+  const state = await activeRawCombatState(meta, verifiedCombat);
+  if (!state) return false;
 
   const record = buildRawCombatCaptureRecord(meta, rawBody, capturedAt);
   if (!record) return false;
@@ -175,6 +198,18 @@ export async function maybeStoreRawCombatResponse(
       redactedSensitiveFields: state.redactedSensitiveFields + record.redactedSensitiveFields,
     });
   }
+  return true;
+}
+
+export async function maybeStoreRawCombatReadFailure(
+  meta: ObservedResponse,
+  capturedAt: number,
+  verifiedCombat: boolean,
+  reason: RawCombatReadFailureReason = 'response-body-unavailable',
+): Promise<boolean> {
+  const state = await activeRawCombatState(meta, verifiedCombat);
+  if (!state) return false;
+  await saveRawCombatReadFailure(buildRawCombatReadFailure(meta, capturedAt, reason));
   return true;
 }
 
@@ -190,6 +225,28 @@ export function countSensitiveJsonKeys(value: unknown): number {
     else count += countSensitiveJsonKeys(nested);
   }
   return count;
+}
+
+async function activeRawCombatState(
+  meta: Pick<ObservedResponse, 'resourceType'>,
+  verifiedCombat: boolean,
+): Promise<RawCombatCaptureModeState | null> {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local || !chrome.tabs) return null;
+  if ((meta.resourceType !== 'xhr' && meta.resourceType !== 'fetch') || !verifiedCombat) return null;
+
+  const state = await loadModeState();
+  if (!state.enabled || state.ownerTabId === undefined) return null;
+
+  let ownerTabAvailable = false;
+  try {
+    await chrome.tabs.get(state.ownerTabId);
+    ownerTabAvailable = true;
+  } catch {
+    await expireRawCombatCapture(state);
+    return null;
+  }
+
+  return shouldPersistRawCombatResponse(state, ownerTabAvailable, meta, verifiedCombat) ? state : null;
 }
 
 async function clearStaleRawCombatCapture(): Promise<void> {
@@ -245,6 +302,11 @@ async function openRawCaptureDatabase(): Promise<IDBDatabase> {
       } else if (event.oldVersion < DB_VERSION) {
         request.transaction?.objectStore(RECORD_STORE).clear();
       }
+      if (!db.objectStoreNames.contains(READ_FAILURE_STORE)) {
+        db.createObjectStore(READ_FAILURE_STORE, { keyPath: 'id' });
+      } else if (event.oldVersion < DB_VERSION) {
+        request.transaction?.objectStore(READ_FAILURE_STORE).clear();
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -253,21 +315,36 @@ async function openRawCaptureDatabase(): Promise<IDBDatabase> {
 
 async function saveRawCombatCaptureRecord(record: RawCombatCaptureRecord): Promise<void> {
   const db = await openRawCaptureDatabase();
-  await runWrite(db, (store) => store.put(record));
+  await runWrite(db, RECORD_STORE, (store) => store.put(record));
+  db.close();
+}
+
+async function saveRawCombatReadFailure(failure: RawCombatReadFailure): Promise<void> {
+  const db = await openRawCaptureDatabase();
+  await runWrite(db, READ_FAILURE_STORE, (store) => store.put(failure));
   db.close();
 }
 
 async function clearRawCombatCaptureStorage(): Promise<void> {
   const db = await openRawCaptureDatabase();
-  await runWrite(db, (store) => store.clear());
+  await runWrite(db, RECORD_STORE, (store) => store.clear());
+  await runWrite(db, READ_FAILURE_STORE, (store) => store.clear());
   db.close();
 }
 
 async function countRawCombatCaptureRecords(): Promise<number> {
+  return await countStore(RECORD_STORE);
+}
+
+async function countRawCombatReadFailures(): Promise<number> {
+  return await countStore(READ_FAILURE_STORE);
+}
+
+async function countStore(storeName: string): Promise<number> {
   const db = await openRawCaptureDatabase();
   const count = await new Promise<number>((resolve, reject) => {
-    const tx = db.transaction(RECORD_STORE, 'readonly');
-    const request = tx.objectStore(RECORD_STORE).count();
+    const tx = db.transaction(storeName, 'readonly');
+    const request = tx.objectStore(storeName).count();
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -276,11 +353,19 @@ async function countRawCombatCaptureRecords(): Promise<number> {
 }
 
 async function getRawCombatCaptureRecords(): Promise<RawCombatCaptureRecord[]> {
+  return await getAllStore<RawCombatCaptureRecord>(RECORD_STORE);
+}
+
+async function getRawCombatReadFailures(): Promise<RawCombatReadFailure[]> {
+  return await getAllStore<RawCombatReadFailure>(READ_FAILURE_STORE);
+}
+
+async function getAllStore<T extends { id: string; capturedAt: number }>(storeName: string): Promise<T[]> {
   const db = await openRawCaptureDatabase();
-  const records = await new Promise<RawCombatCaptureRecord[]>((resolve, reject) => {
-    const tx = db.transaction(RECORD_STORE, 'readonly');
-    const request = tx.objectStore(RECORD_STORE).getAll();
-    request.onsuccess = () => resolve(request.result as RawCombatCaptureRecord[]);
+  const records = await new Promise<T[]>((resolve, reject) => {
+    const tx = db.transaction(storeName, 'readonly');
+    const request = tx.objectStore(storeName).getAll();
+    request.onsuccess = () => resolve(request.result as T[]);
     request.onerror = () => reject(request.error);
   });
   db.close();
@@ -289,11 +374,12 @@ async function getRawCombatCaptureRecords(): Promise<RawCombatCaptureRecord[]> {
 
 async function runWrite(
   db: IDBDatabase,
+  storeName: string,
   operation: (store: IDBObjectStore) => void,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(RECORD_STORE, 'readwrite');
-    operation(tx.objectStore(RECORD_STORE));
+    const tx = db.transaction(storeName, 'readwrite');
+    operation(tx.objectStore(storeName));
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error('Raw combat capture transaction failed'));
     tx.onabort = () => reject(tx.error ?? new Error('Raw combat capture transaction aborted'));
