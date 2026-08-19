@@ -10,7 +10,7 @@ export default defineConfig({
         popup: resolve(process.cwd(), 'popup.html'),
         dashboard: resolve(process.cwd(), 'dashboard.html'),
         combat: resolve(process.cwd(), 'combat.html'),
-        background: resolve(process.cwd(), 'src/background.ts'),
+        background: resolve(process.cwd(), 'src/background-entry.ts'),
       },
       output: {
         entryFileNames: '[name].js',
