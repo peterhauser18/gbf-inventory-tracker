@@ -55,7 +55,7 @@ export interface RaidLoadoutSnapshot {
   quality: DataQuality;
   observedAt: number;
   updatedAt: number;
-  correlation: 'battle-start' | 'signature';
+  correlation: 'battle-start' | 'signature' | 'deck-id';
   deckId?: string;
   signature: RaidLoadoutSignature;
   partyQuality: DataQuality;
