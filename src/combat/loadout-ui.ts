@@ -1,5 +1,6 @@
 import './loadout.css';
 import { wikiEntityImageUrl } from '../dashboard/wiki-metadata.ts';
+import { loadWikiGameplayFamily, normalizeWikiTitle } from '../dashboard/wiki-gameplay-metadata.ts';
 import { readPersistedRaidLoadouts } from './loadout-read.ts';
 import { CombatLoadoutOpenState } from './loadout-open-state.ts';
 import type { RaidLoadoutSnapshot, RaidLoadoutWeapon, RaidWeaponSkillBoost } from './loadout-types.ts';
@@ -18,7 +19,10 @@ export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
     if (!target.mount.isConnected) continue;
     const current = findCurrentLoadout(target.mount, target.owner);
     const fingerprint = loadoutFingerprint(target.loadout);
-    if (current?.dataset.loadoutFingerprint === fingerprint) continue;
+    if (current?.dataset.loadoutFingerprint === fingerprint) {
+      void hydrateWeaponSkills(current);
+      continue;
+    }
 
     const next = document.createElement('details');
     next.className = 'combat-accordion combat-loadout-section';
@@ -29,6 +33,7 @@ export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
     next.addEventListener('toggle', () => openState.remember(target.owner, next.open));
     current?.remove();
     placeLoadout(target, next);
+    void hydrateWeaponSkills(next);
   }
 }
 
@@ -140,15 +145,37 @@ function renderWeapon(weapon: RaidLoadoutWeapon, main: boolean): string {
   const imageId = weapon.masterId ?? weapon.imageId;
   const imageUrl = imageId ? wikiEntityImageUrl('weapon', imageId) : undefined;
   const plus = weapon.plus && weapon.plus > 0 ? `<span class="weapon-plus">+${formatNumber(weapon.plus)}</span>` : '';
-  return `<article class="combat-weapon-card${main ? ' main' : ''}" title="${escapeAttribute(weapon.name ?? weapon.masterId ?? `Weapon slot ${weapon.slot}`)}">
+  const label = weapon.name ?? weapon.masterId ?? `Weapon slot ${weapon.slot}`;
+  const titleAttribute = weapon.name ? ` data-loadout-weapon-title="${escapeAttribute(weapon.name)}"` : '';
+  return `<article class="combat-weapon-card${main ? ' main' : ''}" title="${escapeAttribute(label)}"${titleAttribute}>
     <div class="combat-weapon-art"><span data-loadout-fallback>${weapon.slot}</span>${imageUrl ? `<img data-loadout-image src="${escapeAttribute(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />` : ''}${plus}</div>
-    <div class="combat-weapon-name"><span>Slot ${weapon.slot}</span><strong>${escapeHtml(weapon.name ?? weapon.masterId ?? 'Observed weapon')}</strong></div>
+    <div class="combat-weapon-name"><span>Slot ${weapon.slot}</span><strong>${escapeHtml(label)}</strong></div>
     <div class="combat-weapon-stats"><span>◆ ${optionalNumber(weapon.hp)}</span><span>⚔ ${optionalNumber(weapon.attack)}</span></div>
+    <div class="combat-weapon-skills" data-loadout-weapon-skills><span class="muted">Skills —</span></div>
   </article>`;
 }
 
 function renderMissingWeapon(slot: number): string {
-  return `<article class="combat-weapon-card main missing"><div class="combat-weapon-art"><span data-loadout-fallback>${slot}</span></div><div class="combat-weapon-name"><span>Slot ${slot}</span><strong>Unknown</strong></div></article>`;
+  return `<article class="combat-weapon-card main missing"><div class="combat-weapon-art"><span data-loadout-fallback>${slot}</span></div><div class="combat-weapon-name"><span>Slot ${slot}</span><strong>Unknown</strong></div><div class="combat-weapon-skills"><span class="muted">Skills —</span></div></article>`;
+}
+
+async function hydrateWeaponSkills(root: HTMLElement): Promise<void> {
+  const cards = [...root.querySelectorAll<HTMLElement>('.combat-weapon-card[data-loadout-weapon-title]')]
+    .filter((card) => !card.dataset.loadoutSkillsHydrated);
+  if (!cards.length) return;
+
+  const index = await loadWikiGameplayFamily('weapons').catch(() => undefined);
+  for (const card of cards) {
+    if (!card.isConnected) continue;
+    const title = card.dataset.loadoutWeaponTitle;
+    const target = card.querySelector<HTMLElement>('[data-loadout-weapon-skills]');
+    if (!title || !target) continue;
+    const skills = index?.weaponsByTitle.get(normalizeWikiTitle(title));
+    target.innerHTML = skills?.length
+      ? skills.map((skill) => `<span class="combat-weapon-skill" title="${escapeAttribute(skill.description)}">${escapeHtml(skill.name)}</span>`).join('')
+      : '<span class="muted">Skills —</span>';
+    card.dataset.loadoutSkillsHydrated = 'true';
+  }
 }
 
 function renderCalculator(loadout: RaidLoadoutSnapshot): string {
