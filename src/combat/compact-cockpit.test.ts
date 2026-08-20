@@ -60,7 +60,7 @@ test('known weapon grids survive transient unknown refreshes while Character and
   assert.match(loadoutUi, /next\.dataset\.loadoutGridQuality = target\.loadout\?\.weaponGridQuality \?\? 'unknown'/);
   assert.match(ui, /import '\.\/cockpit-loadout-fill\.css'/);
   assert.match(loadoutFillCss, /\.party-cards-compact,[\s\S]*\.summon-strip\s*\{[^}]*height:\s*auto/s);
-  assert.match(loadoutFillCss, /\.party-card-visual\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
+  assert.match(loadoutFillCss, /\.party-card-visual\s*\{[^}]*aspect-ratio:\s*16 \/ 9/s);
   assert.match(loadoutFillCss, /\.summon-card \.combat-image\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
   assert.match(finalPolishCss, /\.preset-combat-cockpit \.party-cards-compact\s*\{[^}]*height:\s*auto !important/s);
   assert.match(finalPolishCss, /\.preset-combat-cockpit \.cockpit-summons-panel \.summon-strip\s*\{[^}]*height:\s*auto !important/s);
