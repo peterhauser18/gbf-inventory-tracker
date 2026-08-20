@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildRaidHistoryComparison, observedContributors } from './comparison.ts';
+import type { RaidLoadoutSnapshot } from './loadout-types.ts';
 import type { RaidHistoryRecord } from './types.ts';
 
-function raid(id: string, localId: string, overrides: Partial<RaidHistoryRecord> = {}): RaidHistoryRecord {
+type ComparableRaid = RaidHistoryRecord & { loadout?: RaidLoadoutSnapshot };
+
+function raid(id: string, localId: string, overrides: Partial<ComparableRaid> = {}): ComparableRaid {
   return {
     schemaVersion: 1,
     raidTechnicalId: id,
@@ -27,6 +30,21 @@ function raid(id: string, localId: string, overrides: Partial<RaidHistoryRecord>
     source: 'captured',
     favorite: false,
     ...overrides,
+  };
+}
+
+function loadout(): RaidLoadoutSnapshot {
+  return {
+    quality: 'known', observedAt: 1, updatedAt: 1, correlation: 'battle-start',
+    signature: { npcIds: [], summonIds: [] },
+    partyQuality: 'known',
+    party: [{ position: 0, name: 'Djeeta', frontline: true }, { position: 1, name: 'Alpha', frontline: true }],
+    summonQuality: 'partial',
+    summons: [{ position: 0, name: 'Bahamut', support: false }, { position: 5, name: 'Lucifer', support: true }],
+    weaponGridQuality: 'known',
+    weapons: [{ slot: 1, name: 'Main Sword' }, { slot: 2, name: 'Second Sword' }],
+    jobName: 'Relic Buster',
+    calculator: { quality: 'unknown', enhancement: {}, boosts: [] },
   };
 }
 
@@ -91,4 +109,26 @@ test('reports only observed contributors and preserves differences without claim
   assert.deepEqual(comparison.contributors.common.map((row) => row.label), ['Alpha']);
   assert.deepEqual(comparison.contributors.rightOnly.map((row) => row.label), ['Beta']);
   assert.deepEqual(comparison.contributors.leftOnly, []);
+});
+
+test('identifies A and B by timestamp and summarizes only available persisted loadout context', () => {
+  const comparison = buildRaidHistoryComparison(
+    raid('r1', 'a', { observedEndedAt: 100, loadout: loadout() }),
+    raid('r1', 'b', { observedEndedAt: 200 }),
+  )!;
+  assert.equal(comparison.runs.left.observedAt, 100);
+  assert.equal(comparison.runs.right.observedAt, 200);
+  assert.deepEqual(comparison.runs.left.loadout?.party, ['Djeeta', 'Alpha']);
+  assert.deepEqual(comparison.runs.left.loadout?.summons, ['Bahamut', 'Support: Lucifer']);
+  assert.equal(comparison.runs.left.loadout?.mainWeapon, 'Main Sword');
+  assert.equal(comparison.runs.right.loadout, undefined);
+});
+
+test('does not include drop observations in comparison output', () => {
+  const comparison = buildRaidHistoryComparison(
+    raid('r1', 'a', { drops: [{ itemId: 'drop-a', name: 'Left Drop', quantity: 1 }] }),
+    raid('r1', 'b', { drops: [{ itemId: 'drop-b', name: 'Right Drop', quantity: 2 }] }),
+  )!;
+  const serialized = JSON.stringify(comparison);
+  assert.doesNotMatch(serialized, /drop-a|drop-b|Left Drop|Right Drop/);
 });

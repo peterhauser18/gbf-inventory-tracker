@@ -1,4 +1,7 @@
 import type { DamageBreakdown, RaidHistoryRecord } from './types.ts';
+import type { RaidLoadoutSnapshot } from './loadout-types.ts';
+
+type ComparableRaidHistoryRecord = RaidHistoryRecord & { loadout?: RaidLoadoutSnapshot };
 
 export type RaidComparisonMetricKey =
   | 'party-damage'
@@ -34,18 +37,43 @@ export interface ContributorComparison {
   rightOnly: ObservedContributor[];
 }
 
+export interface RaidComparisonLoadoutSummary {
+  quality: RaidLoadoutSnapshot['quality'];
+  partyQuality: RaidLoadoutSnapshot['partyQuality'];
+  party: string[];
+  summonQuality: RaidLoadoutSnapshot['summonQuality'];
+  summons: string[];
+  weaponGridQuality: RaidLoadoutSnapshot['weaponGridQuality'];
+  weaponCount: number;
+  mainWeapon?: string;
+  jobName?: string;
+}
+
+export interface RaidComparisonRunSummary {
+  localId: string;
+  observedAt: number;
+  result: RaidHistoryRecord['result'];
+  role?: RaidHistoryRecord['role'];
+  source: RaidHistoryRecord['source'];
+  loadout?: RaidComparisonLoadoutSummary;
+}
+
 export interface RaidHistoryComparison {
   raidTechnicalId: string;
   raidName?: string;
   leftId: string;
   rightId: string;
+  runs: {
+    left: RaidComparisonRunSummary;
+    right: RaidComparisonRunSummary;
+  };
   metrics: RaidComparisonMetric[];
   contributors: ContributorComparison;
 }
 
 export function buildRaidHistoryComparison(
-  left: RaidHistoryRecord,
-  right: RaidHistoryRecord,
+  left: ComparableRaidHistoryRecord,
+  right: ComparableRaidHistoryRecord,
 ): RaidHistoryComparison | null {
   if (left.raidTechnicalId !== right.raidTechnicalId) return null;
 
@@ -74,8 +102,42 @@ export function buildRaidHistoryComparison(
     raidName: left.raidName ?? right.raidName,
     leftId: left.localId,
     rightId: right.localId,
+    runs: {
+      left: runSummary(left),
+      right: runSummary(right),
+    },
     metrics,
     contributors: compareContributors(left, right),
+  };
+}
+
+function runSummary(raid: ComparableRaidHistoryRecord): RaidComparisonRunSummary {
+  return {
+    localId: raid.localId,
+    observedAt: raid.observedEndedAt ?? raid.lastObservedAt,
+    result: raid.result,
+    role: raid.role,
+    source: raid.source,
+    loadout: raid.loadout ? loadoutSummary(raid.loadout) : undefined,
+  };
+}
+
+function loadoutSummary(loadout: RaidLoadoutSnapshot): RaidComparisonLoadoutSummary {
+  const mainWeapon = loadout.weapons.find((weapon) => weapon.slot === 1);
+  return {
+    quality: loadout.quality,
+    partyQuality: loadout.partyQuality,
+    party: [...loadout.party]
+      .sort((left, right) => left.position - right.position)
+      .map((member) => member.name ?? member.id ?? `Slot ${member.position + 1}`),
+    summonQuality: loadout.summonQuality,
+    summons: [...loadout.summons]
+      .sort((left, right) => left.position - right.position)
+      .map((summon) => `${summon.support ? 'Support: ' : ''}${summon.name ?? summon.id ?? `Slot ${summon.position + 1}`}`),
+    weaponGridQuality: loadout.weaponGridQuality,
+    weaponCount: loadout.weapons.length,
+    mainWeapon: mainWeapon?.name ?? mainWeapon?.masterId ?? mainWeapon?.imageId,
+    jobName: loadout.jobName,
   };
 }
 

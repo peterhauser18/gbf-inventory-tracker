@@ -1,10 +1,19 @@
 import './combat-compare.css';
 import { getRaidHistory } from './storage.ts';
-import { buildRaidHistoryComparison, type RaidHistoryComparison, type RaidComparisonMetric } from './comparison.ts';
+import {
+  buildRaidHistoryComparison,
+  type RaidComparisonLoadoutSummary,
+  type RaidComparisonRunSummary,
+  type RaidHistoryComparison,
+  type RaidComparisonMetric,
+} from './comparison.ts';
+import type { RaidLoadoutSnapshot } from './loadout-types.ts';
 import type { RaidHistoryRecord } from './types.ts';
 
+type ComparableRaidHistoryRecord = RaidHistoryRecord & { loadout?: RaidLoadoutSnapshot };
+
 const app = document.querySelector<HTMLElement>('#dashboard-app');
-let history: RaidHistoryRecord[] = [];
+let history: ComparableRaidHistoryRecord[] = [];
 let selectedIds: string[] = [];
 let syncQueued = false;
 let refreshPromise: Promise<void> | null = null;
@@ -17,6 +26,14 @@ if (app) {
 }
 
 function handleClick(event: MouseEvent): void {
+  const clear = (event.target as Element | null)?.closest<HTMLButtonElement>('[data-raid-compare-clear]');
+  if (clear) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    selectedIds = [];
+    scheduleSync();
+    return;
+  }
   const button = (event.target as Element | null)?.closest<HTMLButtonElement>('[data-raid-compare]');
   if (!button) return;
   event.preventDefault();
@@ -77,10 +94,11 @@ function syncUi(): void {
       button.className = 'raid-compare-button';
       actions.prepend(button);
     }
-    const selected = selectedIds.includes(localId);
+    const selectionIndex = selectedIds.indexOf(localId);
+    const selected = selectionIndex >= 0;
     button.classList.toggle('selected', selected);
     button.setAttribute('aria-pressed', String(selected));
-    const label = selected ? '✓ Compare' : 'Compare';
+    const label = selected ? `✓ ${selectionIndex === 0 ? 'A' : 'B'}` : 'Compare';
     if (button.textContent !== label) button.textContent = label;
   });
 
@@ -97,12 +115,12 @@ function syncComparisonPanel(section: HTMLElement): void {
     panel = document.createElement('section');
     panel.dataset.raidComparison = 'true';
     panel.className = 'raid-comparison';
-    const toolbar = section.querySelector('.raid-toolbar');
-    if (toolbar) toolbar.insertAdjacentElement('afterend', panel);
+    const list = section.querySelector('.raid-list');
+    if (list) list.insertAdjacentElement('beforebegin', panel);
     else section.prepend(panel);
   }
 
-  const selected = selectedIds.map((id) => history.find((raid) => raid.localId === id)).filter((raid): raid is RaidHistoryRecord => Boolean(raid));
+  const selected = selectedIds.map((id) => history.find((raid) => raid.localId === id)).filter((raid): raid is ComparableRaidHistoryRecord => Boolean(raid));
   const markup = selected.length < 2
     ? renderComparePrompt(selected[0])
     : renderComparison(buildRaidHistoryComparison(selected[0]!, selected[1]!));
@@ -110,13 +128,15 @@ function syncComparisonPanel(section: HTMLElement): void {
 }
 
 function renderComparePrompt(record: RaidHistoryRecord | undefined): string {
-  return `<div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(record?.raidName ?? record?.raidTechnicalId ?? 'Selected raid')}</h3></div><span class="quality partial">1 / 2</span></div><p class="muted">Select one more record with the same technical raid ID. Comparison uses only already-persisted observed combat facts.</p>`;
+  const observedAt = record ? formatDate(record.observedEndedAt ?? record.lastObservedAt) : '—';
+  return `<div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(record?.raidName ?? record?.raidTechnicalId ?? 'Selected raid')}</h3><p class="muted">A · ${escapeHtml(observedAt)}</p></div><div class="raid-compare-head-actions"><span class="quality partial">1 / 2</span><button type="button" data-raid-compare-clear>Clear</button></div></div><p class="muted">Select one more record with the same technical raid ID. Comparison uses only already-persisted observed combat facts.</p>`;
 }
 
 function renderComparison(comparison: RaidHistoryComparison | null): string {
   if (!comparison) return '<div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>Comparison unavailable</h3></div></div><p class="muted">Direct comparison requires the same technical raid ID.</p>';
   return `
-    <div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(comparison.raidName ?? comparison.raidTechnicalId)}</h3><p class="muted">A vs B · Δ is B − A</p></div>${qualityChip(comparison.contributors.quality)}</div>
+    <div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(comparison.raidName ?? comparison.raidTechnicalId)}</h3><p class="muted">A vs B · Δ is B − A</p></div><div class="raid-compare-head-actions">${qualityChip(comparison.contributors.quality)}<button type="button" data-raid-compare-clear>Clear</button></div></div>
+    <div class="raid-compare-runs">${renderRun('A', comparison.runs.left)}${renderRun('B', comparison.runs.right)}</div>
     <div class="raid-compare-metrics"><div class="raid-compare-row head"><span>Metric</span><span>A</span><span>B</span><span>Δ</span></div>${comparison.metrics.map(renderMetric).join('')}</div>
     <div class="raid-contributor-compare">
       <div><span>Observed in both</span><strong>${renderContributorList(comparison.contributors.common)}</strong></div>
@@ -125,6 +145,32 @@ function renderComparison(comparison: RaidHistoryComparison | null): string {
     </div>
     <p class="raid-compare-warning">Observed contributors are not guaranteed to be the complete party. Missing attribution remains incomplete or unavailable rather than becoming an absent team member.</p>
   `;
+}
+
+function renderRun(label: 'A' | 'B', run: RaidComparisonRunSummary): string {
+  const loadout = run.loadout ? renderLoadout(run.loadout) : '<p class="muted">Historical loadout unavailable.</p>';
+  return `<article class="raid-compare-run"><div class="raid-compare-run-head"><span>${label}</span><div><strong>${escapeHtml(formatDate(run.observedAt))}</strong><small>${escapeHtml([run.result, run.role, run.source].filter(Boolean).join(' · '))}</small></div></div>${loadout}</article>`;
+}
+
+function renderLoadout(loadout: RaidComparisonLoadoutSummary): string {
+  const weapon = loadout.weaponGridQuality === 'unknown'
+    ? 'Unavailable'
+    : `${loadout.weaponCount} observed${loadout.mainWeapon ? ` · Main: ${escapeHtml(loadout.mainWeapon)}` : ''}`;
+  return `<div class="raid-compare-loadout">
+    ${renderEvidence('Party', loadout.party, loadout.partyQuality, loadout.jobName)}
+    ${renderEvidence('Summons', loadout.summons, loadout.summonQuality)}
+    <div><span>Weapon Grid · ${qualityLabel(loadout.weaponGridQuality)}</span><strong>${weapon}</strong></div>
+  </div>`;
+}
+
+function renderEvidence(label: string, values: string[], quality: 'known' | 'partial' | 'unknown', prefix?: string): string {
+  const text = [prefix, ...values].filter((value): value is string => Boolean(value)).map(escapeHtml).join(' · ');
+  return `<div><span>${escapeHtml(label)} · ${qualityLabel(quality)}</span><strong>${text || 'Unavailable'}</strong></div>`;
+}
+
+function qualityLabel(quality: 'known' | 'partial' | 'unknown'): string {
+  if (quality === 'known') return 'Known';
+  return quality === 'partial' ? 'Incomplete' : 'Unavailable';
 }
 
 function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
@@ -147,5 +193,6 @@ function formatSigned(value: number, metric: RaidComparisonMetric): string {
   if (metric.unit === 'ms') return `${sign}${(value / 1000).toFixed(1)}s`;
   return `${sign}${metric.precision === undefined ? Math.round(value).toLocaleString('en-US') : value.toFixed(metric.precision)}`;
 }
+function formatDate(value: number): string { return new Date(value).toLocaleString(); }
 function renderContributorList(rows: RaidHistoryComparison['contributors']['common']): string { return rows.length ? rows.map((row) => escapeHtml(row.label)).join(', ') : '—'; }
 function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] ?? character); }

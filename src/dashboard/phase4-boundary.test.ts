@@ -37,6 +37,11 @@ test('combat comparison UI explicitly labels actor lists as observed contributor
   assert.doesNotMatch(compareUi, />Team</);
 });
 
+test('combat comparison excludes drop facts from its UI and derived comparison data', () => {
+  assert.doesNotMatch(compareUi, /\.drops\b|dropsQuality|Drop comparison/i);
+  assert.doesNotMatch(compareLogic, /\.drops\b|dropsQuality/);
+});
+
 test('combat comparison mutation sync keeps button text idempotent', () => {
   assert.ok(compareUi.includes('if (button.textContent !== label) button.textContent = label;'));
 });

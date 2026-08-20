@@ -18,6 +18,7 @@ test('standalone combat page exposes exactly Combat Tracker and Raid History tab
 
 test('standalone page reuses the existing combat UI implementation instead of a copied parser or renderer', () => {
   assert.match(combatEntry, /import '\.\/combat\/ui\.ts';/);
+  assert.match(combatEntry, /import '\.\/combat\/combat-compare-ui\.ts';/);
   assert.doesNotMatch(combatEntry, /CombatDashboardControllerV2/);
   assert.doesNotMatch(combatEntry, /renderCombat\(|renderRaids\(/);
 });
