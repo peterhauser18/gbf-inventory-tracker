@@ -25,7 +25,7 @@ export function enrichObservedActorVisuals(
   for (const value of params) {
     if (!isObject(value)) continue;
     const actorId = text(value.pid);
-    const imageId = safeAssetId(value.pid_image);
+    const imageId = battleActorImageId(value);
     if (actorId && imageId) visualByActorId.set(actorId, imageId);
   }
   if (!visualByActorId.size) return;
@@ -68,6 +68,23 @@ function rememberObservedBossVisualAliases(body: Obj): void {
     if (questName && questName !== bossName) void rememberObservedRaidBossIcon(questName, assetId);
     return;
   }
+}
+
+function battleActorImageId(value: Obj): string | undefined {
+  const abilities = Array.isArray(value.ability) ? value.ability : [];
+  for (const ability of abilities) {
+    if (!isObject(ability)) continue;
+    const assetId = battleDsAssetId(ability.src);
+    if (assetId) return assetId;
+  }
+  return safeAssetId(value.pid_image);
+}
+
+function battleDsAssetId(value: unknown): string | undefined {
+  const source = text(value);
+  if (!source) return undefined;
+  const match = /(?:^|\/)(?:leader|npc)\/ds\/([A-Za-z0-9_-]+)(?:\.(?:png|jpe?g|webp))?(?:[?#].*)?$/i.exec(source);
+  return safeAssetId(match?.[1]);
 }
 
 function attachObservedActorVisual(actor: CombatActorContext, imageId: string | undefined): void {
