@@ -34,11 +34,12 @@
   background: transparent;
 }
 
+/* GBF's observed battle `ds` actor assets are landscape strips, unlike Summon art. */
 .preset-combat-cockpit .cockpit-characters-panel .party-card-visual {
   position: relative;
   width: 100%;
   height: auto !important;
-  aspect-ratio: 1 / 2;
+  aspect-ratio: 16 / 9;
   min-height: 0 !important;
   overflow: hidden;
   background: transparent !important;
