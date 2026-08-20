@@ -8,13 +8,16 @@ const viewportCss = readFileSync(new URL('./cockpit-viewport-layout.css', import
 const preservation = readFileSync(new URL('./loadout-dom-preservation.ts', import.meta.url), 'utf8');
 const loadoutUi = readFileSync(new URL('./loadout-ui.ts', import.meta.url), 'utf8');
 
-test('core cockpit fills the viewport while Participants and Combat Log move below it', () => {
+test('Characters/Summons stay compact, Weapons expands the cockpit, and secondary panels remain below it', () => {
   assert.match(ui, /applyCockpitViewportLayout\(section\)/);
   assert.match(viewport, /:scope > \.cockpit-secondary/);
   assert.match(viewport, /cockpit\.after\(secondary\)/);
   assert.match(viewport, /cockpit-secondary-below/);
+  assert.match(viewportCss, /\.active-combat-card \.preset-combat-cockpit,\s*\.raid-card \.preset-combat-cockpit\s*\{[^}]*height:\s*auto !important/s);
+  assert.match(viewportCss, /:has\(\.cockpit-tab-input\[id\$="-weapons"\]:checked\)/);
   assert.match(viewportCss, /height:\s*clamp\(560px, calc\(100dvh - 96px\), 1040px\)/);
   assert.match(viewportCss, /grid-template-rows:\s*auto minmax\(0, \.78fr\) minmax\(0, 1\.22fr\)/);
+  assert.match(viewportCss, /:not\(:has\(\.cockpit-tab-input\[id\$="-weapons"\]:checked\)\)[\s\S]*\.cockpit-loadout-panels,[\s\S]*height:\s*auto !important/s);
   assert.match(viewportCss, /\.cockpit-secondary-below \.cockpit-secondary-panel\[open\] > div\s*\{[^}]*position:\s*static !important/s);
 });
 
