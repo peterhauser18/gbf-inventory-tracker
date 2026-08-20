@@ -1,19 +1,25 @@
 import './raids-v2.css';
 import './ui-v2.css';
+import './cockpit-loadout-fill.css';
+import './cockpit-weapon-runtime-polish.css';
 import { CombatDashboardControllerV2 } from './dashboard-multi-active.ts';
-import { COMBAT_LAYOUT_PRESETS, type CombatLayoutPreset } from './layouts.ts';
+import type { CombatLayoutPreset } from './layouts.ts';
 import { installCombatRaidInteractionUx } from './interaction-ux.ts';
 import { installCombatMultiActiveCompat } from './multi-active-compat.ts';
 import { applyCombatLiveUiFixes, refreshCombatLiveUiState } from './live-ui-fixes.ts';
 import { decorateCombatLoadouts } from './loadout-ui.ts';
 import { detachCombatLoadouts, restoreCombatLoadouts } from './loadout-dom-preservation.ts';
+import { detachStableCombatDom, restoreStableCombatDom } from './live-dom-preservation.ts';
 import { applySharedCombatPresentationFixes } from './shared-presentation-fixes.ts';
+import { applyCompactRaidHistory } from './raid-history-compact.ts';
+import { decorateCockpitAttackModes } from './cockpit-attack-modes.ts';
+import { applyCockpitFinalPolish, decorateCockpitRosterPresentation } from './cockpit-final-polish.ts';
+import { applyCockpitViewportLayout } from './cockpit-viewport-layout.ts';
 
 const app = document.querySelector<HTMLElement>('#dashboard-app');
-const LAYOUT_KEY = 'gbfit:combat-layout';
+const layout: CombatLayoutPreset = 'combat-cockpit';
 let selected: 'combat' | 'raids' | null = null;
 let query = '';
-let layout = loadLayoutPreference();
 let lastSectionMarkup = '';
 const controller = new CombatDashboardControllerV2(() => renderSectionIfChanged());
 
@@ -104,14 +110,11 @@ function renderSelectedShell(): void {
     item.classList.toggle('active', item.dataset.section === selected);
   });
 
-  const title = selected === 'combat' ? 'Combat' : 'Raids';
-  const description = selected === 'combat'
-    ? 'Live read-only raid analytics from already-received supported combat responses.'
-    : 'Local raid history, global pinned drops, personal observed rates, public wiki references and normalized import/export.';
-  const layoutControl = `<label class="search combat-layout-control"><span>Layout</span><select id="combat-layout-select">${COMBAT_LAYOUT_PRESETS.map(([value, label]) => `<option value="${value}"${value === layout ? ' selected' : ''}>${escapeHtml(label)}</option>`).join('')}</select></label>`;
-  const controls = selected === 'combat'
-    ? layoutControl
-    : `<label class="search"><span>Search</span><input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" /></label>${layoutControl}`;
+  const header = selected === 'combat'
+    ? ''
+    : `<header class="content-header raids-compact-header">
+        <label class="search raid-history-search"><span>Search</span><input id="combat-raid-search" type="search" value="${escapeAttribute(query)}" placeholder="Raid, date, or tracked drop" autocomplete="off" /></label>
+      </header>`;
 
   content.innerHTML = `
     <div class="command-bar">
@@ -122,24 +125,13 @@ function renderSelectedShell(): void {
       </button>
       <span class="read-only-pill">Read-only</span>
     </div>
-    <header class="content-header">
-      <div><p class="eyebrow">${title.toUpperCase()}</p><h2>${title}</h2><p class="muted">${description}</p></div>
-      ${controls}
-    </header>
+    ${header}
     <div data-combat-section></div>
   `;
 
   content.querySelector<HTMLInputElement>('#combat-raid-search')?.addEventListener('input', (event) => {
     query = (event.currentTarget as HTMLInputElement).value;
     renderSectionIfChanged();
-  });
-  content.querySelector<HTMLSelectElement>('#combat-layout-select')?.addEventListener('change', (event) => {
-    const next = parseLayout((event.currentTarget as HTMLSelectElement).value);
-    if (!next) return;
-    layout = next;
-    localStorage.setItem(LAYOUT_KEY, layout);
-    lastSectionMarkup = '';
-    renderSectionIfChanged(true);
   });
 
   lastSectionMarkup = '';
@@ -154,39 +146,47 @@ function renderSectionIfChanged(force = false): void {
   if (!force && markup === lastSectionMarkup) {
     if (selected === 'combat') applyCombatLiveUiFixes(section);
     applySharedCombatPresentationFixes(section);
+    if (selected === 'raids') applyCompactRaidHistory(section, query);
+    applyCockpitFinalPolish(section);
+    applyCockpitViewportLayout(section);
+    decorateRosterAndAttackModes(section);
     decorateLoadouts(section);
     return;
   }
   const preservedLoadouts = detachCombatLoadouts(section);
+  const preservedStableDom = selected === 'combat' ? detachStableCombatDom(section) : undefined;
   lastSectionMarkup = markup;
   section.innerHTML = markup;
   controller.bind(section);
+  restoreCombatLoadouts(section, preservedLoadouts);
+  if (preservedStableDom) restoreStableCombatDom(section, preservedStableDom);
   if (selected === 'combat') applyCombatLiveUiFixes(section);
   applySharedCombatPresentationFixes(section);
-  restoreCombatLoadouts(section, preservedLoadouts);
+  if (selected === 'raids') applyCompactRaidHistory(section, query);
+  applyCockpitFinalPolish(section);
+  applyCockpitViewportLayout(section);
+  decorateRosterAndAttackModes(section);
   decorateLoadouts(section);
+}
+
+function decorateRosterAndAttackModes(section: HTMLElement): void {
+  void decorateCockpitRosterPresentation(section)
+    .then(() => {
+      if (!section.isConnected) return;
+      applyCockpitFinalPolish(section);
+      return decorateCockpitAttackModes(section);
+    })
+    .catch(() => {});
 }
 
 function decorateLoadouts(section: HTMLElement): void {
   void decorateCombatLoadouts(section)
     .then(() => {
-      if (section.isConnected) applySharedCombatPresentationFixes(section);
+      if (!section.isConnected) return;
+      applySharedCombatPresentationFixes(section);
+      applyCockpitFinalPolish(section);
     })
     .catch(() => {});
-}
-
-function loadLayoutPreference(): CombatLayoutPreset {
-  try {
-    return parseLayout(localStorage.getItem(LAYOUT_KEY)) ?? 'combat-cockpit';
-  } catch {
-    return 'combat-cockpit';
-  }
-}
-
-function parseLayout(value: string | null): CombatLayoutPreset | null {
-  return COMBAT_LAYOUT_PRESETS.some(([candidate]) => candidate === value)
-    ? value as CombatLayoutPreset
-    : null;
 }
 
 function escapeHtml(value: string): string {

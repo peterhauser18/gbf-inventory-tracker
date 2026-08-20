@@ -1,5 +1,7 @@
 export function applySharedCombatPresentationFixes(root: HTMLElement): void {
   compactSelectedAnalysis(root);
+  removeCockpitSelectedAnalysis(root);
+  labelCockpitSummons(root);
 
   const selectors = [
     '.analysis-character h3',
@@ -70,6 +72,34 @@ function compactSelectedAnalysis(root: HTMLElement): void {
     grid.insertBefore(compact, first);
     for (const entry of modes) entry.card!.remove();
   }
+}
+
+function removeCockpitSelectedAnalysis(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>('.preset-combat-cockpit .cockpit-selected-analysis')
+    .forEach((detail) => detail.remove());
+}
+
+function labelCockpitSummons(root: HTMLElement): void {
+  for (const strip of root.querySelectorAll<HTMLElement>('.preset-combat-cockpit .summon-strip')) {
+    const cards = [...strip.querySelectorAll<HTMLElement>(':scope > .summon-card')];
+    addSummonRole(cards[0], 'Main');
+    if (cards.length >= 6) addSummonRole(cards[5], 'Support');
+  }
+}
+
+function addSummonRole(card: HTMLElement | undefined, role: 'Main' | 'Support'): void {
+  if (!card) return;
+  const image = card.querySelector<HTMLElement>('.combat-image');
+  if (!image) return;
+  let label = card.querySelector<HTMLElement>('.summon-role-label');
+  if (!label) {
+    label = document.createElement('span');
+    label.className = 'summon-role-label';
+  }
+  label.textContent = role;
+  label.classList.toggle('support', role === 'Support');
+  image.append(label);
+  if (role === 'Support') card.classList.add('supporter-slot');
 }
 
 function attackModeSummary(card: HTMLElement): { count: string; percent: string; damage?: string } {

@@ -7,9 +7,10 @@ const dashboard = readFileSync(new URL('./dashboard-v2.ts', import.meta.url), 'u
 const historyLayout = readFileSync(new URL('./raid-history-layout-ui.ts', import.meta.url), 'utf8');
 const presentationFixes = readFileSync(new URL('./shared-presentation-fixes.ts', import.meta.url), 'utf8');
 
-test('Raid History exposes the same Combat layout selector and passes the selected preset to history rendering', () => {
-  assert.match(ui, /const layoutControl = .*COMBAT_LAYOUT_PRESETS/s);
-  assert.match(ui, /selected === 'combat'[\s\S]*?layoutControl[\s\S]*?combat-raid-search[\s\S]*?\$\{layoutControl\}/);
+test('Raid History uses the fixed Combat Cockpit preset without exposing a layout selector', () => {
+  assert.match(ui, /const layout: CombatLayoutPreset = 'combat-cockpit'/);
+  assert.doesNotMatch(ui, /const layoutControl = .*COMBAT_LAYOUT_PRESETS/s);
+  assert.doesNotMatch(ui, /combat-layout-select|COMBAT_LAYOUT_PRESETS\.map/);
   assert.match(ui, /controller\.renderRaids\(query, layout\)/);
 });
 

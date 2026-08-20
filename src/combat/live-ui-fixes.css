@@ -31,7 +31,7 @@
 .summon-card { min-width: 0; overflow: hidden; }
 .summon-card .combat-image { width: 100%; height: auto; min-height: 0; aspect-ratio: 1 / 1; }
 .summon-card .combat-image img { object-fit: contain; }
-.summon-card.supporter-slot { border-left: 2px solid currentColor; padding-left: 7px; }
+.summon-card.supporter-slot { border-left: 0; padding-left: 0; }
 
 @media (max-width: 1180px) {
   .summon-strip,

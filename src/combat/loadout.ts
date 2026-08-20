@@ -32,7 +32,15 @@ type DeckObservationState = {
   scanId: string;
   decks: Record<string, RaidLoadoutSnapshot>;
   raidInstanceIds: string[];
+  selectedDeckIds: Record<string, string>;
 };
+
+export interface LateEnrichmentRaid {
+  instanceId?: string;
+  lastObservedAt: number;
+  loadout?: RaidLoadoutSnapshot;
+  active: boolean;
+}
 
 export function isVerifiedPartyDeckResponseUrl(url: string): boolean {
   try {
@@ -43,6 +51,19 @@ export function isVerifiedPartyDeckResponseUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+export async function rememberObservedBattleDeckSelection(
+  scanId: string,
+  instanceId: string,
+  deckId: string,
+): Promise<void> {
+  const normalizedInstanceId = safeNumericId(instanceId, 120);
+  const normalizedDeckId = safeNumericId(deckId, 40);
+  if (!scanId || !normalizedInstanceId || !normalizedDeckId) return;
+  const state = await currentDeckState(scanId);
+  state.selectedDeckIds[normalizedInstanceId] = normalizedDeckId;
+  await saveDeckState(state);
 }
 
 export async function ingestObservedLoadoutRecord(record: CapturedResponseRecord): Promise<void> {
@@ -64,8 +85,13 @@ export async function ingestObservedLoadoutRecord(record: CapturedResponseRecord
 
   const state = await currentDeckState(record.scanId);
   if (!state.raidInstanceIds.includes(instanceId)) state.raidInstanceIds.push(instanceId);
+  const selectedDeckId = state.selectedDeckIds[instanceId];
+  if (selectedDeckId) seeded.deckId = selectedDeckId;
   await saveDeckState(state);
-  const candidate = selectMatchingDeck(seeded.signature, Object.values(state.decks));
+
+  const candidate = selectedDeckId
+    ? state.decks[selectedDeckId]
+    : selectMatchingDeck(seeded.signature, Object.values(state.decks));
   const enriched = candidate ? enrichRaidLoadout(seeded, candidate) : seeded;
   await updateStoredRaidLoadouts((parse) => {
     if (parse.instanceId !== instanceId) return parse;
@@ -210,7 +236,8 @@ export function loadoutSignaturesMatch(left: RaidLoadoutSignature, right: RaidLo
 }
 
 export function enrichRaidLoadout(base: RaidLoadoutSnapshot, deck: RaidLoadoutSnapshot): RaidLoadoutSnapshot {
-  if (!loadoutSignaturesMatch(base.signature, deck.signature)) return base;
+  const exactDeckId = Boolean(base.deckId && deck.deckId && base.deckId === deck.deckId);
+  if (!exactDeckId && !loadoutSignaturesMatch(base.signature, deck.signature)) return base;
   if (base.deckId && deck.deckId && base.deckId !== deck.deckId) return base;
 
   const useGrid = shouldUseIncomingGrid(base, deck);
@@ -219,7 +246,7 @@ export function enrichRaidLoadout(base: RaidLoadoutSnapshot, deck: RaidLoadoutSn
     ...base,
     quality: strongestQuality(base.quality, deck.quality),
     updatedAt: Math.max(base.updatedAt, deck.updatedAt),
-    correlation: 'signature',
+    correlation: exactDeckId ? 'deck-id' : 'signature',
     deckId: base.deckId ?? deck.deckId,
     mainWeaponId: base.mainWeaponId ?? deck.mainWeaponId,
     jobId: base.jobId ?? deck.jobId,
@@ -236,7 +263,9 @@ export function mergeRaidLoadout(
   incoming: RaidLoadoutSnapshot,
 ): RaidLoadoutSnapshot {
   if (!current) return incoming;
-  if (loadoutSignaturesMatch(current.signature, incoming.signature)) {
+  const exactDeckId = Boolean(current.deckId && incoming.deckId && current.deckId === incoming.deckId);
+  if (exactDeckId || loadoutSignaturesMatch(current.signature, incoming.signature)) {
+    if (current.deckId && incoming.deckId && current.deckId !== incoming.deckId) return current;
     const party = preferList(current.partyQuality, current.party.length, incoming.partyQuality, incoming.party.length)
       ? incoming.party
       : current.party;
@@ -247,6 +276,8 @@ export function mergeRaidLoadout(
       ...current,
       quality: strongestQuality(current.quality, incoming.quality),
       updatedAt: Math.max(current.updatedAt, incoming.updatedAt),
+      correlation: exactDeckId ? 'deck-id' : current.correlation,
+      deckId: current.deckId ?? incoming.deckId,
       partyQuality: strongerQuality(current.partyQuality, incoming.partyQuality),
       party,
       summonQuality: strongerQuality(current.summonQuality, incoming.summonQuality),
@@ -275,64 +306,100 @@ export async function readHistoryRaidLoadout(localId: string): Promise<RaidLoado
   return row?.loadout;
 }
 
+export function selectLateEnrichmentDecks(
+  rows: readonly LateEnrichmentRaid[],
+  decks: readonly RaidLoadoutSnapshot[],
+): Map<string, RaidLoadoutSnapshot> {
+  const latestByInstance = new Map<string, LateEnrichmentRaid>();
+  for (const row of rows) {
+    if (!row.instanceId || !row.loadout || row.loadout.weaponGridQuality === 'known') continue;
+    const existing = latestByInstance.get(row.instanceId);
+    if (!existing || row.active || !existing.active && row.lastObservedAt > existing.lastObservedAt) {
+      latestByInstance.set(row.instanceId, row);
+    }
+  }
+
+  const deckById = new Map(decks.flatMap((deck) => deck.deckId ? [[deck.deckId, deck] as const] : []));
+  const updates = new Map<string, RaidLoadoutSnapshot>();
+  const candidateByInstance = new Map<string, { deck: RaidLoadoutSnapshot; active: boolean }>();
+  for (const [instanceId, row] of latestByInstance) {
+    if (!row.loadout) continue;
+    if (row.loadout.deckId) {
+      const exact = deckById.get(row.loadout.deckId);
+      if (exact) updates.set(instanceId, exact);
+      continue;
+    }
+    const candidate = selectMatchingDeck(row.loadout.signature, decks);
+    if (candidate?.deckId) candidateByInstance.set(instanceId, { deck: candidate, active: row.active });
+  }
+
+  const activeInstancesByDeck = new Map<string, string[]>();
+  const historyInstancesByDeck = new Map<string, string[]>();
+  for (const [instanceId, candidate] of candidateByInstance) {
+    const deckId = candidate.deck.deckId;
+    if (!deckId) continue;
+    const target = candidate.active ? activeInstancesByDeck : historyInstancesByDeck;
+    const instances = target.get(deckId) ?? [];
+    instances.push(instanceId);
+    target.set(deckId, instances);
+  }
+
+  for (const [deckId, instanceIds] of activeInstancesByDeck) {
+    if (instanceIds.length !== 1) continue;
+    const instanceId = instanceIds[0]!;
+    const candidate = candidateByInstance.get(instanceId)?.deck;
+    if (candidate) updates.set(instanceId, candidate);
+  }
+  for (const [deckId, instanceIds] of historyInstancesByDeck) {
+    if (activeInstancesByDeck.has(deckId) || instanceIds.length !== 1) continue;
+    const instanceId = instanceIds[0]!;
+    const candidate = candidateByInstance.get(instanceId)?.deck;
+    if (candidate) updates.set(instanceId, candidate);
+  }
+  return updates;
+}
+
 async function enrichObservedRaids(state: DeckObservationState): Promise<void> {
   const observedInstances = new Set(state.raidInstanceIds);
   const decks = Object.values(state.decks);
   if (!observedInstances.size || !decks.length) return;
 
   const stored = await readStoredRaidParses();
-  const rowsByInstance = new Map<string, NormalizedRaidParse[]>();
-  for (const parse of stored) {
-    if (!parse.instanceId || !observedInstances.has(parse.instanceId) || !parse.loadout) continue;
-    const rows = rowsByInstance.get(parse.instanceId) ?? [];
-    rows.push(parse);
-    rowsByInstance.set(parse.instanceId, rows);
-  }
-
-  const candidateByInstance = new Map<string, RaidLoadoutSnapshot>();
-  for (const [instanceId, rows] of rowsByInstance) {
-    if (rows.some((row) => row.loadout?.weaponGridQuality === 'known')) continue;
-    const exemplar = rows
-      .filter((row) => row.loadout)
-      .sort((left, right) => right.lastObservedAt - left.lastObservedAt)[0];
-    if (!exemplar?.loadout) continue;
-    const candidate = selectMatchingDeck(exemplar.loadout.signature, decks);
-    if (candidate) candidateByInstance.set(instanceId, candidate);
-  }
-
-  const instancesByDeck = new Map<string, string[]>();
-  for (const [instanceId, candidate] of candidateByInstance) {
-    if (!candidate.deckId) continue;
-    const instances = instancesByDeck.get(candidate.deckId) ?? [];
-    instances.push(instanceId);
-    instancesByDeck.set(candidate.deckId, instances);
-  }
-
-  const updates = new Map<string, RaidLoadoutSnapshot>();
-  for (const [instanceId, candidate] of candidateByInstance) {
-    if (!candidate.deckId || instancesByDeck.get(candidate.deckId)?.length !== 1) continue;
-    const exemplar = rowsByInstance.get(instanceId)?.find((row) => row.loadout)?.loadout;
-    if (!exemplar) continue;
-    updates.set(instanceId, enrichRaidLoadout(exemplar, candidate));
-  }
-  if (!updates.size) return;
+  const rows: LateEnrichmentRaid[] = [
+    ...stored.active.flatMap((parse) => parse.instanceId && observedInstances.has(parse.instanceId)
+      ? [{ instanceId: parse.instanceId, lastObservedAt: parse.lastObservedAt, loadout: parse.loadout, active: true }]
+      : []),
+    ...stored.history.flatMap((parse) => parse.instanceId && observedInstances.has(parse.instanceId)
+      ? [{ instanceId: parse.instanceId, lastObservedAt: parse.lastObservedAt, loadout: parse.loadout, active: false }]
+      : []),
+  ];
+  const assignments = selectLateEnrichmentDecks(rows, decks);
+  if (!assignments.size) return;
 
   await updateStoredRaidLoadouts((parse) => {
     if (!parse.instanceId || !parse.loadout) return parse;
-    const updated = updates.get(parse.instanceId);
-    return updated ? { ...parse, loadout: mergeRaidLoadout(parse.loadout, updated) } : parse;
+    const candidate = assignments.get(parse.instanceId);
+    if (!candidate) return parse;
+    return { ...parse, loadout: mergeRaidLoadout(parse.loadout, enrichRaidLoadout(parse.loadout, candidate)) };
   });
 }
 
 async function currentDeckState(scanId: string): Promise<DeckObservationState> {
   try {
     const stored = await chrome.storage.session.get(DECK_STATE_KEY);
-    const state = stored[DECK_STATE_KEY] as DeckObservationState | undefined;
-    if (state?.scanId === scanId && state.decks && Array.isArray(state.raidInstanceIds)) return state;
+    const state = stored[DECK_STATE_KEY] as Partial<DeckObservationState> | undefined;
+    if (state?.scanId === scanId && state.decks && Array.isArray(state.raidInstanceIds)) {
+      return {
+        scanId,
+        decks: state.decks,
+        raidInstanceIds: state.raidInstanceIds,
+        selectedDeckIds: state.selectedDeckIds ?? {},
+      };
+    }
   } catch {
     // A missing session store should only disable late correlation, not combat parsing.
   }
-  return { scanId, decks: {}, raidInstanceIds: [] };
+  return { scanId, decks: {}, raidInstanceIds: [], selectedDeckIds: {} };
 }
 
 async function saveDeckState(state: DeckObservationState): Promise<void> {
@@ -348,7 +415,7 @@ function trimDecks(state: DeckObservationState): void {
   state.decks = Object.fromEntries(entries.slice(0, MAX_OBSERVED_DECKS));
 }
 
-async function readStoredRaidParses(): Promise<NormalizedRaidParse[]> {
+async function readStoredRaidParses(): Promise<{ active: NormalizedRaidParse[]; history: RaidHistoryRecord[] }> {
   const db = await openCombatDatabase();
   const tx = db.transaction([ACTIVE_STORE, HISTORY_STORE], 'readonly');
   const [active, history] = await Promise.all([
@@ -356,7 +423,7 @@ async function readStoredRaidParses(): Promise<NormalizedRaidParse[]> {
     requestValue<RaidHistoryRecord[]>(tx.objectStore(HISTORY_STORE).getAll()),
   ]);
   db.close();
-  return [...active.map((row) => row.parse), ...history];
+  return { active: active.map((row) => row.parse), history };
 }
 
 async function updateStoredRaidLoadouts(
@@ -649,6 +716,11 @@ function strongerQuality(left: DataQuality, right: DataQuality): DataQuality {
 function safeText(value: unknown, maxLength: number): string | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value).slice(0, maxLength);
   return typeof value === 'string' && value.trim() ? value.trim().slice(0, maxLength) : undefined;
+}
+
+function safeNumericId(value: unknown, maxLength: number): string | undefined {
+  const text = safeText(value, maxLength);
+  return text && /^\d+$/.test(text) && text !== '0' ? text : undefined;
 }
 
 function nonNegativeNumber(value: unknown): number | undefined {

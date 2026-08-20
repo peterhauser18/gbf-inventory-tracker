@@ -10,25 +10,40 @@ type RenderTarget = {
   loadout?: RaidLoadoutSnapshot;
 };
 
+type LoadoutScrollState = {
+  element: HTMLElement;
+  top: number;
+  left: number;
+};
+
 const openState = new CombatLoadoutOpenState();
+let latestDecorationRun = 0;
 
 export async function decorateCombatLoadouts(root: HTMLElement): Promise<void> {
+  const run = ++latestDecorationRun;
   const targets = await collectTargets(root);
+  if (run !== latestDecorationRun || !root.isConnected) return;
+
   for (const target of targets) {
     if (!target.mount.isConnected) continue;
     const current = findCurrentLoadout(target.mount, target.owner);
     const fingerprint = loadoutFingerprint(target.loadout);
+    if (shouldPreserveCurrentLoadout(current, target.loadout)) continue;
     if (current?.dataset.loadoutFingerprint === fingerprint) continue;
 
+    const scroll = rememberLoadoutScroll(target.mount);
+    const skillBoostsOpen = current?.querySelector<HTMLDetailsElement>('.combat-skill-boosts')?.open ?? false;
     const next = document.createElement('details');
     next.className = 'combat-accordion combat-loadout-section';
     next.dataset.loadoutOwner = target.owner;
     next.dataset.loadoutFingerprint = fingerprint;
+    next.dataset.loadoutGridQuality = target.loadout?.weaponGridQuality ?? 'unknown';
     next.open = openState.resolve(target.owner, current?.open);
-    next.innerHTML = `<summary>${escapeHtml(loadoutSummary(target.loadout))}</summary><div><section class="combat-loadout-panel">${renderLoadout(target.loadout)}</section></div>`;
+    next.innerHTML = `<summary>${escapeHtml(loadoutSummary(target.loadout))}</summary><div><section class="combat-loadout-panel">${renderLoadout(target.loadout, skillBoostsOpen)}</section></div>`;
     next.addEventListener('toggle', () => openState.remember(target.owner, next.open));
     current?.remove();
     placeLoadout(target, next);
+    restoreLoadoutScroll(scroll);
   }
 }
 
@@ -54,7 +69,30 @@ function findCurrentLoadout(mount: HTMLElement, owner: string): HTMLDetailsEleme
     .find((candidate) => candidate.dataset.loadoutOwner === owner);
 }
 
+function shouldPreserveCurrentLoadout(
+  current: HTMLDetailsElement | undefined,
+  incoming: RaidLoadoutSnapshot | undefined,
+): boolean {
+  if (!current) return false;
+  const currentQuality = current.dataset.loadoutGridQuality ?? 'unknown';
+  const incomingQuality = incoming?.weaponGridQuality ?? 'unknown';
+  return qualityRank(currentQuality) > qualityRank(incomingQuality);
+}
+
+function qualityRank(quality: string): number {
+  if (quality === 'known') return 2;
+  if (quality === 'partial') return 1;
+  return 0;
+}
+
 function placeLoadout(target: RenderTarget, next: HTMLDetailsElement): void {
+  const cockpitWeaponSlot = target.mount.querySelector<HTMLElement>('[data-cockpit-weapon-slot]');
+  if (cockpitWeaponSlot) {
+    next.open = true;
+    cockpitWeaponSlot.replaceChildren(next);
+    return;
+  }
+
   if (!target.owner.startsWith('active:')) {
     target.mount.prepend(next);
     return;
@@ -90,9 +128,7 @@ function placeLoadout(target: RenderTarget, next: HTMLDetailsElement): void {
     liveStats.after(next);
     return;
   }
-  const activeLabel = target.mount.querySelector<HTMLElement>(':scope > .active-combat-card-label');
-  if (activeLabel) activeLabel.after(next);
-  else target.mount.prepend(next);
+  target.mount.prepend(next);
 }
 
 function loadoutSummary(loadout: RaidLoadoutSnapshot | undefined): string {
@@ -101,7 +137,7 @@ function loadoutSummary(loadout: RaidLoadoutSnapshot | undefined): string {
   return `Weapon Grid · ${kind} · ${loadout.weapons.length} weapons`;
 }
 
-function renderLoadout(loadout: RaidLoadoutSnapshot | undefined): string {
+function renderLoadout(loadout: RaidLoadoutSnapshot | undefined, skillBoostsOpen: boolean): string {
   if (!loadout || loadout.weaponGridQuality === 'unknown') {
     return `<div class="combat-loadout-unknown">
       <div><p class="eyebrow">BATTLE LOADOUT</p><h3>Weapon Grid — Unknown</h3></div>
@@ -125,7 +161,7 @@ function renderLoadout(loadout: RaidLoadoutSnapshot | undefined): string {
       <div class="combat-regular-weapons">${regular.map((weapon) => renderWeapon(weapon, false)).join('')}</div>
     </div>
     ${additional.length ? `<div class="combat-additional-weapons"><div class="combat-additional-label"><strong>Additional Weapons</strong><span>EX Party</span></div><div class="combat-additional-grid">${additional.map((weapon) => renderWeapon(weapon, false)).join('')}</div></div>` : ''}
-    ${renderCalculator(loadout)}
+    ${renderCalculator(loadout, skillBoostsOpen)}
   `;
 }
 
@@ -133,9 +169,10 @@ function renderWeapon(weapon: RaidLoadoutWeapon, main: boolean): string {
   const imageId = weapon.masterId ?? weapon.imageId;
   const imageUrl = imageId ? wikiEntityImageUrl('weapon', imageId) : undefined;
   const plus = weapon.plus && weapon.plus > 0 ? `<span class="weapon-plus">+${formatNumber(weapon.plus)}</span>` : '';
-  return `<article class="combat-weapon-card${main ? ' main' : ''}" title="${escapeAttribute(weapon.name ?? weapon.masterId ?? `Weapon slot ${weapon.slot}`)}">
+  const label = weapon.name ?? weapon.masterId ?? `Weapon slot ${weapon.slot}`;
+  return `<article class="combat-weapon-card${main ? ' main' : ''}" title="${escapeAttribute(label)}">
     <div class="combat-weapon-art"><span data-loadout-fallback>${weapon.slot}</span>${imageUrl ? `<img data-loadout-image src="${escapeAttribute(imageUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />` : ''}${plus}</div>
-    <div class="combat-weapon-name"><span>Slot ${weapon.slot}</span><strong>${escapeHtml(weapon.name ?? weapon.masterId ?? 'Observed weapon')}</strong></div>
+    <div class="combat-weapon-name"><span>Slot ${weapon.slot}</span><strong>${escapeHtml(label)}</strong></div>
     <div class="combat-weapon-stats"><span>◆ ${optionalNumber(weapon.hp)}</span><span>⚔ ${optionalNumber(weapon.attack)}</span></div>
   </article>`;
 }
@@ -144,10 +181,11 @@ function renderMissingWeapon(slot: number): string {
   return `<article class="combat-weapon-card main missing"><div class="combat-weapon-art"><span data-loadout-fallback>${slot}</span></div><div class="combat-weapon-name"><span>Slot ${slot}</span><strong>Unknown</strong></div></article>`;
 }
 
-function renderCalculator(loadout: RaidLoadoutSnapshot): string {
+function renderCalculator(loadout: RaidLoadoutSnapshot, skillBoostsOpen: boolean): string {
   const calculator = loadout.calculator;
+  const open = skillBoostsOpen ? ' open' : '';
   if (calculator.quality === 'unknown') {
-    return `<div class="combat-skill-boosts unknown"><strong>Weapon Skill Boosts — Unknown</strong><span>Calculator data has not been passively observed for this deck.</span></div>`;
+    return `<details class="combat-skill-boosts unknown"${open}><summary><span class="combat-boost-heading">Weapon Skill Boosts</span><span>Unknown</span></summary><div class="combat-boost-unknown-copy">Calculator data has not been passively observed for this deck.</div></details>`;
   }
   const enhance = calculator.enhancement;
   return `<div class="combat-calculator">
@@ -162,7 +200,7 @@ function renderCalculator(loadout: RaidLoadoutSnapshot): string {
       <div><span>Magna</span><strong>${optionalPercent(enhance.magna)}</strong></div>
       <div><span>Other</span><strong>${optionalPercent(enhance.other)}</strong></div>
     </div>
-    ${calculator.boosts.length ? `<div class="combat-skill-boosts"><span class="combat-boost-heading">Weapon Skill Boosts</span><div class="combat-boost-grid">${calculator.boosts.map(renderBoost).join('')}</div></div>` : ''}
+    ${calculator.boosts.length ? `<details class="combat-skill-boosts"${open}><summary><span class="combat-boost-heading">Weapon Skill Boosts</span><span>${calculator.boosts.length}</span></summary><div class="combat-boost-grid">${calculator.boosts.map(renderBoost).join('')}</div></details>` : ''}
   </div>`;
 }
 
@@ -172,7 +210,46 @@ function renderBoost(boost: RaidWeaponSkillBoost): string {
 }
 
 function loadoutFingerprint(loadout: RaidLoadoutSnapshot | undefined): string {
-  return loadout ? `${loadout.updatedAt}:${loadout.weaponGridQuality}:${loadout.calculator.quality}:${loadout.weapons.length}` : 'missing';
+  if (!loadout) return 'missing';
+  return JSON.stringify({
+    deckId: loadout.deckId ?? null,
+    weaponGridQuality: loadout.weaponGridQuality,
+    weapons: loadout.weapons.map((weapon) => [
+      weapon.slot,
+      weapon.masterId ?? null,
+      weapon.imageId ?? null,
+      weapon.hp ?? null,
+      weapon.attack ?? null,
+      weapon.plus ?? null,
+    ]),
+    additionalWeaponsActive: loadout.additionalWeaponsActive ?? null,
+    calculator: {
+      quality: loadout.calculator.quality,
+      estimatedDamage: loadout.calculator.estimatedDamage ?? null,
+      estimatedAdvantageDamage: loadout.calculator.estimatedAdvantageDamage ?? null,
+      advantageAttribute: loadout.calculator.advantageAttribute ?? null,
+      maxHp: loadout.calculator.maxHp ?? null,
+      enhancement: loadout.calculator.enhancement,
+      boosts: loadout.calculator.boosts.map((boost) => [boost.iconId, boost.label, boost.value ?? null, boost.maxed ?? null]),
+    },
+  });
+}
+
+function rememberLoadoutScroll(mount: HTMLElement): LoadoutScrollState | undefined {
+  const element = mount.querySelector<HTMLElement>('.cockpit-loadout-panel[data-cockpit-loadout-panel="weapons"]');
+  if (!element) return undefined;
+  return { element, top: element.scrollTop, left: element.scrollLeft };
+}
+
+function restoreLoadoutScroll(state: LoadoutScrollState | undefined): void {
+  if (!state) return;
+  state.element.scrollTop = state.top;
+  state.element.scrollLeft = state.left;
+  requestAnimationFrame(() => {
+    if (!state.element.isConnected) return;
+    state.element.scrollTop = state.top;
+    state.element.scrollLeft = state.left;
+  });
 }
 
 function sumWeaponStat(weapons: readonly RaidLoadoutWeapon[], key: 'hp' | 'attack'): number | undefined {

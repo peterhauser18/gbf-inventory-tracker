@@ -1,5 +1,11 @@
 import { ingestAccountRecord } from './account/ingest.ts';
 import { loadAccountDatabase, resetAccountDatabase, saveAccountDatabase } from './account/storage.ts';
+import {
+  clearObservedActorImageCache,
+  parseObservedActorImageResponse,
+  storeObservedActorImageBody,
+} from './actor-image-cache.ts';
+import { parseObservedDeckSelectionRequest, type ObservedDeckSelection } from './capture/deck-selection.ts';
 import { CaptureEventBuffer } from './capture/event-buffer.ts';
 import {
   processObservedResponse,
@@ -17,6 +23,7 @@ import {
   startCaptureScan,
 } from './capture/storage.ts';
 import { isTerminalResult, shouldRetargetObservation } from './capture/target-policy.ts';
+import { rememberObservedBattleDeckSelection } from './combat/loadout.ts';
 import {
   clearCombatParseContext,
   clearCombatStorage,
@@ -48,6 +55,7 @@ const STATE_KEY = 'gbfit:capture-state';
 const NETWORK_MAX_TOTAL_BUFFER_SIZE = 32 * 1024 * 1024;
 const NETWORK_MAX_RESOURCE_BUFFER_SIZE = 8 * 1024 * 1024;
 const CAPTURE_NETWORK_METHODS = new Set([
+  'Network.requestWillBeSent',
   'Network.responseReceived',
   'Network.loadingFinished',
   'Network.loadingFailed',
@@ -55,6 +63,8 @@ const CAPTURE_NETWORK_METHODS = new Set([
 const pendingResponses = new CaptureEventBuffer();
 const pendingTreasureIcons = new Map<string, { itemId: string }>();
 const pendingEnemyIcons = new Map<string, { enemyId: string; mimeType: string }>();
+const pendingActorImages = new Map<string, { assetId: string; mimeType: string }>();
+const pendingDeckSelections = new Map<number, ObservedDeckSelection & { scanId: string }>();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
 let targetQueue: Promise<void> = Promise.resolve();
@@ -68,6 +78,14 @@ type RuntimeState = {
   combatTabId?: number;
   combatInstanceId?: string;
   error?: string;
+};
+
+type NetworkRequestWillBeSent = {
+  request?: {
+    url?: string;
+    method?: string;
+    postData?: string;
+  };
 };
 
 type NetworkResponseReceived = {
@@ -181,6 +199,7 @@ async function queueLocalCleanup(mode: LocalCleanupMode): Promise<void> {
   if (mode === 'all-except-account') {
     await clearObservedTreasureIconCache();
     await clearObservedEnemyIconCache();
+    await clearObservedActorImageCache();
   }
   await setRuntimeState({ active: false });
 }
@@ -197,9 +216,7 @@ async function startObservation(explicitTabId?: number): Promise<CaptureStatusRe
   const scanId = crypto.randomUUID();
   let scanStarted = false;
   try {
-    pendingResponses.clear();
-    pendingTreasureIcons.clear();
-    pendingEnemyIcons.clear();
+    clearPendingObservationData();
     await clearCombatParseContext();
     await chrome.debugger.attach(target, DEBUGGER_PROTOCOL_VERSION);
     await startCaptureScan(scanId);
@@ -247,9 +264,7 @@ async function stopObservation(): Promise<CaptureStatusResponse> {
   if (!state.active || !state.scanId) return await getStatus();
 
   await setRuntimeState({ active: false, scanId: state.scanId });
-  pendingResponses.clear();
-  pendingTreasureIcons.clear();
-  pendingEnemyIcons.clear();
+  clearPendingObservationData();
   await finishCaptureScan(state.scanId);
   await clearCombatParseContext();
   if (state.tabId !== undefined) {
@@ -286,9 +301,7 @@ async function switchObservationTarget(state: RuntimeState, candidateTabId: numb
   delete preservedState.tabId;
   delete preservedState.error;
 
-  pendingResponses.clear();
-  pendingTreasureIcons.clear();
-  pendingEnemyIcons.clear();
+  clearPendingObservationData();
   await setRuntimeState(preservedState);
 
   if (previousTabId !== undefined) {
@@ -386,9 +399,7 @@ async function releaseUnavailableTarget(tabId: number, reason: string): Promise<
   delete combatInstances[tabKey];
   if (state.tabId !== tabId && !hadCombat) return;
 
-  pendingResponses.clear();
-  pendingTreasureIcons.clear();
-  pendingEnemyIcons.clear();
+  clearPendingObservationData();
   const next: RuntimeState = {
     ...state,
     active: true,
@@ -414,12 +425,25 @@ async function handleDebuggerEvent(
   method: string,
   params: object | undefined,
 ): Promise<void> {
+  if (method === 'Network.requestWillBeSent') {
+    const event = params as NetworkRequestWillBeSent | undefined;
+    const request = event?.request;
+    if (!request?.url) return;
+    const selection = parseObservedDeckSelectionRequest(request.url, request.method, request.postData);
+    if (!selection) return;
+    const state = await getRuntimeState();
+    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    pendingDeckSelections.set(tabId, { ...selection, scanId: state.scanId });
+    return;
+  }
+
   if (method === 'Network.loadingFailed') {
     const requestId = (params as { requestId?: string } | undefined)?.requestId;
     if (requestId) {
       pendingResponses.forget(requestId);
       pendingTreasureIcons.delete(requestId);
       pendingEnemyIcons.delete(requestId);
+      pendingActorImages.delete(requestId);
     }
     return;
   }
@@ -453,6 +477,19 @@ async function handleDebuggerEvent(
       const state = await getRuntimeState();
       if (!state.active || state.tabId !== tabId || !state.scanId) return;
       pendingEnemyIcons.set(requestId, { enemyId: enemyIcon.enemyId, mimeType: enemyIcon.mimeType });
+      return;
+    }
+
+    const actorImage = parseObservedActorImageResponse(
+      url,
+      event?.type,
+      event?.response?.mimeType,
+      event?.response?.status,
+    );
+    if (actorImage) {
+      const state = await getRuntimeState();
+      if (!state.active || state.tabId !== tabId || !state.scanId) return;
+      pendingActorImages.set(requestId, { assetId: actorImage.assetId, mimeType: actorImage.mimeType });
       return;
     }
 
@@ -491,6 +528,15 @@ async function handleDebuggerEvent(
     const state = await getRuntimeState();
     if (!state.active || state.tabId !== tabId || !state.scanId) return;
     void captureObservedEnemyIcon(tabId, requestId, pendingEnemyIcon.enemyId, pendingEnemyIcon.mimeType);
+    return;
+  }
+
+  const pendingActorImage = pendingActorImages.get(requestId);
+  pendingActorImages.delete(requestId);
+  if (pendingActorImage) {
+    const state = await getRuntimeState();
+    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    void captureObservedActorImage(tabId, requestId, pendingActorImage.assetId, pendingActorImage.mimeType);
     return;
   }
 
@@ -539,6 +585,27 @@ async function captureObservedEnemyIcon(
   }
 }
 
+async function captureObservedActorImage(
+  tabId: number,
+  requestId: string,
+  assetId: string,
+  mimeType: string,
+): Promise<void> {
+  try {
+    const body = await readResponseBodyWithRetry({
+      getResponseBody: async (id): Promise<DebuggerResponseBody> =>
+        (await chrome.debugger.sendCommand(
+          { tabId },
+          'Network.getResponseBody',
+          { requestId: id },
+        )) as DebuggerResponseBody,
+    }, requestId);
+    await storeObservedActorImageBody(assetId, mimeType, body);
+  } catch {
+    // Actor images are optional local visuals copied only from responses already loaded by the game.
+  }
+}
+
 async function captureObservedResponse(tabId: number, scanId: string, meta: ObservedResponse): Promise<void> {
   try {
     await processObservedResponse(
@@ -563,6 +630,7 @@ async function captureObservedResponse(tabId: number, scanId: string, meta: Obse
 async function saveObservedResponse(tabId: number, record: CapturedResponseRecord): Promise<void> {
   const route = classifyObservedResponseUrl(record.meta.url);
   if (route === 'combat') {
+    await rememberPendingDeckSelectionForBattle(tabId, record);
     const state = await getRuntimeState();
     const parse = await ingestCapturedCombatRecord(record, combatInstanceForTab(state, tabId) ?? null);
     if (parse?.instanceId) {
@@ -574,6 +642,40 @@ async function saveObservedResponse(tabId: number, record: CapturedResponseRecor
 
   await queueAccountIngest(record);
   await saveCapturedResponse(record);
+}
+
+async function rememberPendingDeckSelectionForBattle(
+  tabId: number,
+  record: CapturedResponseRecord,
+): Promise<void> {
+  const instanceId = battleStartInstanceId(record);
+  if (!instanceId) return;
+  const selection = pendingDeckSelections.get(tabId);
+  if (!selection) return;
+  if (selection.scanId !== record.scanId) {
+    pendingDeckSelections.delete(tabId);
+    return;
+  }
+  if (selection.raidId && selection.raidId !== instanceId) return;
+  await rememberObservedBattleDeckSelection(record.scanId, instanceId, selection.deckId);
+  pendingDeckSelections.delete(tabId);
+}
+
+function battleStartInstanceId(record: CapturedResponseRecord): string | undefined {
+  try {
+    const path = new URL(record.meta.url).pathname;
+    if (path !== '/rest/multiraid/start.json' && path !== '/rest/raid/start.json') return undefined;
+  } catch {
+    return undefined;
+  }
+  const body = record.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+  const value = (body as Record<string, unknown>).raid_id;
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const normalized = String(value).trim();
+  return /^\d+$/.test(normalized) && normalized !== '0' && normalized.length <= 120
+    ? normalized
+    : undefined;
 }
 
 async function updateCombatLock(tabId: number, instanceId: string, result: RaidResult): Promise<void> {
@@ -638,9 +740,7 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   const state = await getRuntimeState();
   if (!state.active || state.tabId !== tabId || !state.scanId) return;
 
-  pendingResponses.clear();
-  pendingTreasureIcons.clear();
-  pendingEnemyIcons.clear();
+  clearPendingObservationData();
   if (reason === 'canceled_by_user') {
     await clearCombatParseContext();
     await finishCaptureScan(state.scanId);
@@ -666,6 +766,14 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   void retargetToFocusedGbfTab();
 }
 
+function clearPendingObservationData(): void {
+  pendingResponses.clear();
+  pendingTreasureIcons.clear();
+  pendingEnemyIcons.clear();
+  pendingActorImages.clear();
+  pendingDeckSelections.clear();
+}
+
 function normalizeResourceType(type: string | undefined): CaptureResourceType {
   if (type === 'XHR') return 'xhr';
   if (type === 'Fetch') return 'fetch';
@@ -684,7 +792,7 @@ async function getStatus(): Promise<CaptureStatusResponse> {
     active: state.active,
     message: state.active
       ? state.tabId !== undefined
-        ? 'Debugger observation is active. Only allowlisted GBF responses are read.'
+        ? 'Debugger observation is active. Only allowlisted GBF responses and selected deck IDs from game-issued quest/join requests are read.'
         : 'Observation is active and waiting for an active verified GBF tab.'
       : scan
         ? 'Observation is stopped. Start it again to update account or combat data.'

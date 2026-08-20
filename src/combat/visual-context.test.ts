@@ -24,7 +24,7 @@ function startRecord(body: unknown): CapturedResponseRecord {
   };
 }
 
-test('verified start keeps pid_image on matching actors without changing actor identity', () => {
+test('verified start prefers exact local battle ds portrait ids without changing actor identity', () => {
   const context: CombatParseContext = {
     raidTechnicalId: 'raid',
     actorSlots: [
@@ -37,13 +37,32 @@ test('verified start keeps pid_image on matching actors without changing actor i
     ],
   };
   enrichObservedActorVisuals(startRecord({ player: { param: [
-    { pid: 'mc', pid_image: '450301' },
-    { pid: 'ally', pid_image: '3040001000' },
+    {
+      pid: 'mc',
+      pid_image: 'fallback_mc',
+      ability: [{ src: '/assets_en/123/img/sp/assets/leader/ds/450301.jpg' }],
+    },
+    {
+      pid: 'ally',
+      pid_image: 'fallback_ally',
+      ability: [{ src: 'https://prd-game-a-granbluefantasy.akamaized.net/assets_en/123/img/sp/assets/npc/ds/3040001000.jpg' }],
+    },
   ] } }), context);
 
   assert.equal(context.actorSlots[0]?.id, 'mc');
   assert.equal(actorVisualImageId(context.actorSlots[0]), '450301');
   assert.equal(actorVisualImageId(context.actors?.[1]), '3040001000');
+});
+
+test('verified start falls back to safe pid_image when no battle ds src is present', () => {
+  const context: CombatParseContext = {
+    raidTechnicalId: 'raid',
+    actorSlots: [{ id: 'ally', name: 'Ally' }],
+  };
+  enrichObservedActorVisuals(startRecord({ player: { param: [
+    { pid: 'ally', pid_image: '3040001000' },
+  ] } }), context);
+  assert.equal(actorVisualImageId(context.actorSlots[0]), '3040001000');
 });
 
 test('boss cjs values expose the image asset id independently from enemy_id', () => {

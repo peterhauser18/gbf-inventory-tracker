@@ -1,0 +1,171 @@
+.active-combat-card {
+  padding-top: 8px;
+}
+
+.active-combat-card .preset-combat-cockpit {
+  height: clamp(620px, calc(100dvh - 165px), 920px);
+}
+
+.active-combat-actions-only {
+  justify-content: flex-end;
+  margin: 8px 4px 0;
+}
+
+/* Character and Summon cards stay compact at the top of the available panel.
+   Their labels follow the image immediately instead of being pushed to the
+   bottom by the viewport-filling loadout container. */
+.preset-combat-cockpit .cockpit-characters-panel .party-cards-compact,
+.preset-combat-cockpit .cockpit-summons-panel .summon-strip {
+  height: auto !important;
+  align-content: start !important;
+  align-items: start !important;
+  grid-auto-rows: auto !important;
+}
+
+.preset-combat-cockpit .cockpit-characters-panel .party-card,
+.preset-combat-cockpit .cockpit-summons-panel .summon-card {
+  height: auto !important;
+  min-height: 0;
+  align-self: start;
+}
+
+.preset-combat-cockpit .cockpit-characters-panel .party-card {
+  grid-template-rows: auto auto !important;
+  background: transparent;
+}
+
+/* GBF's observed battle `ds` actor assets are landscape strips, unlike Summon art. */
+.preset-combat-cockpit .cockpit-characters-panel .party-card-visual {
+  position: relative;
+  width: 100%;
+  height: auto !important;
+  aspect-ratio: 16 / 9;
+  min-height: 0 !important;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.preset-combat-cockpit .cockpit-characters-panel .party-card-visual .combat-image {
+  width: 100%;
+  height: 100% !important;
+  min-height: 0 !important;
+  background: transparent !important;
+}
+
+.preset-combat-cockpit .cockpit-characters-panel .party-card-visual .combat-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  object-position: center center !important;
+}
+
+.preset-combat-cockpit .cockpit-characters-panel .party-card-copy {
+  display: block;
+  min-height: 0;
+  padding: 4px 5px 3px;
+  background: transparent;
+}
+
+.preset-combat-cockpit .cockpit-characters-panel .party-card-copy > strong {
+  display: block;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-combat-cockpit .cockpit-characters-panel .party-card-copy > .actor-hp,
+.preset-combat-cockpit .cockpit-characters-panel .party-card-copy > .party-card-damage {
+  display: none !important;
+}
+
+.preset-combat-cockpit .cockpit-summons-panel .summon-card {
+  grid-template-rows: auto auto auto !important;
+}
+
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image {
+  position: relative;
+  width: 100%;
+  height: auto !important;
+  aspect-ratio: 1 / 2;
+  min-height: 0 !important;
+  overflow: hidden;
+}
+
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  object-position: center center !important;
+}
+
+/* Weapon labels are easier to scan when centered under each grid card. */
+.preset-combat-cockpit .cockpit-weapon-slot .combat-weapon-name,
+.preset-combat-cockpit .cockpit-weapon-slot .combat-weapon-name strong {
+  text-align: center;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts {
+  display: block !important;
+  margin-top: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+  padding: 5px 8px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 9px;
+  user-select: none;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts > summary::-webkit-details-marker {
+  display: none;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts > summary::after {
+  content: '+';
+  margin-left: auto;
+  font-weight: 800;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts[open] > summary::after {
+  content: '−';
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts > summary > span:last-child {
+  color: var(--muted, #92a2af);
+  font-variant-numeric: tabular-nums;
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-skill-boosts .combat-boost-grid {
+  margin: 0;
+  padding: 6px 8px 8px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+}
+
+.active-combat-card .preset-combat-cockpit .cockpit-weapon-slot .combat-boost-unknown-copy {
+  padding: 6px 8px 8px;
+  border-top: 1px solid rgba(255, 255, 255, .06);
+  color: var(--muted, #92a2af);
+  font-size: 9px;
+}
+
+@media (max-width: 760px) {
+  .active-combat-card .preset-combat-cockpit {
+    height: clamp(620px, calc(100dvh - 150px), 920px);
+  }
+
+  .active-combat-actions-only {
+    width: auto;
+    margin-left: 4px;
+  }
+}

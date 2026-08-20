@@ -1,0 +1,218 @@
+.preset-combat-cockpit .combat-live-stats {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+}
+.preset-combat-cockpit .live-stat {
+  display: grid !important;
+  min-width: 0;
+  border-top: 0 !important;
+}
+.preset-combat-cockpit .live-stat:nth-child(4) {
+  border-left: 1px solid #e2e3dd !important;
+}
+
+.preset-combat-cockpit .cockpit-table {
+  display: flex;
+  flex-direction: column;
+}
+.preset-combat-cockpit .cockpit-head {
+  flex: 0 0 auto;
+}
+.preset-combat-cockpit button.cockpit-row {
+  flex: 1 1 0;
+  min-height: 40px;
+}
+.preset-combat-cockpit .cockpit-row.dead {
+  opacity: .52;
+  background: rgba(90, 90, 90, .05);
+}
+.preset-combat-cockpit .cockpit-row.dead .combat-image img,
+.preset-combat-cockpit .party-card.dead .combat-image img {
+  filter: grayscale(1);
+}
+.preset-combat-cockpit .party-card.dead {
+  opacity: .58;
+}
+
+.preset-combat-cockpit .party-cards-compact .party-card-history-note {
+  display: none !important;
+}
+.preset-combat-cockpit .party-cards-compact {
+  height: auto !important;
+  min-height: 0;
+  align-content: start !important;
+  align-items: start !important;
+  grid-auto-rows: auto !important;
+}
+.preset-combat-cockpit .party-cards-compact .party-card {
+  height: auto !important;
+  min-height: 0;
+  align-self: start;
+  grid-template-rows: auto auto !important;
+}
+.preset-combat-cockpit .party-cards-compact .party-card-visual {
+  position: relative;
+  width: 100%;
+  height: auto !important;
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  overflow: hidden;
+}
+.preset-combat-cockpit .party-cards-compact .party-card-visual .combat-image {
+  width: 100%;
+  height: 100% !important;
+  min-height: 0;
+}
+.preset-combat-cockpit .party-cards-compact .party-card-visual .combat-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+.preset-combat-cockpit .party-cards-compact .party-card-copy {
+  display: block !important;
+  min-height: 0;
+  padding: 4px 5px 3px;
+}
+.preset-combat-cockpit .party-cards-compact .party-card-copy > strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preset-combat-cockpit .party-cards-compact .party-card-copy > .actor-hp,
+.preset-combat-cockpit .party-cards-compact .party-card-copy > .party-card-damage {
+  display: none !important;
+}
+.preset-combat-cockpit .party-cards-compact .party-slot,
+.preset-combat-cockpit .party-cards-compact .state-tag {
+  position: absolute !important;
+  z-index: 4;
+  top: 4px;
+  margin: 0 !important;
+  padding: 2px 5px !important;
+  border-radius: 5px;
+  background: rgba(7, 15, 22, .84);
+  color: #f3f7fa;
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  pointer-events: none;
+}
+.preset-combat-cockpit .party-cards-compact .party-slot {
+  left: 4px;
+}
+.preset-combat-cockpit .party-cards-compact .state-tag {
+  display: inline-flex !important;
+  right: 4px;
+  left: auto;
+  width: fit-content;
+}
+
+.preset-combat-cockpit .cockpit-summons-panel .summon-strip {
+  height: auto !important;
+  min-height: 0;
+  align-content: start !important;
+  align-items: start !important;
+  grid-auto-rows: auto !important;
+}
+.preset-combat-cockpit .cockpit-summons-panel .summon-card {
+  height: auto !important;
+  min-height: 0;
+  align-self: start;
+  grid-template-rows: auto auto auto !important;
+}
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image {
+  position: relative;
+  width: 100%;
+  height: auto !important;
+  aspect-ratio: 1 / 2;
+  min-height: 0;
+  overflow: hidden;
+}
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain !important;
+  object-position: center !important;
+}
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image > .summon-role-label {
+  position: absolute !important;
+  z-index: 4;
+  top: 4px !important;
+  left: 4px !important;
+  right: auto !important;
+  margin: 0 !important;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(7, 15, 22, .84);
+  color: #f3f7fa;
+  font-size: 8px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  pointer-events: none;
+}
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image > .summon-role-label.support {
+  right: 4px !important;
+  left: auto !important;
+}
+
+.raid-card .raid-head.raid-history-tools-only {
+  margin: 0 0 8px;
+  min-height: 30px;
+  align-items: center;
+}
+.raid-card .raid-head.raid-history-tools-only > div:first-child {
+  min-width: 0;
+}
+.raid-card .raid-head.raid-history-tools-only .eyebrow,
+.raid-card .raid-head.raid-history-tools-only h3 {
+  display: none;
+}
+.raid-card .raid-head.raid-history-tools-only .muted {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.raid-card .raid-section.raid-combat-flat {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.raid-card .raid-section.raid-combat-flat > .raid-section-body {
+  padding: 0;
+}
+.raid-card .raid-section.raid-combat-flat > summary {
+  display: none;
+}
+.raid-card .preset-combat-cockpit {
+  height: clamp(620px, calc(100dvh - 260px), 820px);
+  max-height: none;
+  grid-template-rows: auto minmax(0, 1.25fr) minmax(0, .85fr) 34px;
+  overflow: hidden;
+}
+
+:root[data-theme='dark'] .preset-combat-cockpit .live-stat:nth-child(4) {
+  border-left-color: #34372f !important;
+}
+
+@media (max-width: 620px) {
+  .preset-combat-cockpit .combat-live-stats {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+  .preset-combat-cockpit .live-stat:nth-child(4) {
+    border-left: 0 !important;
+  }
+  .preset-combat-cockpit .live-stat:nth-child(n+4) {
+    border-top: 1px solid #e2e3dd !important;
+  }
+  :root[data-theme='dark'] .preset-combat-cockpit .live-stat:nth-child(n+4) {
+    border-top-color: #34372f !important;
+  }
+}

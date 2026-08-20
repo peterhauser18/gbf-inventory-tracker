@@ -5,6 +5,7 @@ import {
   loadoutSignaturesMatch,
   normalizeBattleStartLoadout,
   normalizePartyDeckLoadout,
+  selectLateEnrichmentDecks,
   selectMatchingDeck,
   weaponBoostLabel,
 } from './loadout.ts';
@@ -136,12 +137,71 @@ test('strict signature correlation requires all five NPCs, all five own summons 
   assert.equal(loadoutSignaturesMatch(start.signature, changed.signature), false);
 });
 
-test('ambiguous matching decks never select or overwrite a raid grid', () => {
+test('ambiguous matching decks never select or overwrite a raid grid without an observed deck id', () => {
   const start = normalizeBattleStartLoadout(startBody(), 2000)!;
   const one = normalizePartyDeckLoadout(deckBody(10, 84), 1000)!;
   const two = normalizePartyDeckLoadout(deckBody(10, 85), 1100)!;
   assert.equal(selectMatchingDeck(start.signature, [one]), one);
   assert.equal(selectMatchingDeck(start.signature, [one, two]), undefined);
+});
+
+test('observed selected deck id is authoritative even when the fallback signature differs', () => {
+  const start = normalizeBattleStartLoadout(startBody(), 2000)!;
+  start.deckId = '84';
+  const selected = normalizePartyDeckLoadout(deckBody(10, 84), 2100)!;
+  selected.signature.summonIds[4] = 'different';
+  const enriched = enrichRaidLoadout(start, selected);
+  assert.equal(enriched.deckId, '84');
+  assert.equal(enriched.correlation, 'deck-id');
+  assert.equal(enriched.weaponGridQuality, 'known');
+  assert.equal(enriched.weapons.length, 10);
+});
+
+test('late enrichment prefers one active signature match over older matching history in the same scan', () => {
+  const start = normalizeBattleStartLoadout(startBody(), 2000)!;
+  const deck = normalizePartyDeckLoadout(deckBody(), 2100)!;
+  const assignments = selectLateEnrichmentDecks([
+    { instanceId: 'old-raid', lastObservedAt: 1900, loadout: start, active: false },
+    { instanceId: 'current-raid', lastObservedAt: 2200, loadout: start, active: true },
+  ], [deck]);
+  assert.equal(assignments.get('current-raid'), deck);
+  assert.equal(assignments.has('old-raid'), false);
+});
+
+test('late enrichment still fails closed when two active raids only match by inferred signature', () => {
+  const start = normalizeBattleStartLoadout(startBody(), 2000)!;
+  const deck = normalizePartyDeckLoadout(deckBody(), 2100)!;
+  const assignments = selectLateEnrichmentDecks([
+    { instanceId: 'active-a', lastObservedAt: 2200, loadout: start, active: true },
+    { instanceId: 'active-b', lastObservedAt: 2300, loadout: start, active: true },
+  ], [deck]);
+  assert.equal(assignments.size, 0);
+});
+
+test('exact selected deck ids can safely enrich matching active and historical raids independently', () => {
+  const active = normalizeBattleStartLoadout(startBody(), 2000)!;
+  const history = normalizeBattleStartLoadout(startBody(), 1900)!;
+  active.deckId = '84';
+  history.deckId = '84';
+  active.signature.summonIds[4] = 'active-shape-drift';
+  history.signature.summonIds[4] = 'history-shape-drift';
+  const deck = normalizePartyDeckLoadout(deckBody(10, 84), 2100)!;
+  const assignments = selectLateEnrichmentDecks([
+    { instanceId: 'active-a', lastObservedAt: 2200, loadout: active, active: true },
+    { instanceId: 'history-a', lastObservedAt: 1900, loadout: history, active: false },
+  ], [deck]);
+  assert.equal(assignments.get('active-a'), deck);
+  assert.equal(assignments.get('history-a'), deck);
+});
+
+test('known selected deck id does not fall back to a different signature-matching deck', () => {
+  const start = normalizeBattleStartLoadout(startBody(), 2000)!;
+  start.deckId = '85';
+  const otherDeck = normalizePartyDeckLoadout(deckBody(10, 84), 2100)!;
+  const assignments = selectLateEnrichmentDecks([
+    { instanceId: 'raid-a', lastObservedAt: 2200, loadout: start, active: true },
+  ], [otherDeck]);
+  assert.equal(assignments.size, 0);
 });
 
 test('late enrichment attaches a known grid/calculator and preserves authoritative battle facts', () => {

@@ -6,10 +6,11 @@ import test from 'node:test';
 
 const srcRoot = fileURLToPath(new URL('../', import.meta.url));
 const background = readFileSync(new URL('../background.ts', import.meta.url), 'utf8');
+const liveFeedObserver = readFileSync(new URL('../combat/live-feed-observer.ts', import.meta.url), 'utf8');
 const captureTypes = readFileSync(new URL('./types.ts', import.meta.url), 'utf8');
 const manifest = JSON.parse(
   readFileSync(new URL('../../public/manifest.json', import.meta.url), 'utf8'),
-) as { content_scripts?: unknown[] };
+) as { content_scripts?: unknown[]; host_permissions?: string[] };
 
 function runtimeSources(directory: string): string[] {
   const sources: string[] = [];
@@ -39,6 +40,23 @@ test('runtime does not instrument or generate GBF request primitives', () => {
     assert.doesNotMatch(source, /sendBeacon\s*\(/);
     assert.doesNotMatch(source, /fetch\s*\(\s*['"`]https:\/\/game\.granbluefantasy\.jp/i);
   }
+});
+
+test('extension network surface is wiki-only and debugger commands stay read-only', () => {
+  assert.deepEqual(manifest.host_permissions, ['https://gbf.wiki/*']);
+
+  const debuggerSources = [background, liveFeedObserver];
+  const commandPattern = /chrome\.debugger\.sendCommand\(\s*\{[^}]*\}\s*,\s*['"]([^'"]+)['"]/g;
+  const commands = debuggerSources.flatMap((source) =>
+    [...source.matchAll(commandPattern)].map((match) => match[1]),
+  );
+  const callCount = debuggerSources.reduce(
+    (total, source) => total + (source.match(/chrome\.debugger\.sendCommand\s*\(/g)?.length ?? 0),
+    0,
+  );
+
+  assert.equal(commands.length, callCount, 'Every debugger command must be a statically reviewable literal.');
+  assert.deepEqual([...new Set(commands)].sort(), ['Network.enable', 'Network.getResponseBody']);
 });
 
 test('debugger observation start targets and revalidates the explicitly selected tab', () => {

@@ -117,13 +117,68 @@ function renderCypherModern(view: CombatView): string {
 }
 
 function renderCockpit(view: CombatView): string {
+  const secondaryGroup = `${cockpitTabKey(view)}-secondary`;
   return `<div class="combat-preset preset-combat-cockpit">
-    ${renderRaidHeader(view)}
-    ${renderLiveStats(view)}
-    ${accordion(view, 'party', 'Party & inline analysis', renderCockpitTable(view))}
-    ${accordion(view, 'summons', 'Summons', renderSummonsPanel(view, 'strip'))}
-    <div class="preset-bottom-split">${accordion(view, 'participants', 'Participants', renderParticipantsTable(view))}${accordion(view, 'log', 'Combat Log', renderLog(view))}</div>
+    <div class="cockpit-summary">
+      ${renderRaidHeader(view)}
+      ${renderLiveStats(view)}
+    </div>
+    ${renderCockpitTable(view)}
+    ${renderCockpitLoadout(view)}
+    <div class="cockpit-secondary">
+      ${compactAccordion('participants', 'Participants', renderParticipantsTable(view), secondaryGroup)}
+      ${compactAccordion('log', 'Combat Log', renderLog(view), secondaryGroup)}
+    </div>
   </div>`;
+}
+
+function renderCockpitLoadout(view: CombatView): string {
+  const key = cockpitTabKey(view);
+  const charactersId = `${key}-characters`;
+  const summonsId = `${key}-summons`;
+  const weaponsId = `${key}-weapons`;
+  return `<section class="cockpit-loadout" data-cockpit-loadout>
+    <input class="cockpit-tab-input" type="radio" name="${escapeAttribute(key)}" id="${escapeAttribute(charactersId)}" checked />
+    <input class="cockpit-tab-input" type="radio" name="${escapeAttribute(key)}" id="${escapeAttribute(summonsId)}" />
+    <input class="cockpit-tab-input" type="radio" name="${escapeAttribute(key)}" id="${escapeAttribute(weaponsId)}" />
+    <div class="cockpit-loadout-tabs" role="tablist" aria-label="Combat loadout view">
+      <label for="${escapeAttribute(charactersId)}">Characters</label>
+      <label for="${escapeAttribute(summonsId)}">Summons</label>
+      <label for="${escapeAttribute(weaponsId)}">Weapons</label>
+    </div>
+    <div class="cockpit-loadout-panels">
+      <div class="cockpit-loadout-panel cockpit-characters-panel" data-cockpit-loadout-panel="characters">
+        ${renderCockpitCharacterPanel(view)}
+      </div>
+      <div class="cockpit-loadout-panel cockpit-summons-panel" data-cockpit-loadout-panel="summons">
+        ${renderSummonStrip(view)}
+      </div>
+      <div class="cockpit-loadout-panel cockpit-weapons-panel" data-cockpit-loadout-panel="weapons">
+        <div class="cockpit-weapon-slot" data-cockpit-weapon-slot>
+          <p class="muted">Weapon Grid — Unknown. Waiting for a matching passive Party deck observation.</p>
+        </div>
+      </div>
+    </div>
+  </section>`;
+}
+
+function renderCockpitCharacterPanel(view: CombatView): string {
+  if (!view.selected) {
+    return `<div class="cockpit-character-empty">${renderPartyCards(view, 'compact')}</div>`;
+  }
+  return `<div class="cockpit-character-panel">
+    ${renderPartyCards(view, 'compact')}
+    <details class="cockpit-selected-analysis">
+      <summary>Selected analysis · ${escapeHtml(view.selected.actorName ?? 'Character')}</summary>
+      <div>${renderSelectedAnalysis(view, 'inline')}</div>
+    </details>
+  </div>`;
+}
+
+function cockpitTabKey(view: CombatView): string {
+  const identity = view.raid.instanceId
+    ?? `${view.raid.raidTechnicalId}-${view.raid.observedStartedAt ?? view.raid.lastObservedAt}`;
+  return `cockpit-${identity}`.replace(/[^a-zA-Z0-9_-]/g, '-');
 }
 
 function renderPartyFirst(view: CombatView): string {
@@ -232,7 +287,7 @@ function renderPartyCards(view: CombatView, size: 'large' | 'hero' | 'stacked' |
 
 function renderCockpitTable(view: CombatView): string {
   const members = partyMembers(view);
-  if (!members.length) return '<p class="muted">No verified party snapshot observed yet.</p>';
+  if (!members.length) return '<section class="cockpit-table"><p class="muted">No verified party snapshot observed yet.</p></section>';
   return `<section class="cockpit-table">
     <div class="cockpit-row cockpit-head"><span>Character</span><span>Total</span><span>Normal</span><span>Skill</span><span>Ougi</span><span>Echo</span><span>Supp.</span><span>Crit</span></div>
     ${members.map((member) => {
@@ -242,7 +297,7 @@ function renderCockpitTable(view: CombatView): string {
       return `<button type="button" class="cockpit-row ${selected ? 'selected' : ''}"${select}>
         <span class="cockpit-character">${renderImage(member.metadata?.imageUrl, member.label)}<span><strong>${escapeHtml(member.label)}</strong>${renderHp(member.actor)}</span></span>
         <strong>${analysis ? formatNumber(analysis.totalDamage) : '—'}</strong><span>${optionalNumber(analysis?.breakdown.normal)}</span><span>${optionalNumber(analysis?.breakdown.skill)}</span><span>${optionalNumber(analysis?.breakdown.ougi)}</span><span>${optionalNumber(analysis?.breakdown.echo)}</span><span>${optionalNumber(analysis?.breakdown.supplemental)}</span><span>${formatPercent(analysis?.criticalRate)}</span>
-      </button>${selected && analysis ? `<div class="cockpit-inline-detail">${renderSelectedAnalysis(view, 'inline')}</div>` : ''}`;
+      </button>`;
     }).join('')}
   </section>`;
 }
@@ -378,6 +433,10 @@ function summonStatus(summon: CombatSummonContext): string {
 function accordion(view: CombatView, key: string, label: string, body: string): string {
   const open = !view.collapsed.has(key);
   return `<details class="combat-accordion" data-combat-collapse="${escapeAttribute(key)}"${open ? ' open' : ''}><summary>${escapeHtml(label)}</summary><div>${body}</div></details>`;
+}
+
+function compactAccordion(key: string, label: string, body: string, group: string): string {
+  return `<details class="combat-accordion cockpit-secondary-panel" name="${escapeAttribute(group)}" data-combat-collapse="${escapeAttribute(key)}"><summary>${escapeHtml(label)}</summary><div>${body}</div></details>`;
 }
 
 function headerFact(label: string, value: string): string {

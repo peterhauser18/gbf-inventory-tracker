@@ -1,0 +1,60 @@
+.raids-compact-header {
+  min-height: 54px;
+  padding-top: 10px;
+  padding-bottom: 6px;
+  justify-content: flex-end;
+}
+.raids-compact-header .raid-history-search {
+  width: min(280px, 100%);
+  margin-left: auto;
+}
+.raid-list > .raid-card[hidden] { display: none !important; }
+
+.raid-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  margin: 14px 0 10px;
+}
+.raids-compact-header + .raid-pagination {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+.raid-page-button {
+  min-width: 38px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--border, #cfd0c9);
+  border-radius: 8px;
+  background: var(--panel, #fff);
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.raid-page-button:first-child,
+.raid-page-button:last-child { min-width: 46px; font-size: 18px; line-height: 1; }
+.raid-page-button.active {
+  border-color: #2388bb;
+  background: rgba(35, 136, 187, .16);
+  color: #55c7ff;
+}
+.raid-page-button:disabled { opacity: .35; cursor: default; }
+.raid-toolbar.raid-toolbar-bottom {
+  margin: 10px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #d9dbd3);
+}
+.raid-toolbar.raid-toolbar-bottom .import-button { order: 2; }
+.raid-toolbar.raid-toolbar-bottom .muted { order: 1; }
+
+@media (max-width: 620px) {
+  .raids-compact-header { align-items: stretch; }
+  .raids-compact-header .raid-history-search { width: 100%; }
+  .raid-pagination { gap: 4px; }
+  .raid-page-button { min-width: 32px; height: 32px; padding: 0 7px; }
+  .raid-toolbar.raid-toolbar-bottom { align-items: stretch; flex-direction: column; }
+}

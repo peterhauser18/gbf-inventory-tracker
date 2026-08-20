@@ -144,3 +144,302 @@ button.cockpit-row { cursor: pointer; }
 :root[data-theme='dark'] .actor-hp,
 :root[data-theme='dark'] .analysis-stat small,
 :root[data-theme='dark'] .summon-card > span:last-child { color: #a7aaa0; }
+
+/* Compact Combat Cockpit: keep the live view bounded in small standalone windows. */
+.preset-combat-cockpit {
+  gap: 8px;
+  min-height: 0;
+  max-height: min(560px, calc(100dvh - 118px));
+  grid-template-rows: auto minmax(0, 1fr) 160px 34px;
+  overflow: hidden;
+}
+
+.preset-combat-cockpit .cockpit-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.preset-combat-cockpit .combat-raid-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 9px 11px;
+  border-radius: 10px;
+}
+.preset-combat-cockpit .combat-raid-title { gap: 2px; }
+.preset-combat-cockpit .combat-raid-title h3 { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preset-combat-cockpit .combat-header-facts { flex-wrap: nowrap; gap: 0; }
+.preset-combat-cockpit .header-fact { min-width: 48px; padding: 3px 7px; }
+.preset-combat-cockpit .header-fact strong { font-size: 11px; }
+.preset-combat-cockpit .boss-hp-wide { grid-column: 1 / -1; gap: 4px; }
+.preset-combat-cockpit .boss-hp-wide > div:first-child { gap: 7px; }
+.preset-combat-cockpit .boss-hp-wide strong { font-size: 11px; }
+.preset-combat-cockpit .hp-track { height: 6px; }
+
+.preset-combat-cockpit .combat-live-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-radius: 10px;
+}
+.preset-combat-cockpit .live-stat {
+  padding: 7px 8px;
+  gap: 2px;
+  border-top: 0;
+}
+.preset-combat-cockpit .live-stat:nth-child(4) { border-left: 0; }
+.preset-combat-cockpit .live-stat:nth-child(n+4) { border-top: 1px solid #e2e3dd; }
+.preset-combat-cockpit .live-stat strong { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.preset-combat-cockpit .cockpit-table {
+  min-height: 0;
+  max-height: none;
+  border-radius: 10px;
+  overflow: auto;
+}
+.preset-combat-cockpit .cockpit-row {
+  min-width: 640px;
+  grid-template-columns: minmax(150px, 1.7fr) 82px repeat(6, minmax(56px, .7fr));
+  gap: 5px;
+  padding: 3px 7px;
+  font-size: 9px;
+}
+.preset-combat-cockpit .cockpit-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 24px;
+}
+.preset-combat-cockpit .cockpit-character {
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 6px;
+}
+.preset-combat-cockpit .cockpit-character .combat-image {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  border-radius: 7px;
+}
+.preset-combat-cockpit .cockpit-character > span:last-child { gap: 1px; }
+.preset-combat-cockpit .cockpit-character strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preset-combat-cockpit .cockpit-character .actor-hp { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 8px; }
+.preset-combat-cockpit .cockpit-character .mini-hp { display: none; }
+
+.cockpit-loadout {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #dcdcd5;
+  border-radius: 10px;
+  background: #fff;
+}
+.cockpit-tab-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.cockpit-loadout-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  height: 30px;
+  border-bottom: 1px solid #dcdcd5;
+}
+.cockpit-loadout-tabs label {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  cursor: pointer;
+  color: #73756e;
+  font-size: 10px;
+  font-weight: 800;
+}
+.cockpit-loadout-tabs label + label { border-left: 1px solid #e2e3dd; }
+.cockpit-loadout > .cockpit-tab-input:nth-of-type(1):checked ~ .cockpit-loadout-tabs label:nth-child(1),
+.cockpit-loadout > .cockpit-tab-input:nth-of-type(2):checked ~ .cockpit-loadout-tabs label:nth-child(2),
+.cockpit-loadout > .cockpit-tab-input:nth-of-type(3):checked ~ .cockpit-loadout-tabs label:nth-child(3) {
+  color: #245e8a;
+  background: #eef6fb;
+}
+.cockpit-loadout-panels {
+  height: 128px;
+  min-height: 0;
+  overflow: hidden;
+}
+.cockpit-loadout-panel {
+  display: none;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 7px;
+}
+.cockpit-loadout > .cockpit-tab-input:nth-of-type(1):checked ~ .cockpit-loadout-panels .cockpit-characters-panel,
+.cockpit-loadout > .cockpit-tab-input:nth-of-type(2):checked ~ .cockpit-loadout-panels .cockpit-summons-panel,
+.cockpit-loadout > .cockpit-tab-input:nth-of-type(3):checked ~ .cockpit-loadout-panels .cockpit-weapons-panel {
+  display: block;
+}
+
+.preset-combat-cockpit .cockpit-character-panel { display: grid; gap: 6px; }
+.preset-combat-cockpit .party-cards-compact {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+}
+.preset-combat-cockpit .party-cards-compact .party-card {
+  grid-template-rows: 62px auto;
+  border-radius: 8px;
+}
+.preset-combat-cockpit .party-cards-compact .party-card-visual { min-height: 62px; }
+.preset-combat-cockpit .party-cards-compact .party-card-copy { padding: 4px 5px; gap: 2px; }
+.preset-combat-cockpit .party-cards-compact .party-card-copy > strong { font-size: 9px; }
+.preset-combat-cockpit .party-cards-compact .party-card .actor-hp,
+.preset-combat-cockpit .party-cards-compact .party-card-damage,
+.preset-combat-cockpit .party-cards-compact .state-tag { display: none; }
+.preset-combat-cockpit .party-cards-compact .party-slot {
+  top: 4px;
+  left: 4px;
+  width: 17px;
+  height: 17px;
+  border-radius: 5px;
+  font-size: 8px;
+}
+.cockpit-selected-analysis {
+  border: 1px solid #e1e2dc;
+  border-radius: 7px;
+  overflow: hidden;
+}
+.cockpit-selected-analysis > summary {
+  cursor: pointer;
+  padding: 5px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  list-style: none;
+}
+.cockpit-selected-analysis > div { padding: 6px; }
+.preset-combat-cockpit .cockpit-selected-analysis .character-analysis { border: 0; padding: 0; }
+
+.preset-combat-cockpit .cockpit-summons-panel .summon-strip {
+  grid-template-columns: repeat(6, minmax(74px, 1fr));
+  gap: 5px;
+}
+.preset-combat-cockpit .cockpit-summons-panel .summon-card .combat-image {
+  height: 82px;
+  border-radius: 7px;
+}
+.preset-combat-cockpit .cockpit-summons-panel .summon-card { gap: 2px; }
+.preset-combat-cockpit .cockpit-summons-panel .summon-card strong,
+.preset-combat-cockpit .cockpit-summons-panel .summon-card > span:last-child { font-size: 8px; }
+
+.cockpit-weapon-slot > .combat-loadout-section {
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+.cockpit-weapon-slot > .combat-loadout-section > summary { display: none; }
+.cockpit-weapon-slot > .combat-loadout-section > div { padding: 0; }
+.cockpit-weapon-slot .combat-loadout-panel {
+  padding: 6px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.cockpit-weapon-slot .combat-loadout-head,
+.cockpit-weapon-slot .combat-calculator { display: none; }
+.cockpit-weapon-slot .combat-weapon-grid-shell {
+  grid-template-columns: repeat(5, minmax(80px, 1fr));
+  gap: 5px;
+  margin: 0;
+}
+.cockpit-weapon-slot .combat-main-weapon { display: contents; }
+.cockpit-weapon-slot .combat-regular-weapons { display: contents; }
+.cockpit-weapon-slot .combat-grid-label { display: none; }
+.cockpit-weapon-slot .combat-weapon-card.main { height: auto; }
+.cockpit-weapon-slot .combat-weapon-art,
+.cockpit-weapon-slot .combat-weapon-card.main .combat-weapon-art { min-height: 54px; height: 54px; }
+.cockpit-weapon-slot .combat-weapon-art img,
+.cockpit-weapon-slot .combat-weapon-card.main .combat-weapon-art img { height: 54px; }
+.cockpit-weapon-slot .combat-weapon-name { padding: 3px 4px; }
+.cockpit-weapon-slot .combat-weapon-name span,
+.cockpit-weapon-slot .combat-weapon-stats { display: none; }
+.cockpit-weapon-slot .combat-weapon-name strong { font-size: 8px; }
+.cockpit-weapon-slot .combat-additional-weapons {
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin-top: 5px;
+  padding-top: 5px;
+}
+.cockpit-weapon-slot .combat-additional-label { display: none; }
+.cockpit-weapon-slot .combat-additional-grid {
+  grid-template-columns: repeat(5, minmax(80px, 1fr));
+  gap: 5px;
+}
+
+.cockpit-secondary {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  min-height: 0;
+  overflow: visible;
+}
+.cockpit-secondary-panel { position: static; border-radius: 8px; overflow: visible; }
+.cockpit-secondary-panel > summary { padding: 8px 10px; font-size: 10px; }
+.cockpit-secondary-panel[open] > div {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  bottom: 40px;
+  max-height: min(300px, 50dvh);
+  overflow: auto;
+  padding: 9px;
+  border: 1px solid #dcdcd5;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(18, 20, 18, .18);
+}
+.cockpit-secondary .combat-timeline { max-height: 260px; }
+
+@media (max-width: 760px) {
+  .preset-combat-cockpit {
+    max-height: min(545px, calc(100dvh - 110px));
+    grid-template-rows: auto minmax(0, 1fr) 150px 34px;
+  }
+  .preset-combat-cockpit .cockpit-summary { grid-template-columns: minmax(0, 1.4fr) minmax(240px, 1fr); }
+  .preset-combat-cockpit .combat-raid-header { grid-template-columns: minmax(0, 1fr); }
+  .preset-combat-cockpit .combat-header-facts { grid-row: 2; }
+  .preset-combat-cockpit .boss-hp-wide { grid-row: 3; }
+  .preset-combat-cockpit .live-stat:nth-child(4),
+  .preset-combat-cockpit .live-stat:nth-child(5),
+  .preset-combat-cockpit .live-stat:nth-child(6) { display: none; }
+  .preset-combat-cockpit .combat-live-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .preset-combat-cockpit .cockpit-row { min-width: 600px; }
+  .preset-combat-cockpit .cockpit-row > :nth-child(6) { display: none; }
+  .preset-combat-cockpit .party-cards-compact { grid-template-columns: repeat(6, minmax(70px, 1fr)); }
+  .cockpit-loadout-panels { height: 118px; }
+}
+
+@media (max-width: 620px) {
+  .preset-combat-cockpit .cockpit-summary { grid-template-columns: 1fr; }
+  .preset-combat-cockpit .combat-live-stats { display: none; }
+  .preset-combat-cockpit .cockpit-row { min-width: 560px; }
+  .preset-combat-cockpit .party-cards-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+:root[data-theme='dark'] .cockpit-loadout,
+:root[data-theme='dark'] .cockpit-secondary-panel[open] > div {
+  background: #1d1f1a;
+  border-color: #34372f;
+  color: #e7e8e2;
+}
+:root[data-theme='dark'] .cockpit-loadout-tabs { border-color: #34372f; }
+:root[data-theme='dark'] .cockpit-loadout-tabs label + label,
+:root[data-theme='dark'] .cockpit-selected-analysis { border-color: #34372f; }
+:root[data-theme='dark'] .cockpit-loadout > .cockpit-tab-input:nth-of-type(1):checked ~ .cockpit-loadout-tabs label:nth-child(1),
+:root[data-theme='dark'] .cockpit-loadout > .cockpit-tab-input:nth-of-type(2):checked ~ .cockpit-loadout-tabs label:nth-child(2),
+:root[data-theme='dark'] .cockpit-loadout > .cockpit-tab-input:nth-of-type(3):checked ~ .cockpit-loadout-tabs label:nth-child(3) {
+  color: #8ecbff;
+  background: #202a31;
+}
+:root[data-theme='dark'] .preset-combat-cockpit .live-stat:nth-child(n+4) { border-color: #34372f; }
