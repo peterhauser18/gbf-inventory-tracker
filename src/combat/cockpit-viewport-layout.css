@@ -1,10 +1,26 @@
-.active-combat-card .preset-combat-cockpit {
-  height: clamp(560px, calc(100dvh - 96px), 1040px) !important;
+.active-combat-card .preset-combat-cockpit,
+.raid-card .preset-combat-cockpit {
+  height: auto !important;
   max-height: none !important;
+  grid-template-rows: auto auto auto !important;
+}
+
+/* Characters and Summons stay content-sized. Weapons opts into the taller viewport
+   because the grid/calculator actually benefits from the extra vertical room. */
+.active-combat-card .preset-combat-cockpit:not(:has(.cockpit-tab-input[id$="-weapons"]:checked)) .cockpit-loadout-panels,
+.active-combat-card .preset-combat-cockpit:not(:has(.cockpit-tab-input[id$="-weapons"]:checked)) .cockpit-loadout-panel,
+.raid-card .preset-combat-cockpit:not(:has(.cockpit-tab-input[id$="-weapons"]:checked)) .cockpit-loadout-panels,
+.raid-card .preset-combat-cockpit:not(:has(.cockpit-tab-input[id$="-weapons"]:checked)) .cockpit-loadout-panel {
+  height: auto !important;
+}
+
+.active-combat-card .preset-combat-cockpit:has(.cockpit-tab-input[id$="-weapons"]:checked) {
+  height: clamp(560px, calc(100dvh - 96px), 1040px) !important;
   grid-template-rows: auto minmax(0, .78fr) minmax(0, 1.22fr) !important;
 }
 
-.raid-card .preset-combat-cockpit {
+.raid-card .preset-combat-cockpit:has(.cockpit-tab-input[id$="-weapons"]:checked) {
+  height: clamp(620px, calc(100dvh - 260px), 820px) !important;
   grid-template-rows: auto minmax(0, .78fr) minmax(0, 1.22fr) !important;
 }
 
@@ -22,7 +38,7 @@
 }
 
 @media (max-width: 760px) {
-  .active-combat-card .preset-combat-cockpit {
+  .active-combat-card .preset-combat-cockpit:has(.cockpit-tab-input[id$="-weapons"]:checked) {
     height: clamp(540px, calc(100dvh - 88px), 1040px) !important;
     grid-template-rows: auto minmax(0, .72fr) minmax(0, 1.28fr) !important;
   }
