@@ -10,11 +10,12 @@ const actorImageCache = readFileSync(new URL('../actor-image-cache.ts', import.m
 
 const compactCharacterAndSummonCardRule = /cockpit-characters-panel \.party-card,\s*[\s\S]*cockpit-summons-panel \.summon-card\s*\{[^}]*height:\s*auto !important/s;
 
-test('compact Character cards prefer locally observed battle ds assets and keep names directly below images', () => {
+test('compact Character cards use local battle ds assets at their landscape ratio with names directly below', () => {
   assert.match(actorImageCache, /\['npc', 'ds'\]/);
   assert.match(actorImageCache, /actorVariantAssetId\(family, variant, observedAssetId\)/);
   assert.match(finalPolish, /const ids = \[actor\.id, actorVisualImageId\(actor\)\]/);
-  assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-visual\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
+  assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-visual\s*\{[^}]*aspect-ratio:\s*16 \/ 9/s);
+  assert.match(finalPolishCss, /party-cards-compact \.party-card-visual\s*\{[^}]*aspect-ratio:\s*16 \/ 9/s);
   assert.match(runtimePolishCss, compactCharacterAndSummonCardRule);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-copy\s*\{[^}]*display:\s*block/s);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-copy > strong\s*\{[^}]*display:\s*block/s);
