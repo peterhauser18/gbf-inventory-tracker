@@ -340,8 +340,17 @@ function observedActorImageSource(assetId: string): Promise<string | undefined> 
   const existing = observedActorImagePromises.get(assetId);
   if (existing) return existing;
   const pending = readObservedActorImageBlob(assetId)
-    .then((blob) => blob ? URL.createObjectURL(blob) : undefined)
-    .catch(() => undefined);
+    .then((blob) => {
+      if (!blob) {
+        observedActorImagePromises.delete(assetId);
+        return undefined;
+      }
+      return URL.createObjectURL(blob);
+    })
+    .catch(() => {
+      observedActorImagePromises.delete(assetId);
+      return undefined;
+    });
   observedActorImagePromises.set(assetId, pending);
   return pending;
 }
