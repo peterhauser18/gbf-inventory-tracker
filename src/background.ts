@@ -60,7 +60,7 @@ const CAPTURE_NETWORK_METHODS = new Set([
   'Network.loadingFinished',
   'Network.loadingFailed',
 ]);
-const pendingResponses = new CaptureEventBuffer();
+const pendingResponses = new Map<number, CaptureEventBuffer>();
 const pendingTreasureIcons = new Map<string, { itemId: string }>();
 const pendingEnemyIcons = new Map<string, { enemyId: string; mimeType: string }>();
 const pendingActorImages = new Map<string, { assetId: string; mimeType: string }>();
@@ -72,6 +72,7 @@ let targetQueue: Promise<void> = Promise.resolve();
 type RuntimeState = {
   active: boolean;
   tabId?: number;
+  tabIds?: number[];
   scanId?: string;
   combatInstances?: Record<string, string>;
   // Legacy single-tab lock fields are migrated into combatInstances.
@@ -221,7 +222,13 @@ async function startObservation(explicitTabId?: number): Promise<CaptureStatusRe
     await chrome.debugger.attach(target, DEBUGGER_PROTOCOL_VERSION);
     await startCaptureScan(scanId);
     scanStarted = true;
-    await setRuntimeState({ active: true, tabId: target.tabId, scanId, combatInstances: {} });
+    await setRuntimeState({
+      active: true,
+      tabId: target.tabId,
+      tabIds: [target.tabId],
+      scanId,
+      combatInstances: {},
+    });
     await enableNetworkObservation(target.tabId);
   } catch (error) {
     if (scanStarted) await finishCaptureScan(scanId);
@@ -263,13 +270,14 @@ async function stopObservation(): Promise<CaptureStatusResponse> {
   const state = await getRuntimeState();
   if (!state.active || !state.scanId) return await getStatus();
 
+  const tabIds = observationTabIds(state);
   await setRuntimeState({ active: false, scanId: state.scanId });
   clearPendingObservationData();
   await finishCaptureScan(state.scanId);
   await clearCombatParseContext();
-  if (state.tabId !== undefined) {
+  for (const tabId of tabIds) {
     try {
-      await chrome.debugger.detach({ tabId: state.tabId });
+      await chrome.debugger.detach({ tabId });
     } catch {
       // Already detached or tab closed; the scan has still been finalized locally.
     }
@@ -295,53 +303,37 @@ async function retargetObservation(candidateTabId: number): Promise<void> {
 }
 
 async function switchObservationTarget(state: RuntimeState, candidateTabId: number): Promise<void> {
-  if (!state.scanId) return;
-  const previousTabId = state.tabId;
-  const preservedState: RuntimeState = { ...state, active: true, scanId: state.scanId };
-  delete preservedState.tabId;
-  delete preservedState.error;
-
-  clearPendingObservationData();
-  await setRuntimeState(preservedState);
-
-  if (previousTabId !== undefined) {
-    try {
-      await chrome.debugger.detach({ tabId: previousTabId });
-    } catch (error) {
-      await setRuntimeState({
-        ...preservedState,
-        tabId: previousTabId,
-        error: `Could not switch observation target: ${error instanceof Error ? error.message : String(error)}`,
-      });
-      return;
-    }
-  }
-
-  if (!await isVerifiedGbfTab(candidateTabId)) {
-    await setRuntimeState({
-      ...preservedState,
-      error: 'Observation is waiting for an active verified GBF tab.',
-    });
-    return;
-  }
+  if (!state.scanId || observationIncludesTab(state, candidateTabId)) return;
+  if (!await isVerifiedGbfTab(candidateTabId)) return;
 
   let candidateAttached = false;
   try {
     await chrome.debugger.attach({ tabId: candidateTabId }, DEBUGGER_PROTOCOL_VERSION);
     candidateAttached = true;
     await enableNetworkObservation(candidateTabId);
-    await setRuntimeState({ ...preservedState, tabId: candidateTabId });
+
+    const current = await getRuntimeState();
+    if (!current.active || current.scanId !== state.scanId) {
+      await chrome.debugger.detach({ tabId: candidateTabId });
+      return;
+    }
+    const tabIds = [...new Set([...observationTabIds(current), candidateTabId])];
+    const next = { ...current, tabId: candidateTabId, tabIds };
+    delete next.error;
+    await setRuntimeState(next);
   } catch (error) {
     if (candidateAttached) {
       try {
         await chrome.debugger.detach({ tabId: candidateTabId });
       } catch {
-        // State is already targetless; a later focus can retry safely.
+        // The existing observation targets remain active even if this candidate failed.
       }
     }
+    const current = await getRuntimeState();
+    if (!current.active || current.scanId !== state.scanId) return;
     await setRuntimeState({
-      ...preservedState,
-      error: `Could not switch observation target: ${error instanceof Error ? error.message : String(error)}`,
+      ...current,
+      error: `Could not add observation target: ${error instanceof Error ? error.message : String(error)}`,
     });
   }
 }
@@ -384,7 +376,7 @@ async function recoverMovedCombatTarget(tabId: number): Promise<void> {
   if (
     !state.active ||
     !state.scanId ||
-    state.tabId === tabId ||
+    observationIncludesTab(state, tabId) ||
     !combatInstanceForTab(state, tabId)
   ) return;
   await queueObservationRetarget(tabId);
@@ -396,28 +388,27 @@ async function releaseUnavailableTarget(tabId: number, reason: string): Promise<
   const combatInstances = getCombatInstances(state);
   const tabKey = String(tabId);
   const hadCombat = combatInstances[tabKey] !== undefined;
+  const wasObserved = observationIncludesTab(state, tabId);
   delete combatInstances[tabKey];
-  if (state.tabId !== tabId && !hadCombat) return;
+  if (!wasObserved && !hadCombat) return;
 
-  clearPendingObservationData();
+  clearPendingObservationData(tabId);
+  const tabIds = observationTabIds(state).filter((observedTabId) => observedTabId !== tabId);
   const next: RuntimeState = {
     ...state,
     active: true,
     scanId: state.scanId,
+    tabIds,
     combatInstances,
     error: `Observation target released: ${reason}.`,
   };
-  if (state.tabId === tabId) delete next.tabId;
+  if (state.tabId === tabId) {
+    if (tabIds.length) next.tabId = tabIds[tabIds.length - 1];
+    else delete next.tabId;
+  }
   await setRuntimeState(next);
 
-  if (state.tabId === tabId) {
-    try {
-      await chrome.debugger.detach({ tabId });
-    } catch {
-      // The closed target is already gone.
-    }
-    void retargetToFocusedGbfTab();
-  }
+  if (!tabIds.length) void retargetToFocusedGbfTab();
 }
 
 async function handleDebuggerEvent(
@@ -432,7 +423,7 @@ async function handleDebuggerEvent(
     const selection = parseObservedDeckSelectionRequest(request.url, request.method, request.postData);
     if (!selection) return;
     const state = await getRuntimeState();
-    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
     pendingDeckSelections.set(tabId, { ...selection, scanId: state.scanId });
     return;
   }
@@ -440,10 +431,11 @@ async function handleDebuggerEvent(
   if (method === 'Network.loadingFailed') {
     const requestId = (params as { requestId?: string } | undefined)?.requestId;
     if (requestId) {
-      pendingResponses.forget(requestId);
-      pendingTreasureIcons.delete(requestId);
-      pendingEnemyIcons.delete(requestId);
-      pendingActorImages.delete(requestId);
+      pendingResponseBuffer(tabId).forget(requestId);
+      const key = scopedRequestId(tabId, requestId);
+      pendingTreasureIcons.delete(key);
+      pendingEnemyIcons.delete(key);
+      pendingActorImages.delete(key);
     }
     return;
   }
@@ -462,8 +454,8 @@ async function handleDebuggerEvent(
     );
     if (treasureIcon) {
       const state = await getRuntimeState();
-      if (!state.active || state.tabId !== tabId || !state.scanId) return;
-      pendingTreasureIcons.set(requestId, { itemId: treasureIcon.itemId });
+      if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
+      pendingTreasureIcons.set(scopedRequestId(tabId, requestId), { itemId: treasureIcon.itemId });
       return;
     }
 
@@ -475,8 +467,8 @@ async function handleDebuggerEvent(
     );
     if (enemyIcon) {
       const state = await getRuntimeState();
-      if (!state.active || state.tabId !== tabId || !state.scanId) return;
-      pendingEnemyIcons.set(requestId, { enemyId: enemyIcon.enemyId, mimeType: enemyIcon.mimeType });
+      if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
+      pendingEnemyIcons.set(scopedRequestId(tabId, requestId), { enemyId: enemyIcon.enemyId, mimeType: enemyIcon.mimeType });
       return;
     }
 
@@ -488,8 +480,8 @@ async function handleDebuggerEvent(
     );
     if (actorImage) {
       const state = await getRuntimeState();
-      if (!state.active || state.tabId !== tabId || !state.scanId) return;
-      pendingActorImages.set(requestId, { assetId: actorImage.assetId, mimeType: actorImage.mimeType });
+      if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
+      pendingActorImages.set(scopedRequestId(tabId, requestId), { assetId: actorImage.assetId, mimeType: actorImage.mimeType });
       return;
     }
 
@@ -497,9 +489,9 @@ async function handleDebuggerEvent(
     if (!shouldReadObservedResponse(url, resourceType)) return;
 
     const state = await getRuntimeState();
-    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
 
-    pendingResponses.remember({
+    pendingResponseBuffer(tabId).remember({
       requestId,
       url,
       status: event.response?.status,
@@ -512,39 +504,40 @@ async function handleDebuggerEvent(
   if (method !== 'Network.loadingFinished') return;
   const requestId = (params as { requestId?: string } | undefined)?.requestId;
   if (!requestId) return;
+  const requestKey = scopedRequestId(tabId, requestId);
 
-  const pendingTreasureIcon = pendingTreasureIcons.get(requestId);
-  pendingTreasureIcons.delete(requestId);
+  const pendingTreasureIcon = pendingTreasureIcons.get(requestKey);
+  pendingTreasureIcons.delete(requestKey);
   if (pendingTreasureIcon) {
     const state = await getRuntimeState();
-    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
     void captureObservedTreasureIcon(tabId, requestId, pendingTreasureIcon.itemId);
     return;
   }
 
-  const pendingEnemyIcon = pendingEnemyIcons.get(requestId);
-  pendingEnemyIcons.delete(requestId);
+  const pendingEnemyIcon = pendingEnemyIcons.get(requestKey);
+  pendingEnemyIcons.delete(requestKey);
   if (pendingEnemyIcon) {
     const state = await getRuntimeState();
-    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
     void captureObservedEnemyIcon(tabId, requestId, pendingEnemyIcon.enemyId, pendingEnemyIcon.mimeType);
     return;
   }
 
-  const pendingActorImage = pendingActorImages.get(requestId);
-  pendingActorImages.delete(requestId);
+  const pendingActorImage = pendingActorImages.get(requestKey);
+  pendingActorImages.delete(requestKey);
   if (pendingActorImage) {
     const state = await getRuntimeState();
-    if (!state.active || state.tabId !== tabId || !state.scanId) return;
+    if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
     void captureObservedActorImage(tabId, requestId, pendingActorImage.assetId, pendingActorImage.mimeType);
     return;
   }
 
-  const meta = pendingResponses.take(requestId);
+  const meta = pendingResponseBuffer(tabId).take(requestId);
   if (!meta || !shouldReadObservedResponse(meta.url, meta.resourceType)) return;
 
   const state = await getRuntimeState();
-  if (!state.active || state.tabId !== tabId || !state.scanId) return;
+  if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
   void captureObservedResponse(tabId, state.scanId, meta);
 }
 
@@ -703,7 +696,7 @@ async function recordObservationReadWarning(
   error: unknown,
 ): Promise<void> {
   const current = await getRuntimeState();
-  if (!current.active || current.tabId !== tabId || current.scanId !== scanId) return;
+  if (!current.active || !observationIncludesTab(current, tabId) || current.scanId !== scanId) return;
 
   const path = safeObservedPath(url);
   const reason = error instanceof ResponseBodyUnavailableError
@@ -719,7 +712,7 @@ async function clearObservationReadWarning(tabId: number, scanId: string): Promi
   const current = await getRuntimeState();
   if (
     !current.active ||
-    current.tabId !== tabId ||
+    !observationIncludesTab(current, tabId) ||
     current.scanId !== scanId ||
     !current.error?.startsWith('Allowlisted response skipped (')
   ) return;
@@ -738,10 +731,11 @@ function safeObservedPath(url: string): string {
 
 async function handleUnexpectedDetach(tabId: number, reason: string): Promise<void> {
   const state = await getRuntimeState();
-  if (!state.active || state.tabId !== tabId || !state.scanId) return;
+  if (!state.active || !observationIncludesTab(state, tabId) || !state.scanId) return;
 
-  clearPendingObservationData();
+  clearPendingObservationData(tabId);
   if (reason === 'canceled_by_user') {
+    const remainingTabIds = observationTabIds(state).filter((observedTabId) => observedTabId !== tabId);
     await clearCombatParseContext();
     await finishCaptureScan(state.scanId);
     await setRuntimeState({
@@ -749,14 +743,26 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
       scanId: state.scanId,
       error: `Observation stopped: ${reason}`,
     });
+    for (const remainingTabId of remainingTabIds) {
+      try {
+        await chrome.debugger.detach({ tabId: remainingTabId });
+      } catch {
+        // The observation is already stopped even if a target disappeared concurrently.
+      }
+    }
     return;
   }
 
+  const tabIds = observationTabIds(state).filter((observedTabId) => observedTabId !== tabId);
   const next: RuntimeState = {
     ...state,
+    tabIds,
     error: `Observation target detached: ${reason}.`,
   };
-  delete next.tabId;
+  if (state.tabId === tabId) {
+    if (tabIds.length) next.tabId = tabIds[tabIds.length - 1];
+    else delete next.tabId;
+  }
   await setRuntimeState(next);
 
   if (combatInstanceForTab(state, tabId)) {
@@ -766,12 +772,39 @@ async function handleUnexpectedDetach(tabId: number, reason: string): Promise<vo
   void retargetToFocusedGbfTab();
 }
 
-function clearPendingObservationData(): void {
-  pendingResponses.clear();
-  pendingTreasureIcons.clear();
-  pendingEnemyIcons.clear();
-  pendingActorImages.clear();
-  pendingDeckSelections.clear();
+function clearPendingObservationData(tabId?: number): void {
+  if (tabId === undefined) {
+    for (const buffer of pendingResponses.values()) buffer.clear();
+    pendingResponses.clear();
+    pendingTreasureIcons.clear();
+    pendingEnemyIcons.clear();
+    pendingActorImages.clear();
+    pendingDeckSelections.clear();
+    return;
+  }
+
+  pendingResponses.get(tabId)?.clear();
+  pendingResponses.delete(tabId);
+  const prefix = `${tabId}:`;
+  for (const map of [pendingTreasureIcons, pendingEnemyIcons, pendingActorImages]) {
+    for (const key of map.keys()) {
+      if (key.startsWith(prefix)) map.delete(key);
+    }
+  }
+  pendingDeckSelections.delete(tabId);
+}
+
+function pendingResponseBuffer(tabId: number): CaptureEventBuffer {
+  let buffer = pendingResponses.get(tabId);
+  if (!buffer) {
+    buffer = new CaptureEventBuffer();
+    pendingResponses.set(tabId, buffer);
+  }
+  return buffer;
+}
+
+function scopedRequestId(tabId: number, requestId: string): string {
+  return `${tabId}:${requestId}`;
 }
 
 function normalizeResourceType(type: string | undefined): CaptureResourceType {
@@ -786,13 +819,14 @@ async function getStatus(): Promise<CaptureStatusResponse> {
   const scan = state.scanId
     ? await getCaptureScan(state.scanId)
     : await getLatestCaptureScan();
+  const observedTabs = observationTabIds(state).length;
   return {
     version: 1,
     captureReady: true,
     active: state.active,
     message: state.active
-      ? state.tabId !== undefined
-        ? 'Debugger observation is active. Only allowlisted GBF responses and selected deck IDs from game-issued quest/join requests are read.'
+      ? observedTabs > 0
+        ? `Debugger observation is active on ${observedTabs} verified GBF tab${observedTabs === 1 ? '' : 's'}. Only allowlisted GBF responses and selected deck IDs from game-issued quest/join requests are read.`
         : 'Observation is active and waiting for an active verified GBF tab.'
       : scan
         ? 'Observation is stopped. Start it again to update account or combat data.'
@@ -813,13 +847,33 @@ async function setRuntimeState(state: RuntimeState): Promise<void> {
 }
 
 function normalizeRuntimeState(state: RuntimeState): RuntimeState {
+  const tabIds = observationTabIds(state);
   const normalized: RuntimeState = {
     ...state,
+    tabIds,
     combatInstances: getCombatInstances(state),
   };
+  if (!tabIds.length) {
+    delete normalized.tabIds;
+    delete normalized.tabId;
+  } else if (normalized.tabId === undefined || !tabIds.includes(normalized.tabId)) {
+    normalized.tabId = tabIds[tabIds.length - 1];
+  }
   delete normalized.combatTabId;
   delete normalized.combatInstanceId;
   return normalized;
+}
+
+function observationTabIds(state: RuntimeState): number[] {
+  const values = [
+    ...(state.tabIds ?? []),
+    ...(state.tabId === undefined ? [] : [state.tabId]),
+  ];
+  return [...new Set(values.filter((value) => Number.isInteger(value) && value >= 0))];
+}
+
+function observationIncludesTab(state: RuntimeState, tabId: number): boolean {
+  return observationTabIds(state).includes(tabId);
 }
 
 function getCombatInstances(state: RuntimeState): Record<string, string> {
