@@ -1,4 +1,5 @@
 import type { CapturedResponseRecord } from '../capture/types.ts';
+import type { DataQuality } from '../types/account.ts';
 import {
   enrichRaidLoadout,
   ingestObservedLoadoutRecord as ingestCoreObservedLoadoutRecord,
@@ -11,7 +12,7 @@ import {
   ingestObservedLoadoutRecord as ingestPartyInventoryAndCacheRecord,
   readPersistedDecks,
 } from './loadout-observer.ts';
-import type { RaidLoadoutSnapshot } from './loadout-types.ts';
+import type { RaidLoadoutSnapshot, RaidWeaponSkillSnapshot } from './loadout-types.ts';
 import type { NormalizedRaidParse, RaidHistoryRecord } from './types.ts';
 
 const CACHE_SESSION_KEY = 'gbfit:combat-loadout-main-integration:v1';
@@ -97,11 +98,9 @@ export function mergeDeckEvidenceIntoRaid(
   if (base.deckId && deck.deckId && base.deckId !== deck.deckId) return base;
   if (!exactDeckId && !loadoutSignaturesMatch(base.signature, deck.signature)) return base;
 
-  const enriched = enrichRaidLoadout(base, deck);
-  const usedIncomingGrid = deck.weaponGridQuality !== 'unknown' && enriched.weapons === deck.weapons;
-  const gridMatches = sameGrid(base, deck);
-
   if (source === 'cached') {
+    const enriched = enrichRaidLoadout(base, deck);
+    const usedIncomingGrid = deck.weaponGridQuality !== 'unknown' && enriched.weapons === deck.weapons;
     if (!usedIncomingGrid) return enriched;
     return {
       ...enriched,
@@ -112,12 +111,38 @@ export function mergeDeckEvidenceIntoRaid(
     };
   }
 
-  if (!usedIncomingGrid && !gridMatches) return enriched;
-  return {
-    ...enriched,
-    weaponGridSource: 'observed',
-    weaponGridObservedAt: deck.weaponGridObservedAt ?? deck.observedAt,
-  };
+  let next = enrichRaidLoadout(base, deck);
+  const useFreshGrid = shouldUseFreshGrid(base, deck);
+  const useFreshCalculator = shouldUseFreshCalculator(base, deck);
+  if (useFreshGrid) {
+    next = {
+      ...next,
+      quality: strongerQuality(next.quality, deck.quality),
+      updatedAt: Math.max(next.updatedAt, deck.updatedAt),
+      correlation: exactDeckId ? 'deck-id' : next.correlation,
+      deckId: base.deckId ?? deck.deckId,
+      mainWeaponId: base.mainWeaponId ?? deck.mainWeaponId,
+      jobId: base.jobId ?? deck.jobId,
+      jobName: base.jobName ?? deck.jobName,
+      weaponGridQuality: deck.weaponGridQuality,
+      weaponGridSource: 'observed',
+      weaponGridObservedAt: deck.weaponGridObservedAt ?? deck.observedAt,
+      weapons: deck.weapons,
+      additionalWeaponsActive: deck.additionalWeaponsActive,
+    };
+  } else if (
+    deck.weaponGridQuality !== 'unknown'
+    && sameGrid(base, deck)
+    && base.weaponGridSource !== 'observed'
+  ) {
+    next = {
+      ...next,
+      weaponGridSource: 'observed',
+      weaponGridObservedAt: deck.weaponGridObservedAt ?? deck.observedAt,
+    };
+  }
+  if (useFreshCalculator) next = { ...next, calculator: deck.calculator };
+  return next;
 }
 
 async function applyObservedDeckToCurrentScan(scanId: string, deck: RaidLoadoutSnapshot): Promise<void> {
@@ -215,12 +240,35 @@ function requestValue<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+function shouldUseFreshGrid(base: RaidLoadoutSnapshot, deck: RaidLoadoutSnapshot): boolean {
+  if (deck.weaponGridQuality === 'unknown') return false;
+  const incomingObservedAt = deck.weaponGridObservedAt ?? deck.observedAt;
+  if (base.weaponGridObservedAt !== undefined && incomingObservedAt < base.weaponGridObservedAt) return false;
+  return qualityRank(deck.weaponGridQuality) >= qualityRank(base.weaponGridQuality);
+}
+
+function shouldUseFreshCalculator(base: RaidLoadoutSnapshot, deck: RaidLoadoutSnapshot): boolean {
+  if (deck.calculator.quality === 'unknown') return false;
+  if (deck.updatedAt < base.updatedAt && base.weaponGridSource === 'observed') return false;
+  return qualityRank(deck.calculator.quality) >= qualityRank(base.calculator.quality);
+}
+
 function sameGrid(left: RaidLoadoutSnapshot, right: RaidLoadoutSnapshot): boolean {
   if (left.weaponGridQuality !== right.weaponGridQuality || left.weapons.length !== right.weapons.length) return false;
   return left.weapons.every((weapon, index) => {
     const other = right.weapons[index];
     return other?.slot === weapon.slot && other.masterId === weapon.masterId;
   });
+}
+
+function strongerQuality(left: DataQuality, right: DataQuality): DataQuality {
+  return qualityRank(right) > qualityRank(left) ? right : left;
+}
+
+function qualityRank(value: DataQuality): number {
+  if (value === 'known') return 2;
+  if (value === 'partial') return 1;
+  return 0;
 }
 
 function observedBattleInstanceId(body: unknown): string | undefined {
