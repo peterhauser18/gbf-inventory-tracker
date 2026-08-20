@@ -7,28 +7,48 @@ const manifest = JSON.parse(
   readFileSync(new URL('../../public/manifest.json', import.meta.url), 'utf8'),
 ) as { permissions?: string[]; host_permissions?: string[] };
 
-test('observation follows active tabs and focused Edge windows without attach-all discovery', () => {
+test('observation keeps activated verified GBF tabs attached across focused Edge windows without attach-all discovery', () => {
   assert.match(background, /chrome\.tabs\.onActivated\.addListener/);
   assert.match(background, /chrome\.windows\.onFocusChanged\.addListener/);
   assert.match(background, /chrome\.tabs\.query\(\{ active: true, windowId \}\)/);
   assert.match(background, /chrome\.debugger\.getTargets\(\)/);
+  assert.match(background, /tabIds\?: number\[\]/);
+  assert.match(background, /tabIds: \[target\.tabId\]/);
   assert.doesNotMatch(background, /chrome\.tabs\.query\(\{[^}]*url:/);
 });
 
-test('cross-window retarget preserves combat contexts while attaching only the focused verified GBF tab', () => {
+test('cross-window target activation adds the verified GBF tab without detaching existing observation targets', () => {
   const start = background.indexOf('async function switchObservationTarget');
   const end = background.indexOf('async function enableNetworkObservation', start);
   assert.ok(start >= 0 && end > start);
   const switchSource = background.slice(start, end);
-  const detach = switchSource.indexOf('chrome.debugger.detach({ tabId: previousTabId })');
-  const revalidate = switchSource.indexOf('isVerifiedGbfTab(candidateTabId)', detach);
+  const revalidate = switchSource.indexOf('isVerifiedGbfTab(candidateTabId)');
   const attach = switchSource.indexOf('chrome.debugger.attach({ tabId: candidateTabId }', revalidate);
-  assert.ok(detach >= 0);
-  assert.ok(revalidate > detach);
+  const append = switchSource.indexOf('...observationTabIds(current), candidateTabId', attach);
+  assert.ok(revalidate >= 0);
   assert.ok(attach > revalidate);
+  assert.ok(append > attach);
+  assert.doesNotMatch(switchSource, /chrome\.debugger\.detach\(\{ tabId: previousTabId \}\)/);
   assert.doesNotMatch(switchSource, /clearCombatParseContext\(\)/);
-  assert.match(switchSource, /const preservedState: RuntimeState = \{ \.\.\.state, active: true, scanId: state\.scanId \}/);
-  assert.match(switchSource, /if \(candidateAttached\)[\s\S]*chrome\.debugger\.detach\(\{ tabId: candidateTabId \}\)/);
+});
+
+test('parallel tab network bookkeeping is target-scoped and accepts every attached observed GBF tab', () => {
+  assert.match(background, /const pendingResponses = new Map<number, CaptureEventBuffer>\(\)/);
+  assert.match(background, /scopedRequestId\(tabId, requestId\)/);
+  assert.match(background, /observationIncludesTab\(state, tabId\)/);
+  assert.match(background, /pendingResponseBuffer\(tabId\)\.remember/);
+  assert.match(background, /pendingResponseBuffer\(tabId\)\.take/);
+  assert.match(background, /clearPendingObservationData\(tabId\)/);
+});
+
+test('stopping observation detaches every attached GBF target', () => {
+  const start = background.indexOf('async function stopObservation');
+  const end = background.indexOf('function queueObservationRetarget', start);
+  assert.ok(start >= 0 && end > start);
+  const stopSource = background.slice(start, end);
+  assert.match(stopSource, /const tabIds = observationTabIds\(state\)/);
+  assert.match(stopSource, /for \(const tabId of tabIds\)/);
+  assert.match(stopSource, /chrome\.debugger\.detach\(\{ tabId \}\)/);
 });
 
 test('combat routing remembers a proven raid instance per GBF tab and fails closed before that tab is mapped', () => {
@@ -40,18 +60,19 @@ test('combat routing remembers a proven raid instance per GBF tab and fails clos
   assert.match(background, /delete combatInstances\[key\]/);
 });
 
-test('moving a known fight tab preserves its raid instance and reattaches the same tab', () => {
+test('moving a known fight tab preserves its raid instance and can reattach that specific tab', () => {
   assert.match(background, /chrome\.tabs\.onAttached\.addListener\(\(tabId\) => \{\s*void recoverMovedCombatTarget\(tabId\);\s*\}\)/s);
-  assert.match(background, /async function recoverMovedCombatTarget[\s\S]*!combatInstanceForTab\(state, tabId\)[\s\S]*queueObservationRetarget\(tabId\)/);
+  assert.match(background, /async function recoverMovedCombatTarget[\s\S]*observationIncludesTab\(state, tabId\)[\s\S]*!combatInstanceForTab\(state, tabId\)[\s\S]*queueObservationRetarget\(tabId\)/);
   const start = background.indexOf('async function handleUnexpectedDetach');
-  const end = background.indexOf('function normalizeResourceType', start);
+  const end = background.indexOf('function clearPendingObservationData', start);
   assert.ok(start >= 0 && end > start);
   const detachSource = background.slice(start, end);
-  assert.match(detachSource, /if \(reason === 'canceled_by_user'\) \{\s*await clearCombatParseContext\(\)/s);
+  assert.match(detachSource, /if \(reason === 'canceled_by_user'\)[\s\S]*clearCombatParseContext\(\)/);
+  assert.match(detachSource, /remainingTabIds[\s\S]*chrome\.debugger\.detach\(\{ tabId: remainingTabId \}\)/);
   assert.match(detachSource, /combatInstanceForTab\(state, tabId\)[\s\S]*queueObservationRetarget\(tabId\)/);
 });
 
-test('cross-window lifecycle adds no broader browser or GBF host permission', () => {
+test('cross-window lifecycle adds no broader browser or GBF host permission and emits no gameplay requests', () => {
   assert.deepEqual([...(manifest.permissions ?? [])].sort(), ['activeTab', 'debugger', 'storage']);
   assert.deepEqual(manifest.host_permissions ?? [], ['https://gbf.wiki/*']);
   assert.doesNotMatch(background, /Network\.replayXHR|Network\.loadNetworkResource|Fetch\.enable|setCacheDisabled/);
