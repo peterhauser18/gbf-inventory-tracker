@@ -271,7 +271,7 @@ function patchCockpitRows(current: HTMLElement, next: HTMLElement): boolean {
     if (!currentRow) return false;
     currentRow.classList.toggle('selected', nextRow.classList.contains('selected'));
     patchText(currentRow, nextRow, '.cockpit-character strong');
-    patchText(currentRow, nextRow, '.cockpit-character .actor-hp');
+    patchHtml(currentRow, nextRow, '.cockpit-character .actor-hp');
     const currentCells = [...currentRow.children];
     const nextCells = [...nextRow.children];
     if (currentCells.length < 7 || nextCells.length < 8) return false;
@@ -292,7 +292,7 @@ function patchPartyCards(current: HTMLElement, next: HTMLElement): boolean {
     if (!currentCard) return false;
     currentCard.classList.toggle('selected', nextCard.classList.contains('selected'));
     patchText(currentCard, nextCard, '.party-card-copy > strong');
-    patchText(currentCard, nextCard, '.party-card-copy .actor-hp');
+    patchHtml(currentCard, nextCard, '.party-card-copy .actor-hp');
     patchText(currentCard, nextCard, '.party-card-damage');
   }
   return true;
@@ -347,6 +347,14 @@ function patchText(current: ParentNode, next: ParentNode, selector: string): voi
   const currentValue = current.querySelector<HTMLElement>(selector);
   const nextValue = next.querySelector<HTMLElement>(selector);
   if (currentValue && nextValue) currentValue.textContent = nextValue.textContent;
+}
+
+function patchHtml(current: ParentNode, next: ParentNode, selector: string): void {
+  const currentValue = current.querySelector<HTMLElement>(selector);
+  const nextValue = next.querySelector<HTMLElement>(selector);
+  if (currentValue && nextValue && currentValue.innerHTML !== nextValue.innerHTML) {
+    currentValue.innerHTML = nextValue.innerHTML;
+  }
 }
 
 function decorateRosterAndAttackModes(section: HTMLElement): void {
