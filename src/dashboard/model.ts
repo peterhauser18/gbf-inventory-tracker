@@ -186,11 +186,12 @@ export function buildDashboardViewModel(
     stashes: snapshot.weaponStashes.map((stash) => ({
       key: `stash:${stash.stashId}`,
       kind: 'stash',
-      title: 'Weapon Stash',
+      title: stash.name ?? `Weapon Stash ${stash.stashId}`,
       subtitle: `${formatNumber(stash.weapons.length)} observed weapons${stash.quality === 'known' ? '' : ` · ${qualityDisplay(stash.quality)}`}`,
       quality: stash.quality,
-      wikiUrl: resolveWikiUrl({ displayName: 'Weapon Stash' }),
+      wikiUrl: resolveWikiUrl({ displayName: stash.name ?? 'Weapon Stash' }),
       detailFields: [
+        { label: 'Stash name', value: stash.name ?? 'unavailable', state: stash.name ? 'known' : 'unknown' },
         { label: 'Stash ID', value: stash.stashId },
         { label: 'Observed weapons', value: formatNumber(stash.weapons.length) },
         { label: 'Coverage', value: qualityDisplay(stash.quality), state: stash.quality },
@@ -199,6 +200,7 @@ export function buildDashboardViewModel(
         weapon,
         stash.quality,
         stash.stashId,
+        stash.name,
         metadata.weapons.get(weapon.masterId),
       )),
     })),
@@ -333,6 +335,7 @@ function stashWeaponCard(
   weapon: WeaponInstance,
   quality: DataQuality,
   stashId: string,
+  stashName: string | undefined,
   resolved?: EntityMetadata,
 ): DashboardCard {
   const card = weaponCard(weapon, quality, resolved);
@@ -340,6 +343,7 @@ function stashWeaponCard(
     ...card,
     key: `stash-weapon:${stashId}:${weapon.id}`,
     detailFields: [
+      { label: 'Stash', value: stashName ?? stashId },
       { label: 'Stash ID', value: stashId },
       ...card.detailFields,
     ],
