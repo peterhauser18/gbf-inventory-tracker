@@ -1,0 +1,103 @@
+.quality-legend {
+  display: none !important;
+}
+
+.settings-storage-card {
+  display: grid;
+  gap: 10px;
+}
+.settings-storage-card h3 { margin-bottom: 0; }
+.settings-storage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-storage-actions .settings-action {
+  margin-top: 0;
+}
+
+.settings-developer-card {
+  padding: 0;
+  overflow: hidden;
+}
+.settings-developer-card > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+.settings-developer-card > summary::-webkit-details-marker { display: none; }
+.settings-developer-card > summary > span:first-child {
+  display: grid;
+  gap: 4px;
+}
+.settings-developer-card > summary strong {
+  font-size: 15px;
+}
+.settings-developer-card > summary::after {
+  content: '+';
+  color: var(--muted);
+  font-size: 18px;
+}
+.settings-developer-card[open] > summary::after { content: '−'; }
+.settings-developer-body {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* Phase 5's older narrow-layout override must not turn the collapsible sidebar
+   back into a top navigation strip after Settings is opened. */
+@media (max-width: 720px) {
+  html body .dashboard-shell {
+    display: grid !important;
+    grid-template-columns: 190px minmax(0, 1fr) !important;
+    min-width: 0 !important;
+  }
+  html body .dashboard-shell.dashboard-sidebar-collapsed {
+    grid-template-columns: 52px minmax(0, 1fr) !important;
+  }
+  html body .dashboard-shell .sidebar {
+    position: sticky !important;
+    top: 0 !important;
+    height: 100vh !important;
+    min-height: 0 !important;
+    padding: 22px 14px !important;
+    gap: 20px !important;
+    border-right: 1px solid #26313b !important;
+    border-bottom: 0 !important;
+  }
+  html body .dashboard-shell.dashboard-sidebar-collapsed .sidebar {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+  html body .dashboard-shell.dashboard-sidebar-collapsed .sidebar:hover,
+  html body .dashboard-shell.dashboard-sidebar-collapsed .sidebar:focus-within {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+  html body .dashboard-shell .nav {
+    display: grid !important;
+    gap: 15px !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    padding-bottom: 0 !important;
+  }
+  html body .dashboard-shell .nav-group {
+    display: grid !important;
+    gap: 3px !important;
+  }
+  html body .dashboard-shell .nav-group-label {
+    display: block !important;
+  }
+  html body .dashboard-shell .nav-item {
+    width: 100% !important;
+    white-space: normal !important;
+    padding: 7px 8px !important;
+  }
+  html body .dashboard-shell .sidebar-note {
+    display: grid !important;
+  }
+}
