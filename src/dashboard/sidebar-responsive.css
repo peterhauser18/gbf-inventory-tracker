@@ -1,0 +1,124 @@
+html body {
+  min-width: 0 !important;
+}
+
+.dashboard-shell,
+.dashboard-shell .content,
+.dashboard-shell .preset-combat-cockpit,
+.dashboard-shell .preset-combat-cockpit .cockpit-table {
+  min-width: 0;
+}
+
+.dashboard-sidebar-toggle {
+  width: 32px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  display: grid;
+  place-items: center;
+  border: 1px solid #2a3742;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .03);
+  color: #a8b5c0;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+.dashboard-sidebar-toggle:hover {
+  border-color: #2daeff;
+  color: #eef8ff;
+}
+
+.dashboard-shell.dashboard-sidebar-collapsed {
+  grid-template-columns: 52px minmax(0, 1fr);
+}
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar {
+  width: 52px;
+  justify-self: start;
+  overflow: hidden;
+  padding-left: 8px;
+  padding-right: 8px;
+  z-index: 15;
+  transition: width .14s ease, padding .14s ease, box-shadow .14s ease;
+}
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:hover,
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:focus-within {
+  width: 220px;
+  padding-left: 14px;
+  padding-right: 14px;
+  box-shadow: 12px 0 28px rgba(4, 8, 12, .35);
+}
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .dashboard-sidebar-toggle {
+  align-self: center;
+}
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .brand {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .brand > div,
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .nav-group-label,
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .nav-item > span:last-child,
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .sidebar-note {
+  display: none;
+}
+.dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .nav-item {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* Dashboard Combat keeps the five core KPIs visible in a balanced 3 + 2 layout. */
+.dashboard-shell .preset-combat-cockpit .combat-live-stats {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+}
+.dashboard-shell .preset-combat-cockpit .live-stat {
+  grid-column: span 2;
+}
+.dashboard-shell .preset-combat-cockpit .live-stat:nth-child(4),
+.dashboard-shell .preset-combat-cockpit .live-stat:nth-child(5) {
+  grid-column: span 3;
+  display: grid !important;
+  border-top: 1px solid #e2e3dd !important;
+}
+.dashboard-shell .preset-combat-cockpit .live-stat:nth-child(4) {
+  border-left: 0 !important;
+}
+.dashboard-shell .preset-combat-cockpit .live-stat:nth-child(5) {
+  border-left: 1px solid #e2e3dd !important;
+}
+
+.dashboard-shell .preset-combat-cockpit .cockpit-table {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+:root[data-theme='dark'] .dashboard-shell .preset-combat-cockpit .live-stat:nth-child(4),
+:root[data-theme='dark'] .dashboard-shell .preset-combat-cockpit .live-stat:nth-child(5) {
+  border-top-color: #34372f !important;
+}
+:root[data-theme='dark'] .dashboard-shell .preset-combat-cockpit .live-stat:nth-child(5) {
+  border-left-color: #34372f !important;
+}
+
+@media (max-width: 1050px) {
+  .dashboard-shell.dashboard-sidebar-collapsed .sidebar:hover,
+  .dashboard-shell.dashboard-sidebar-collapsed .sidebar:focus-within {
+    width: 190px;
+  }
+}
+
+@media (max-width: 900px) and (min-width: 561px) {
+  .dashboard-shell .preset-combat-cockpit .party-cards-compact {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-shell .preset-combat-cockpit .party-cards-compact {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
