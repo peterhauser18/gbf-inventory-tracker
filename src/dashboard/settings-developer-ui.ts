@@ -84,10 +84,12 @@ function ensureDeveloperPanel(): void {
     <div class="settings-developer-body">
       <div class="status-list">
         <div><span>Observation control</span><strong>Extension popup</strong></div>
+        <div><span>Raw combat capture</span><strong>Settings</strong></div>
         <div><span>Account reset</span><strong>Settings above</strong></div>
         <div><span>Storage cleanup</span><strong>Settings above</strong></div>
       </div>
-      <p class="muted">Manual observation stays in the popup. Account reset and local cleanup live in Settings; the removed current/last-observation panel is not reproduced here.</p>
+      <button class="settings-action" type="button" data-settings-raw-capture>Open Combat Tracker Raw Capture Mode</button>
+      <p class="muted" data-settings-developer-note>Raw Capture is an explicit developer tool. Start read-only observation from the extension popup first; this button only opens the raw Combat Tracker and enables its local redacted capture mode.</p>
     </div>
   `;
   grid.append(panel);
@@ -103,6 +105,13 @@ function handleClick(event: MouseEvent): void {
     openDeveloperAfterNavigation = true;
     app?.querySelector<HTMLButtonElement>('.nav-item[data-section="settings"]')?.click();
     scheduleSync();
+    return;
+  }
+
+  if (target.closest('[data-settings-raw-capture]')) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void openRawCaptureMode();
     return;
   }
 
@@ -124,6 +133,42 @@ function handleClick(event: MouseEvent): void {
     event.preventDefault();
     event.stopImmediatePropagation();
     void runLocalDataAction('gbfit:clear-all-except-account');
+  }
+}
+
+async function openRawCaptureMode(): Promise<void> {
+  const button = app?.querySelector<HTMLButtonElement>('[data-settings-raw-capture]');
+  if (!button || button.disabled) return;
+
+  button.disabled = true;
+  const status = await sendMessage('gbfit:get-status');
+  if (status.error) {
+    setDeveloperNote(status.error);
+    button.disabled = false;
+    return;
+  }
+  if (!status.active) {
+    setDeveloperNote('Start read-only observation from the extension popup first, then open Raw Capture Mode here.');
+    button.disabled = false;
+    return;
+  }
+
+  let rawTabId: number | undefined;
+  try {
+    const rawTab = await chrome.tabs.create({ url: chrome.runtime.getURL('combat.html?rawCapture=1') });
+    rawTabId = rawTab.id;
+    if (rawTabId === undefined) throw new Error('Chrome did not return the Raw Capture tab id.');
+
+    const { enableRawCombatCapture } = await import('../combat/raw-capture.ts');
+    await enableRawCombatCapture(rawTabId, true);
+    setDeveloperNote('Raw Capture Mode opened. It retains only verified combat gameplay JSON already received during active observation and redacts credential-like response values.');
+  } catch (error) {
+    if (rawTabId !== undefined) {
+      void chrome.tabs.remove(rawTabId).catch(() => {});
+    }
+    setDeveloperNote(`Could not open Raw Capture Mode: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -194,6 +239,11 @@ function setStorageButtonsDisabled(disabled: boolean): void {
 
 function setStorageNote(message: string): void {
   const note = app?.querySelector<HTMLElement>('[data-settings-storage-note]');
+  if (note) note.textContent = message;
+}
+
+function setDeveloperNote(message: string): void {
+  const note = app?.querySelector<HTMLElement>('[data-settings-developer-note]');
   if (note) note.textContent = message;
 }
 
