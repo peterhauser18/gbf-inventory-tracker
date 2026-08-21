@@ -6,6 +6,7 @@ const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 const finalPolish = readFileSync(new URL('./cockpit-final-polish.ts', import.meta.url), 'utf8');
 const attackModes = readFileSync(new URL('./cockpit-attack-modes.ts', import.meta.url), 'utf8');
 const finalPolishCss = readFileSync(new URL('./cockpit-final-polish.css', import.meta.url), 'utf8');
+const actorImageCache = readFileSync(new URL('../actor-image-cache.ts', import.meta.url), 'utf8');
 
 test('normal live Combat updates patch the existing cockpit instead of replacing the whole section', () => {
   const render = /function renderSectionIfChanged[\s\S]*?function decorateSection/.exec(ui)?.[0] ?? '';
@@ -23,7 +24,7 @@ test('normal live Combat updates patch the existing cockpit instead of replacing
   assert.match(ui, /patchPartyCards\(current, next\)/);
 });
 
-test('local battle portrait lookup retries misses, prefers exact ds id and keeps an installed image stable', () => {
+test('local portrait lookup retries misses, prefers the exact observed actor id and keeps an installed image stable', () => {
   const cacheRead = /function observedActorImageSource\(assetId: string\)[\s\S]*?\n\}/.exec(finalPolish)?.[0] ?? '';
   const actorLookup = /async function observedActorImageSourceForActor[\s\S]*?\n\}/.exec(finalPolish)?.[0] ?? '';
   const replacement = /function replaceActorImages[\s\S]*?\n\}/.exec(finalPolish)?.[0] ?? '';
@@ -48,8 +49,9 @@ test('one-second decoration does not reorder stable rows or rebuild SA DA TA cel
   assert.doesNotMatch(row, /querySelectorAll\('\.cockpit-attack-mode'\)\.forEach/);
 });
 
-test('compact Characters use larger landscape cards without a transient vertical table scrollbar', () => {
-  assert.match(finalPolishCss, /cockpit-characters-panel \.party-cards-compact\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
-  assert.match(finalPolishCss, /party-card-visual\s*\{[^}]*aspect-ratio:\s*16 \/ 9/s);
+test('compact Characters mirror the six-slot Summon strip and prefer card-sized local art', () => {
+  assert.match(finalPolishCss, /cockpit-characters-panel \.party-cards-compact\s*\{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/s);
+  assert.match(finalPolishCss, /party-card-visual\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
   assert.match(finalPolishCss, /cockpit-table\s*\{[^}]*overflow-y:\s*hidden/s);
+  assert.match(actorImageCache, /\['npc', 'm'\][\s\S]*\['npc', 's'\][\s\S]*\['npc', 'ds'\]/s);
 });
