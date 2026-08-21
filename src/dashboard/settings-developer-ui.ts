@@ -120,7 +120,7 @@ async function refreshStorageAvailability(): Promise<void> {
     setStorageNote(response.error);
     return;
   }
-  setStorageButtonsDisabled(Boolean(response.active));
+  setStorageButtonsDisabled(false);
   if (response.active) {
     setStorageNote('Stop observation before clearing local storage so in-flight observed data cannot immediately repopulate it.');
   }
@@ -134,7 +134,7 @@ async function runCleanup(type: 'gbfit:clear-diagnostic-data' | 'gbfit:clear-all
     return;
   }
   if (status.active) {
-    setStorageButtonsDisabled(true);
+    setStorageButtonsDisabled(false);
     setStorageNote('Stop observation before clearing local storage so in-flight observed data cannot immediately repopulate it.');
     return;
   }
