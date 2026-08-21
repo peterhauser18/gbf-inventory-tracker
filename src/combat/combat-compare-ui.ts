@@ -20,7 +20,9 @@ let refreshPromise: Promise<void> | null = null;
 
 if (app) {
   app.addEventListener('click', handleClick, true);
-  const observer = new MutationObserver(scheduleSync);
+  const observer = new MutationObserver((mutations) => {
+    if (mutations.some(requiresRaidComparisonSync)) scheduleSync();
+  });
   observer.observe(app, { childList: true, subtree: true });
   scheduleSync();
 }
@@ -124,12 +126,25 @@ function syncComparisonPanel(section: HTMLElement): void {
   const markup = selected.length < 2
     ? renderComparePrompt(selected[0])
     : renderComparison(buildRaidHistoryComparison(selected[0]!, selected[1]!));
-  if (panel.innerHTML !== markup) panel.innerHTML = markup;
+  const selectionKey = selected.map((raid) => raid.localId).join('|');
+  if (panel.dataset.raidComparisonKey !== selectionKey) {
+    panel.dataset.raidComparisonKey = selectionKey;
+    panel.innerHTML = markup;
+  }
 }
 
 function renderComparePrompt(record: RaidHistoryRecord | undefined): string {
   const observedAt = record ? formatDate(record.observedEndedAt ?? record.lastObservedAt) : '—';
   return `<div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(record?.raidName ?? record?.raidTechnicalId ?? 'Selected raid')}</h3><p class="muted">A · ${escapeHtml(observedAt)}</p></div><div class="raid-compare-head-actions"><span class="quality partial">1 / 2</span><button type="button" data-raid-compare-clear>Clear</button></div></div><p class="muted">Select one more record with the same technical raid ID. Comparison uses only already-persisted observed combat facts.</p>`;
+}
+
+function requiresRaidComparisonSync(mutation: MutationRecord): boolean {
+  for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+    if (!(node instanceof Element)) continue;
+    if (node.matches('[data-combat-section], .raid-list, .raid-card')) return true;
+    if (node.querySelector('[data-combat-section], .raid-list, .raid-card')) return true;
+  }
+  return false;
 }
 
 function renderComparison(comparison: RaidHistoryComparison | null): string {

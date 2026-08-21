@@ -44,6 +44,10 @@ test('combat comparison excludes drop facts from its UI and derived comparison d
 
 test('combat comparison mutation sync keeps button text idempotent', () => {
   assert.ok(compareUi.includes('if (button.textContent !== label) button.textContent = label;'));
+  assert.match(compareUi, /panel\.dataset\.raidComparisonKey !== selectionKey/);
+  assert.match(compareUi, /mutations\.some\(requiresRaidComparisonSync\)/);
+  assert.doesNotMatch(compareUi, /new MutationObserver\(scheduleSync\)/);
+  assert.doesNotMatch(compareUi, /requiresRaidComparisonSync[\s\S]*combat-image/);
 });
 
 test('roster controller is installed before dashboard restore navigation can replay a roster click', () => {
