@@ -1,3 +1,4 @@
+import type { DataQuality } from '../types/account.ts';
 import type { DamageBreakdown, RaidHistoryRecord } from './types.ts';
 import type { RaidLoadoutSnapshot } from './loadout-types.ts';
 
@@ -21,6 +22,8 @@ export interface RaidComparisonMetric {
   delta?: number;
   precision?: number;
   unit?: string;
+  leftQuality: DataQuality;
+  rightQuality: DataQuality;
 }
 
 export interface RaidComparisonLoadoutSummary {
@@ -62,22 +65,26 @@ export function buildRaidHistoryComparison(
 
   const leftTurn = observedTurn(left);
   const rightTurn = observedTurn(right);
+  const leftDamage = observedPartyDamage(left);
+  const rightDamage = observedPartyDamage(right);
   const metrics: RaidComparisonMetric[] = [
-    metric('party-damage', 'Party damage', knownPartyDamage(left), knownPartyDamage(right)),
+    metric('party-damage', 'Party damage', leftDamage, rightDamage, undefined, undefined, damageMetricQuality(left, leftDamage), damageMetricQuality(right, rightDamage)),
     metric('duration', 'Duration', left.durationMs, right.durationMs, 'ms'),
     metric('observed-turns', 'Last observed turn', leftTurn, rightTurn),
     metric(
       'damage-per-observed-turn',
       'Damage / observed turn',
-      ratio(knownPartyDamage(left), leftTurn),
-      ratio(knownPartyDamage(right), rightTurn),
+      ratio(leftDamage, leftTurn),
+      ratio(rightDamage, rightTurn),
       undefined,
       1,
+      damageMetricQuality(left, leftDamage),
+      damageMetricQuality(right, rightDamage),
     ),
-    metric('honors', 'Honors / contribution', honors(left), honors(right)),
-    metric('normal-damage', 'Normal damage', knownBreakdown(left, 'normal'), knownBreakdown(right, 'normal')),
-    metric('skill-damage', 'Skill damage', knownBreakdown(left, 'skill'), knownBreakdown(right, 'skill')),
-    metric('ougi-damage', 'Ougi damage', knownBreakdown(left, 'ougi'), knownBreakdown(right, 'ougi')),
+    metric('honors', 'Honors / contribution', honors(left), honors(right), undefined, undefined, participantMetricQuality(left), participantMetricQuality(right)),
+    damageBreakdownMetric('normal-damage', 'Normal damage', left, right, 'normal'),
+    damageBreakdownMetric('skill-damage', 'Skill damage', left, right, 'skill'),
+    damageBreakdownMetric('ougi-damage', 'Ougi damage', left, right, 'ougi'),
   ];
 
   return {
@@ -127,25 +134,39 @@ function metric(
   right: number | undefined,
   unit?: string,
   precision?: number,
+  leftQuality: DataQuality = 'known',
+  rightQuality: DataQuality = 'known',
 ): RaidComparisonMetric {
   return {
     key,
     label,
     left,
     right,
-    delta: left !== undefined && right !== undefined ? right - left : undefined,
+    delta: left !== undefined && right !== undefined && leftQuality === 'known' && rightQuality === 'known'
+      ? right - left
+      : undefined,
     unit,
     precision,
+    leftQuality: left === undefined ? 'unknown' : leftQuality,
+    rightQuality: right === undefined ? 'unknown' : rightQuality,
   };
 }
 
-function knownPartyDamage(raid: RaidHistoryRecord): number | undefined {
-  return raid.damageQuality === 'known' ? raid.partyDamage : undefined;
+function observedPartyDamage(raid: RaidHistoryRecord): number | undefined {
+  return raid.partyDamage;
+}
+
+function damageMetricQuality(raid: RaidHistoryRecord, value: number | undefined): DataQuality {
+  return value === undefined ? 'unknown' : raid.damageQuality;
 }
 
 function honors(raid: RaidHistoryRecord): number | undefined {
-  if (raid.participants?.quality !== 'known') return undefined;
-  return raid.participants.honors ?? raid.participants.contribution;
+  return raid.participants?.honors ?? raid.participants?.contribution;
+}
+
+function participantMetricQuality(raid: RaidHistoryRecord): DataQuality {
+  if (!raid.participants) return 'unknown';
+  return raid.participants.quality;
 }
 
 function observedTurn(raid: RaidHistoryRecord): number | undefined {
@@ -160,9 +181,37 @@ function ratio(value: number | undefined, denominator: number | undefined): numb
   return value !== undefined && denominator !== undefined && denominator > 0 ? value / denominator : undefined;
 }
 
-function knownBreakdown(raid: RaidHistoryRecord, key: keyof DamageBreakdown): number | undefined {
-  if (raid.damageQuality !== 'known' || raid.characterDamage.length === 0 || raid.characterDamage.some((row) => row.quality !== 'known')) return undefined;
-  return raid.characterDamage.reduce((sum, row) => sum + (row.breakdown[key] ?? 0), 0);
+function damageBreakdownMetric(
+  metricKey: RaidComparisonMetricKey,
+  label: string,
+  left: RaidHistoryRecord,
+  right: RaidHistoryRecord,
+  breakdownKey: keyof DamageBreakdown,
+): RaidComparisonMetric {
+  const leftValue = observedBreakdown(left, breakdownKey);
+  const rightValue = observedBreakdown(right, breakdownKey);
+  return metric(
+    metricKey,
+    label,
+    leftValue,
+    rightValue,
+    undefined,
+    undefined,
+    damageMetricQuality(left, leftValue),
+    damageMetricQuality(right, rightValue),
+  );
+}
+
+function observedBreakdown(raid: RaidHistoryRecord, key: keyof DamageBreakdown): number | undefined {
+  let observed = false;
+  let total = 0;
+  for (const entry of raid.log) {
+    const value = entry.breakdown[key];
+    if (value === undefined) continue;
+    observed = true;
+    total += value;
+  }
+  return observed ? total : undefined;
 }
 
 function combineDamageQuality(

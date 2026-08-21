@@ -186,13 +186,17 @@ function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
 }
 
 function renderMetric(metric: RaidComparisonMetric): string {
-  return `<div class="raid-compare-row"><strong>${escapeHtml(metric.label)}</strong><span>${formatMetric(metric.left, metric)}</span><span>${formatMetric(metric.right, metric)}</span><span>${metric.delta === undefined ? '—' : formatSigned(metric.delta, metric)}</span></div>`;
+  return `<div class="raid-compare-row"><strong>${escapeHtml(metric.label)}</strong><span>${formatMetric(metric.left, metric.leftQuality, metric)}</span><span>${formatMetric(metric.right, metric.rightQuality, metric)}</span><span>${metric.delta === undefined ? '—' : formatSigned(metric.delta, metric)}</span></div>`;
 }
 
-function formatMetric(value: number | undefined, metric: RaidComparisonMetric): string {
+function formatMetric(value: number | undefined, quality: 'known' | 'partial' | 'unknown', metric: RaidComparisonMetric): string {
   if (value === undefined) return '—';
-  if (metric.unit === 'ms') return `${(value / 1000).toFixed(1)}s`;
-  return metric.precision === undefined ? Math.round(value).toLocaleString('en-US') : value.toFixed(metric.precision);
+  const formatted = metric.unit === 'ms'
+    ? `${(value / 1000).toFixed(1)}s`
+    : metric.precision === undefined
+      ? Math.round(value).toLocaleString('en-US')
+      : value.toFixed(metric.precision);
+  return quality === 'partial' ? `≥ ${formatted}` : formatted;
 }
 function formatSigned(value: number, metric: RaidComparisonMetric): string {
   const sign = value > 0 ? '+' : '';
