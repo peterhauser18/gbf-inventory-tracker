@@ -24,7 +24,7 @@ test('normal live Combat updates patch the existing cockpit instead of replacing
   assert.match(ui, /patchPartyCards\(current, next\)/);
 });
 
-test('local portrait lookup retries misses, prefers the exact observed actor id and keeps an installed image stable', () => {
+test('local portrait lookup retries misses, prefers pid_image before battle ds and keeps an installed image stable', () => {
   const cacheRead = /function observedActorImageSource\(assetId: string\)[\s\S]*?\n\}/.exec(finalPolish)?.[0] ?? '';
   const actorLookup = /async function observedActorImageSourceForActor[\s\S]*?\n\}/.exec(finalPolish)?.[0] ?? '';
   const replacement = /function replaceActorImages[\s\S]*?\n\}/.exec(finalPolish)?.[0] ?? '';
@@ -32,7 +32,7 @@ test('local portrait lookup retries misses, prefers the exact observed actor id 
   assert.match(cacheRead, /if \(!blob\) \{\s*observedActorImagePromises\.delete\(assetId\);\s*return undefined;/s);
   assert.match(cacheRead, /\.catch\(\(\) => \{\s*observedActorImagePromises\.delete\(assetId\);\s*return undefined;/s);
   assert.match(cacheRead, /if \(existing\) return existing/);
-  assert.match(actorLookup, /const ids = \[actorVisualImageId\(actor\), actor\.id\]/);
+  assert.match(actorLookup, /const ids = \[actorCardImageId\(actor\), actorVisualImageId\(actor\), actor\.id\]/);
   assert.match(replacement, /existing\?\.getAttribute\('src'\) === source\) continue/);
 });
 
