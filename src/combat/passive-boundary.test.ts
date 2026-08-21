@@ -35,14 +35,15 @@ test('recognized combat responses persist only normalized combat facts', () => {
   assert.match(routeSource, /if \(parse\?\.instanceId\)/);
   assert.match(routeSource, /updateCombatLock\(tabId, parse\.instanceId, parse\.result\)/);
   assert.match(routeSource, /if \(route !== 'account'\) return/);
-  assert.match(routeSource, /await queueAccountIngest\(record\)/);
+  assert.match(routeSource, /const context = weaponStashIngestContext\(tabId, record\)/);
+  assert.match(routeSource, /await queueAccountIngest\(record, context\)/);
   assert.match(routeSource, /await saveCapturedResponse\(record\)/);
 
   const combatBranch = routeSource.slice(
     routeSource.indexOf("if (route === 'combat')"),
     routeSource.indexOf("if (route !== 'account')"),
   );
-  assert.doesNotMatch(combatBranch, /saveCapturedResponse\(record\)|queueAccountIngest\(record\)/);
+  assert.doesNotMatch(combatBranch, /saveCapturedResponse\(record\)|queueAccountIngest\(/);
 });
 
 test('raid instance correlation remains session-only and active rows store normalized parses only', () => {
