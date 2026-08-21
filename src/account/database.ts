@@ -4,6 +4,7 @@ import type {
   DataQuality,
   SnapshotQuality,
   TicketCount,
+  WeaponInstance,
   WeaponStashSnapshot,
 } from '../types/account.ts';
 
@@ -17,9 +18,11 @@ export interface AccountDatabaseState {
 }
 
 export function createAccountDatabase(snapshot: AccountSnapshot): AccountDatabaseState {
+  const cloned = cloneSnapshot(snapshot);
+  cloned.weapons = mergeStashWeaponsIntoWeapons(cloned.weapons, cloned.weaponStashes);
   return {
     version: ACCOUNT_DATABASE_VERSION,
-    snapshot: cloneSnapshot(snapshot),
+    snapshot: cloned,
     observedAt: observedTimes(snapshot),
   };
 }
@@ -58,6 +61,7 @@ export function mergeAccountDatabase(
   applyCollection(current, incoming, next, observedAt, quality, 'progression', 'progression', (value) => value.key);
 
   applyAccountStatus(current, incoming, next, observedAt, quality);
+  next.weapons = mergeStashWeaponsIntoWeapons(next.weapons, next.weaponStashes);
 
   return { version: ACCOUNT_DATABASE_VERSION, snapshot: next, observedAt };
 }
@@ -188,6 +192,20 @@ function mergeStashes(
         ? [...stash.weapons]
         : mergeValues(existing.weapons, stash.weapons, (value) => value.id),
     });
+  }
+  return [...merged.values()];
+}
+
+function mergeStashWeaponsIntoWeapons(
+  weapons: readonly WeaponInstance[],
+  stashes: readonly WeaponStashSnapshot[],
+): WeaponInstance[] {
+  const merged = new Map(weapons.map((weapon) => [weapon.id, weapon]));
+  for (const stash of stashes) {
+    for (const weapon of stash.weapons) {
+      const existing = merged.get(weapon.id);
+      if (!existing || weapon.updatedAt > existing.updatedAt) merged.set(weapon.id, weapon);
+    }
   }
   return [...merged.values()];
 }
