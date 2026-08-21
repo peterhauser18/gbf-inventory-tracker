@@ -18,6 +18,10 @@ const VERIFIED_EXACT_PATHS = new Set([
   '/user/status',
 ]);
 
+export interface AccountIngestContext {
+  weaponStashName?: string;
+}
+
 export function isVerifiedAccountResponseUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -28,9 +32,18 @@ export function isVerifiedAccountResponseUrl(url: string): boolean {
   }
 }
 
-export function normalizeVerifiedAccountRecord(record: CapturedResponseRecord): AccountSnapshot | null {
+export function normalizeVerifiedAccountRecord(
+  record: CapturedResponseRecord,
+  context: AccountIngestContext = {},
+): AccountSnapshot | null {
   if (!isVerifiedAccountResponseUrl(record.meta.url)) return null;
   const fragment = normalizeCaptureScan([record]);
+  if (context.weaponStashName && fragment.weaponStashes.length === 1) {
+    fragment.weaponStashes[0] = {
+      ...fragment.weaponStashes[0]!,
+      name: context.weaponStashName,
+    };
+  }
   if (!hasObservedData(fragment)) return null;
   return fragment;
 }
@@ -38,8 +51,9 @@ export function normalizeVerifiedAccountRecord(record: CapturedResponseRecord): 
 export function ingestAccountRecord(
   current: AccountDatabaseState | null,
   record: CapturedResponseRecord,
+  context: AccountIngestContext = {},
 ): AccountDatabaseState | null {
-  const fragment = normalizeVerifiedAccountRecord(record);
+  const fragment = normalizeVerifiedAccountRecord(record, context);
   return fragment ? mergeAccountDatabase(current, fragment) : current;
 }
 

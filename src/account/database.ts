@@ -4,6 +4,7 @@ import type {
   DataQuality,
   SnapshotQuality,
   TicketCount,
+  WeaponInstance,
   WeaponStashSnapshot,
 } from '../types/account.ts';
 
@@ -17,11 +18,23 @@ export interface AccountDatabaseState {
 }
 
 export function createAccountDatabase(snapshot: AccountSnapshot): AccountDatabaseState {
+  const cloned = cloneSnapshot(snapshot);
+  cloned.weapons = mergeStashWeaponsIntoWeapons(cloned.weapons, cloned.weaponStashes);
   return {
     version: ACCOUNT_DATABASE_VERSION,
-    snapshot: cloneSnapshot(snapshot),
+    snapshot: cloned,
     observedAt: observedTimes(snapshot),
   };
+}
+
+export function normalizeAccountDatabaseState(state: AccountDatabaseState): AccountDatabaseState {
+  if (!Array.isArray(state.snapshot.weapons) || !Array.isArray(state.snapshot.weaponStashes)) return state;
+  const weapons = mergeStashWeaponsIntoWeapons(state.snapshot.weapons, state.snapshot.weaponStashes);
+  const unchanged = weapons.length === state.snapshot.weapons.length
+    && weapons.every((weapon, index) => weapon === state.snapshot.weapons[index]);
+  return unchanged
+    ? state
+    : { ...state, snapshot: { ...state.snapshot, weapons } };
 }
 
 export function mergeAccountDatabase(
@@ -58,6 +71,7 @@ export function mergeAccountDatabase(
   applyCollection(current, incoming, next, observedAt, quality, 'progression', 'progression', (value) => value.key);
 
   applyAccountStatus(current, incoming, next, observedAt, quality);
+  next.weapons = mergeStashWeaponsIntoWeapons(next.weapons, next.weaponStashes);
 
   return { version: ACCOUNT_DATABASE_VERSION, snapshot: next, observedAt };
 }
@@ -76,16 +90,24 @@ function applyCollection<
 ): void {
   const incomingQuality = incoming.quality[family];
   if (incomingQuality === 'unknown') return;
+
   const incomingAt = incoming.capturedAt;
   const currentAt = observedAt[family] ?? 0;
-  if (!shouldApply(currentAt, quality[family], incomingAt, incomingQuality)) return;
+  if (incomingAt < currentAt) return;
 
+  const currentQuality = quality[family];
   const incomingValues = incoming[key] as AccountSnapshot[K];
   const currentValues = current.snapshot[key] as AccountSnapshot[K];
-  next[key] = (incomingQuality === 'known'
-    ? [...incomingValues]
-    : mergeValues(currentValues, incomingValues, identity)) as AccountSnapshot[K];
-  quality[family] = incomingQuality;
+
+  if (incomingQuality === 'known') {
+    next[key] = [...incomingValues] as AccountSnapshot[K];
+    quality[family] = 'known';
+    observedAt[family] = incomingAt;
+    return;
+  }
+
+  next[key] = mergeValues(currentValues, incomingValues, identity) as AccountSnapshot[K];
+  quality[family] = currentQuality === 'known' ? 'known' : 'partial';
   observedAt[family] = incomingAt;
 }
 
@@ -138,9 +160,23 @@ function mergeValues<T extends { updatedAt: number }>(
   for (const value of incoming) {
     const key = identity(value);
     const existing = merged.get(key);
-    if (!existing || value.updatedAt >= existing.updatedAt) merged.set(key, value);
+    if (!existing) {
+      merged.set(key, value);
+      continue;
+    }
+    if (value.updatedAt < existing.updatedAt) continue;
+    merged.set(key, mergeDefined(existing, value));
   }
   return [...merged.values()];
+}
+
+function mergeDefined<T extends { updatedAt: number }>(existing: T, incoming: T): T {
+  const merged = { ...existing } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value !== undefined) merged[key] = value;
+  }
+  merged.updatedAt = Math.max(existing.updatedAt, incoming.updatedAt);
+  return merged as T;
 }
 
 function mergeStashes(
@@ -160,11 +196,26 @@ function mergeStashes(
     if (incomingAt < existingAt) continue;
     merged.set(stash.stashId, {
       stashId: stash.stashId,
+      name: stash.name ?? existing.name,
       quality: stash.quality,
       weapons: stash.quality === 'known'
         ? [...stash.weapons]
         : mergeValues(existing.weapons, stash.weapons, (value) => value.id),
     });
+  }
+  return [...merged.values()];
+}
+
+function mergeStashWeaponsIntoWeapons(
+  weapons: readonly WeaponInstance[],
+  stashes: readonly WeaponStashSnapshot[],
+): WeaponInstance[] {
+  const merged = new Map(weapons.map((weapon) => [weapon.id, weapon]));
+  for (const stash of stashes) {
+    for (const weapon of stash.weapons) {
+      const existing = merged.get(weapon.id);
+      if (!existing || weapon.updatedAt > existing.updatedAt) merged.set(weapon.id, weapon);
+    }
   }
   return [...merged.values()];
 }

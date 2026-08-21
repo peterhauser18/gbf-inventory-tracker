@@ -71,6 +71,7 @@ export interface TicketCount {
 
 export interface WeaponStashSnapshot {
   stashId: string;
+  name?: string;
   weapons: WeaponInstance[];
   quality: DataQuality;
 }

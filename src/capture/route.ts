@@ -1,15 +1,17 @@
 import { isVerifiedAccountResponseUrl } from '../account/ingest.ts';
 import { isVerifiedCombatResponseUrl } from '../combat/complete-observation.ts';
 import { isVerifiedPartyDeckResponseUrl } from '../combat/loadout.ts';
+import { isVerifiedWeaponStashMetadataResponseUrl } from './stash-metadata.ts';
 import type { CaptureResourceType } from './types.ts';
 
-export type ObservedResponseRoute = 'account' | 'combat' | 'loadout';
+export type ObservedResponseRoute = 'account' | 'combat' | 'loadout' | 'stash-meta';
 
 export function classifyObservedResponseUrl(url: string): ObservedResponseRoute | null {
   if (!isGbfGameOrigin(url)) return null;
   if (isVerifiedAccountResponseUrl(url)) return 'account';
   if (isVerifiedCombatResponseUrl(url)) return 'combat';
   if (isVerifiedPartyDeckResponseUrl(url)) return 'loadout';
+  if (isVerifiedWeaponStashMetadataResponseUrl(url)) return 'stash-meta';
   return null;
 }
 
