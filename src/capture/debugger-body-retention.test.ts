@@ -21,10 +21,17 @@ test('allowlisted body reads do not block later debugger lifecycle events', () =
   assert.match(background, /const CAPTURE_NETWORK_METHODS = new Set\(\[[\s\S]*Network\.responseReceived[\s\S]*Network\.loadingFinished[\s\S]*Network\.loadingFailed/);
   assert.match(background, /!CAPTURE_NETWORK_METHODS\.has\(method\)/);
   assert.match(background, /if \(!url \|\| !requestId\) return;[\s\S]*const treasureIcon = parseObservedTreasureIconResponse\([\s\S]*const resourceType = normalizeResourceType\(event\?\.type\);[\s\S]*if \(!shouldReadObservedResponse\(url, resourceType\)\) return;[\s\S]*const state = await getRuntimeState\(\)/);
-  assert.match(background, /pendingTreasureIcons\.set\(requestId, \{ itemId: treasureIcon\.itemId \}\)/);
+  assert.match(background, /pendingTreasureIcons\.set\(scopedRequestId\(tabId, requestId\), \{ itemId: treasureIcon\.itemId \}\)/);
   assert.match(background, /void captureObservedTreasureIcon\(tabId, requestId, pendingTreasureIcon\.itemId\);/);
-  assert.match(background, /const meta = pendingResponses\.take\(requestId\);[\s\S]*if \(!meta \|\| !shouldReadObservedResponse\(meta\.url, meta\.resourceType\)\) return;[\s\S]*const state = await getRuntimeState\(\)/);
+  assert.match(background, /const meta = pendingResponseBuffer\(tabId\)\.take\(requestId\);[\s\S]*if \(!meta \|\| !shouldReadObservedResponse\(meta\.url, meta\.resourceType\)\) return;[\s\S]*const state = await getRuntimeState\(\)/);
   assert.match(background, /void captureObservedResponse\(tabId, state\.scanId, meta\);/);
+});
+
+test('parallel debugger targets keep pending response ids scoped per tab', () => {
+  assert.match(background, /const pendingResponses = new Map<number, CaptureEventBuffer>\(\)/);
+  assert.match(background, /function pendingResponseBuffer\(tabId: number\): CaptureEventBuffer/);
+  assert.match(background, /function scopedRequestId\(tabId: number, requestId: string\): string/);
+  assert.match(background, /return `\$\{tabId\}:\$\{requestId\}`/);
 });
 
 test('body-read failures surface only a sanitized allowlisted path and bounded reason', () => {

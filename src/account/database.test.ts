@@ -69,7 +69,7 @@ test('newer explicit values replace older values for the same technical identity
   assert.equal(merged.snapshot.characters[0]?.level, 50);
 });
 
-test('complete roster coverage replaces stale members while partial coverage cannot', () => {
+test('complete roster coverage stays known under later partial enrichment and a later complete scan can replace stale members', () => {
   const first = createAccountDatabase(snapshot(100, {
     characterQuality: 'known',
     characters: [
@@ -82,7 +82,8 @@ test('complete roster coverage replaces stale members while partial coverage can
     characters: [{ id: 'a', masterId: '1', updatedAt: 200 }],
   }));
   assert.deepEqual(partial.snapshot.characters.map((value) => value.id), ['a', 'stale']);
-  assert.equal(partial.snapshot.quality.characters, 'partial');
+  assert.equal(partial.snapshot.quality.characters, 'known');
+  assert.equal(partial.observedAt.characters, 200);
 
   const complete = mergeAccountDatabase(partial, snapshot(300, {
     characterQuality: 'known',
@@ -135,4 +136,35 @@ test('account database persists and resets through the storage seam', async () =
   assert.ok(values[ACCOUNT_DATABASE_STORAGE_KEY]);
   await resetAccountDatabase(area);
   assert.equal(await loadAccountDatabase(area), null);
+});
+
+test('a stale queued partial save cannot overwrite a newer complete account state', async () => {
+  const values: Record<string, unknown> = {};
+  const area: AccountStorageArea = {
+    async get(key) { return { [key]: values[key] }; },
+    async set(items) { Object.assign(values, items); },
+    async remove(key) { delete values[key]; },
+  };
+  const base = createAccountDatabase(snapshot(100, {
+    characterQuality: 'known',
+    characters: [{ id: 'a', masterId: '1', level: 10, updatedAt: 100 }],
+  }));
+  await saveAccountDatabase(base, area);
+
+  const stalePartial = mergeAccountDatabase(base, snapshot(200, {
+    characterQuality: 'partial',
+    characters: [{ id: 'party-only', masterId: '2', level: 20, updatedAt: 200 }],
+  }));
+  const newerComplete = mergeAccountDatabase(base, snapshot(300, {
+    characterQuality: 'known',
+    characters: [{ id: 'a', masterId: '1', level: 30, updatedAt: 300 }],
+  }));
+
+  await saveAccountDatabase(newerComplete, area);
+  await saveAccountDatabase(stalePartial, area);
+  const saved = await loadAccountDatabase(area);
+  assert.equal(saved?.snapshot.quality.characters, 'known');
+  assert.equal(saved?.observedAt.characters, 300);
+  assert.deepEqual(saved?.snapshot.characters.map((value) => value.id), ['a']);
+  assert.equal(saved?.snapshot.characters[0]?.level, 30);
 });
