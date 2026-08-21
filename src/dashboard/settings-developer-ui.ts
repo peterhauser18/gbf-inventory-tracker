@@ -3,6 +3,11 @@ let syncQueued = false;
 let storageBusy = false;
 let openDeveloperAfterNavigation = false;
 
+type LocalDataAction =
+  | 'gbfit:reset-account-data'
+  | 'gbfit:clear-diagnostic-data'
+  | 'gbfit:clear-all-except-account';
+
 if (app) {
   app.addEventListener('click', handleClick, true);
   const observer = new MutationObserver(scheduleSync);
@@ -52,6 +57,7 @@ function ensureStorageCard(): void {
     <h3>Cleanup controls</h3>
     <p class="muted" data-settings-storage-note>Diagnostic scans are bounded locally. Cleanup affects only this extension's local data and never changes the GBF account.</p>
     <div class="settings-storage-actions">
+      <button class="settings-action" type="button" data-settings-reset-account>Reset account data</button>
       <button class="settings-action" type="button" data-settings-clear-diagnostic>Clear diagnostic storage</button>
       <button class="settings-action" type="button" data-settings-clear-except-account>Clear everything except account snapshot</button>
     </div>
@@ -78,10 +84,10 @@ function ensureDeveloperPanel(): void {
     <div class="settings-developer-body">
       <div class="status-list">
         <div><span>Observation control</span><strong>Extension popup</strong></div>
-        <div><span>Account reset</span><strong>Extension popup</strong></div>
+        <div><span>Account reset</span><strong>Settings above</strong></div>
         <div><span>Storage cleanup</span><strong>Settings above</strong></div>
       </div>
-      <p class="muted">Manual observation and account reset stay in the popup. The removed current/last-observation panel is not reproduced here.</p>
+      <p class="muted">Manual observation stays in the popup. Account reset and local cleanup live in Settings; the removed current/last-observation panel is not reproduced here.</p>
     </div>
   `;
   grid.append(panel);
@@ -100,17 +106,24 @@ function handleClick(event: MouseEvent): void {
     return;
   }
 
+  if (target.closest('[data-settings-reset-account]')) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void runLocalDataAction('gbfit:reset-account-data');
+    return;
+  }
+
   if (target.closest('[data-settings-clear-diagnostic]')) {
     event.preventDefault();
     event.stopImmediatePropagation();
-    void runCleanup('gbfit:clear-diagnostic-data');
+    void runLocalDataAction('gbfit:clear-diagnostic-data');
     return;
   }
 
   if (target.closest('[data-settings-clear-except-account]')) {
     event.preventDefault();
     event.stopImmediatePropagation();
-    void runCleanup('gbfit:clear-all-except-account');
+    void runLocalDataAction('gbfit:clear-all-except-account');
   }
 }
 
@@ -122,11 +135,11 @@ async function refreshStorageAvailability(): Promise<void> {
   }
   setStorageButtonsDisabled(false);
   if (response.active) {
-    setStorageNote('Stop observation before clearing local storage so in-flight observed data cannot immediately repopulate it.');
+    setStorageNote('Stop observation before changing local storage so in-flight observed data cannot immediately repopulate it.');
   }
 }
 
-async function runCleanup(type: 'gbfit:clear-diagnostic-data' | 'gbfit:clear-all-except-account'): Promise<void> {
+async function runLocalDataAction(type: LocalDataAction): Promise<void> {
   if (storageBusy) return;
   const status = await sendMessage('gbfit:get-status');
   if (status.error) {
@@ -135,25 +148,42 @@ async function runCleanup(type: 'gbfit:clear-diagnostic-data' | 'gbfit:clear-all
   }
   if (status.active) {
     setStorageButtonsDisabled(false);
-    setStorageNote('Stop observation before clearing local storage so in-flight observed data cannot immediately repopulate it.');
+    setStorageNote('Stop observation before changing local storage so in-flight observed data cannot immediately repopulate it.');
     return;
   }
 
-  const isDiagnosticOnly = type === 'gbfit:clear-diagnostic-data';
-  const confirmed = window.confirm(isDiagnosticOnly
-    ? 'Clear all locally stored diagnostic scans? The account snapshot, combat history, drop preferences, and UI preferences will be kept.'
-    : 'Delete diagnostic scans, combat/raid history, and drop preferences? The normalized account snapshot and UI preferences will be kept.');
-  if (!confirmed) return;
+  const copy = actionCopy(type);
+  if (!window.confirm(copy.confirm)) return;
 
   storageBusy = true;
   setStorageButtonsDisabled(true);
-  setStorageNote(isDiagnosticOnly ? 'Clearing diagnostic storage…' : 'Clearing local data except the account snapshot…');
+  setStorageNote(copy.pending);
   const response = await sendMessage(type);
   storageBusy = false;
   setStorageButtonsDisabled(false);
-  setStorageNote(response.error ?? (isDiagnosticOnly
-    ? 'Diagnostic storage cleared. Account snapshot and combat data were kept.'
-    : 'Diagnostic and combat data cleared. Account snapshot and UI preferences were kept.'));
+  setStorageNote(response.error ?? copy.success);
+}
+
+function actionCopy(type: LocalDataAction): { confirm: string; pending: string; success: string } {
+  if (type === 'gbfit:reset-account-data') {
+    return {
+      confirm: "Clear GBF Tracker's locally accumulated account data? This does not change your GBF account.",
+      pending: 'Clearing local account data…',
+      success: 'Local account data cleared. Start observation later and browse GBF normally to rebuild it.',
+    };
+  }
+  if (type === 'gbfit:clear-diagnostic-data') {
+    return {
+      confirm: 'Clear all locally stored diagnostic scans? The account snapshot, combat history, drop preferences, and UI preferences will be kept.',
+      pending: 'Clearing diagnostic storage…',
+      success: 'Diagnostic storage cleared. Account snapshot and combat data were kept.',
+    };
+  }
+  return {
+    confirm: 'Delete diagnostic scans, combat/raid history, and drop preferences? The normalized account snapshot and UI preferences will be kept.',
+    pending: 'Clearing local data except the account snapshot…',
+    success: 'Diagnostic and combat data cleared. Account snapshot and UI preferences were kept.',
+  };
 }
 
 function setStorageButtonsDisabled(disabled: boolean): void {
