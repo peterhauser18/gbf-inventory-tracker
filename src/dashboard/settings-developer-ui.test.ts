@@ -15,13 +15,16 @@ test('Developer is no longer a top-level Dashboard tab and routes into Settings'
   assert.doesNotMatch(ui, /innerHTML\s*=\s*app\./);
 });
 
-test('Dashboard Settings owns the local storage cleanup controls', () => {
+test('Dashboard Settings owns account reset and local storage cleanup controls', () => {
+  assert.match(ui, /data-settings-reset-account/);
   assert.match(ui, /data-settings-clear-diagnostic/);
   assert.match(ui, /data-settings-clear-except-account/);
+  assert.match(ui, /gbfit:reset-account-data/);
   assert.match(ui, /gbfit:clear-diagnostic-data/);
   assert.match(ui, /gbfit:clear-all-except-account/);
   assert.match(ui, /gbfit:get-status/);
-  assert.match(ui, /Stop observation before clearing local storage/);
+  assert.match(ui, /Stop observation before changing local storage/);
+  assert.match(ui, /This does not change your GBF account/);
   assert.doesNotMatch(ui, /\bfetch\s*\(|XMLHttpRequest|chrome\.debugger/);
 });
 
