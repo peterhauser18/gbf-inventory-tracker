@@ -100,4 +100,8 @@
   html body .dashboard-shell .sidebar-note {
     display: grid !important;
   }
+  html body .dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .nav-group-label,
+  html body .dashboard-shell.dashboard-sidebar-collapsed .sidebar:not(:hover):not(:focus-within) .sidebar-note {
+    display: none !important;
+  }
 }
