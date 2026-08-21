@@ -13,7 +13,7 @@ const compactCharacterAndSummonCardRule = /cockpit-characters-panel \.party-card
 test('compact Character cards mirror Summons and prefer locally observed card-sized actor art', () => {
   assert.match(actorImageCache, /\['npc', 'm'\][\s\S]*\['npc', 's'\][\s\S]*\['npc', 'ds'\]/s);
   assert.match(actorImageCache, /actorVariantAssetId\(family, variant, observedAssetId\)/);
-  assert.match(finalPolish, /const ids = \[actorVisualImageId\(actor\), actor\.id\]/);
+  assert.match(finalPolish, /const ids = \[actorCardImageId\(actor\), actorVisualImageId\(actor\), actor\.id\]/);
   assert.match(finalPolishCss, /cockpit-characters-panel \.party-cards-compact\s*\{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/s);
   assert.match(finalPolishCss, /party-cards-compact \.party-card-visual\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
   assert.match(runtimePolishCss, compactCharacterAndSummonCardRule);
