@@ -6,7 +6,7 @@ const popup = readFileSync(new URL('../popup.ts', import.meta.url), 'utf8');
 const popupCleanup = readFileSync(new URL('../popup-cleanup.ts', import.meta.url), 'utf8');
 const popupHtml = readFileSync(new URL('../../popup.html', import.meta.url), 'utf8');
 
-test('popup keeps Dashboard as the normal action and only manual observation/account reset under Developer', () => {
+test('popup keeps Dashboard as the normal action and only manual observation under Developer', () => {
   const dashboard = popup.indexOf('id="dashboard"');
   const developer = popup.indexOf('<details class="developer">');
   const status = popup.indexOf('id="status"', developer);
@@ -15,7 +15,7 @@ test('popup keeps Dashboard as the normal action and only manual observation/acc
   assert.ok(dashboard >= 0 && dashboard < developer);
   assert.ok(developer > dashboard);
   assert.ok(status > developer);
-  assert.ok(reset > developer);
+  assert.ok(reset > developer, 'legacy popup source still defines reset before cleanup removes it');
   assert.match(popup, /openDashboardTab/);
 
   assert.match(popupHtml, /src="\/src\/popup-cleanup\.ts"/);
@@ -23,7 +23,8 @@ test('popup keeps Dashboard as the normal action and only manual observation/acc
   assert.match(popupCleanup, /import '\.\/popup\.ts'/);
   assert.match(popupCleanup, /removeCardFor\('#response-count'\)/);
   assert.match(popupCleanup, /removeCardFor\('#clear-diagnostic'\)/);
-  assert.match(popupCleanup, /local-storage cleanup is in Dashboard Settings/);
+  assert.match(popupCleanup, /removeElement\('#reset-account'\)/);
+  assert.match(popupCleanup, /account reset and local-storage cleanup are in Dashboard Settings/);
 });
 
 test('Dashboard always opens while observation only targets an explicitly active GBF tab', () => {
