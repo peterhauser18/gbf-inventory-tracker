@@ -13,7 +13,7 @@ const compactCharacterAndSummonCardRule = /cockpit-characters-panel \.party-card
 test('compact Character cards use local battle ds assets at their landscape ratio with names directly below', () => {
   assert.match(actorImageCache, /\['npc', 'ds'\]/);
   assert.match(actorImageCache, /actorVariantAssetId\(family, variant, observedAssetId\)/);
-  assert.match(finalPolish, /const ids = \[actor\.id, actorVisualImageId\(actor\)\]/);
+  assert.match(finalPolish, /const ids = \[actorVisualImageId\(actor\), actor\.id\]/);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-visual\s*\{[^}]*aspect-ratio:\s*16 \/ 9/s);
   assert.match(finalPolishCss, /party-cards-compact \.party-card-visual\s*\{[^}]*aspect-ratio:\s*16 \/ 9/s);
   assert.match(runtimePolishCss, compactCharacterAndSummonCardRule);
