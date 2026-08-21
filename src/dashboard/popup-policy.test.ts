@@ -3,22 +3,27 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const popup = readFileSync(new URL('../popup.ts', import.meta.url), 'utf8');
+const popupCleanup = readFileSync(new URL('../popup-cleanup.ts', import.meta.url), 'utf8');
+const popupHtml = readFileSync(new URL('../../popup.html', import.meta.url), 'utf8');
 
-test('popup keeps Dashboard as the normal action and developer controls collapsed together', () => {
+test('popup keeps Dashboard as the normal action and only manual observation/account reset under Developer', () => {
   const dashboard = popup.indexOf('id="dashboard"');
   const developer = popup.indexOf('<details class="developer">');
   const status = popup.indexOf('id="status"', developer);
   const reset = popup.indexOf('id="reset-account"', developer);
-  const exportButton = popup.indexOf('id="export"', developer);
-  const cleanup = popup.indexOf('id="clear-diagnostic"', developer);
 
   assert.ok(dashboard >= 0 && dashboard < developer);
   assert.ok(developer > dashboard);
   assert.ok(status > developer);
   assert.ok(reset > developer);
-  assert.ok(exportButton > developer);
-  assert.ok(cleanup > developer);
   assert.match(popup, /openDashboardTab/);
+
+  assert.match(popupHtml, /src="\/src\/popup-cleanup\.ts"/);
+  assert.doesNotMatch(popupHtml, /src="\/src\/popup\.ts"/);
+  assert.match(popupCleanup, /import '\.\/popup\.ts'/);
+  assert.match(popupCleanup, /removeCardFor\('#response-count'\)/);
+  assert.match(popupCleanup, /removeCardFor\('#clear-diagnostic'\)/);
+  assert.match(popupCleanup, /local-storage cleanup is in Dashboard Settings/);
 });
 
 test('Dashboard always opens while observation only targets an explicitly active GBF tab', () => {
@@ -39,8 +44,9 @@ test('manual Developer observation still requires the explicitly selected GBF ta
 });
 
 test('popup launch flow adds no GBF request or page instrumentation primitive', () => {
-  assert.doesNotMatch(popup, /\bfetch\s*\(/);
-  assert.doesNotMatch(popup, /XMLHttpRequest/);
-  assert.doesNotMatch(popup, /chrome\.debugger/);
-  assert.doesNotMatch(popup, /window\.fetch/);
+  const source = `${popup}\n${popupCleanup}`;
+  assert.doesNotMatch(source, /\bfetch\s*\(/);
+  assert.doesNotMatch(source, /XMLHttpRequest/);
+  assert.doesNotMatch(source, /chrome\.debugger/);
+  assert.doesNotMatch(source, /window\.fetch/);
 });
