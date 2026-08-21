@@ -32,9 +32,9 @@ test('roster Wiki lookup remains bulk public and credential-free through the sha
   assert.doesNotMatch(wikiCargo, /searchParams\.set\(['"]ids/);
 });
 
-test('combat comparison UI explicitly labels actor lists as observed contributors rather than full party', () => {
-  assert.match(compareUi, /Observed contributors are not guaranteed to be the complete party/);
-  assert.doesNotMatch(compareUi, />Team</);
+test('combat comparison uses the observed party slot and omits contributor and weapon-grid summaries', () => {
+  assert.match(compareUi, /Party slot \$\{loadout\.deckId\}/);
+  assert.doesNotMatch(compareUi, /Observed in both|Observed only in|Weapon Grid/);
 });
 
 test('combat comparison excludes drop facts from its UI and derived comparison data', () => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildRaidHistoryComparison, observedContributors } from './comparison.ts';
+import { buildRaidHistoryComparison } from './comparison.ts';
 import type { RaidLoadoutSnapshot } from './loadout-types.ts';
 import type { RaidHistoryRecord } from './types.ts';
 
@@ -36,6 +36,7 @@ function raid(id: string, localId: string, overrides: Partial<ComparableRaid> = 
 function loadout(): RaidLoadoutSnapshot {
   return {
     quality: 'known', observedAt: 1, updatedAt: 1, correlation: 'battle-start',
+    deckId: '84',
     signature: { npcIds: [], summonIds: [] },
     partyQuality: 'known',
     party: [{ position: 0, name: 'Djeeta', frontline: true }, { position: 1, name: 'Alpha', frontline: true }],
@@ -93,22 +94,7 @@ test('does not turn partial damage breakdown into a numeric comparison', () => {
   )!;
   assert.equal(comparison.metrics.find((row) => row.key === 'normal-damage')?.right, undefined);
   assert.equal(comparison.metrics.find((row) => row.key === 'normal-damage')?.delta, undefined);
-  assert.equal(comparison.contributors.quality, 'partial');
-});
-
-test('reports only observed contributors and preserves differences without claiming a full party', () => {
-  const right = raid('r1', 'b', {
-    characterDamage: [{ actorId: '3040000001', actorName: 'Beta', total: 900, breakdown: { normal: 900 }, quality: 'known' }],
-    log: [
-      { observedAt: 1, actorId: '3040000001', actorName: 'Beta', actionKind: 'normal', damage: 900, breakdown: { normal: 900 } },
-      { observedAt: 2, actorId: '3040000000', actorName: 'Alpha', actionKind: 'skill', damage: 100, breakdown: { skill: 100 } },
-    ],
-  });
-  assert.deepEqual(observedContributors(right).map((row) => row.label), ['Alpha', 'Beta']);
-  const comparison = buildRaidHistoryComparison(raid('r1', 'a'), right)!;
-  assert.deepEqual(comparison.contributors.common.map((row) => row.label), ['Alpha']);
-  assert.deepEqual(comparison.contributors.rightOnly.map((row) => row.label), ['Beta']);
-  assert.deepEqual(comparison.contributors.leftOnly, []);
+  assert.equal(comparison.damageQuality, 'partial');
 });
 
 test('identifies A and B by timestamp and summarizes only available persisted loadout context', () => {
@@ -120,7 +106,8 @@ test('identifies A and B by timestamp and summarizes only available persisted lo
   assert.equal(comparison.runs.right.observedAt, 200);
   assert.deepEqual(comparison.runs.left.loadout?.party, ['Djeeta', 'Alpha']);
   assert.deepEqual(comparison.runs.left.loadout?.summons, ['Bahamut', 'Support: Lucifer']);
-  assert.equal(comparison.runs.left.loadout?.mainWeapon, 'Main Sword');
+  assert.equal(comparison.runs.left.loadout?.deckId, '84');
+  assert.doesNotMatch(JSON.stringify(comparison.runs.left.loadout), /Main Sword|weapon/i);
   assert.equal(comparison.runs.right.loadout, undefined);
 });
 

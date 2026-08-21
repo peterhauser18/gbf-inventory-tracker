@@ -66,6 +66,6 @@ test('combat surfaces keep uncertainty without raw partial or unknown labels', (
   assert.doesNotMatch(combatLayouts, /\(partial\)|Unknown actor/);
   assert.match(combatLayouts, /Actor unavailable/);
   assert.match(combatLayouts, /\(estimated\)/);
-  assert.doesNotMatch(combatCompare, />\$\{comparison\.contributors\.quality\}<|partial\/unknown/);
-  assert.match(combatCompare, /Missing attribution remains incomplete or unavailable/);
+  assert.doesNotMatch(combatCompare, />\$\{comparison\.damageQuality\}<|partial\/unknown/);
+  assert.match(combatCompare, /qualityChip\(comparison\.damageQuality\)/);
 });

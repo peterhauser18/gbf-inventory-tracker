@@ -150,15 +150,9 @@ function requiresRaidComparisonSync(mutation: MutationRecord): boolean {
 function renderComparison(comparison: RaidHistoryComparison | null): string {
   if (!comparison) return '<div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>Comparison unavailable</h3></div></div><p class="muted">Direct comparison requires the same technical raid ID.</p>';
   return `
-    <div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(comparison.raidName ?? comparison.raidTechnicalId)}</h3><p class="muted">A vs B · Δ is B − A</p></div><div class="raid-compare-head-actions">${qualityChip(comparison.contributors.quality)}<button type="button" data-raid-compare-clear>Clear</button></div></div>
+    <div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(comparison.raidName ?? comparison.raidTechnicalId)}</h3><p class="muted">A vs B · Δ is B − A</p></div><div class="raid-compare-head-actions">${qualityChip(comparison.damageQuality)}<button type="button" data-raid-compare-clear>Clear</button></div></div>
     <div class="raid-compare-runs">${renderRun('A', comparison.runs.left)}${renderRun('B', comparison.runs.right)}</div>
     <div class="raid-compare-metrics"><div class="raid-compare-row head"><span>Metric</span><span>A</span><span>B</span><span>Δ</span></div>${comparison.metrics.map(renderMetric).join('')}</div>
-    <div class="raid-contributor-compare">
-      <div><span>Observed in both</span><strong>${renderContributorList(comparison.contributors.common)}</strong></div>
-      <div><span>Observed only in A</span><strong>${renderContributorList(comparison.contributors.leftOnly)}</strong></div>
-      <div><span>Observed only in B</span><strong>${renderContributorList(comparison.contributors.rightOnly)}</strong></div>
-    </div>
-    <p class="raid-compare-warning">Observed contributors are not guaranteed to be the complete party. Missing attribution remains incomplete or unavailable rather than becoming an absent team member.</p>
   `;
 }
 
@@ -168,18 +162,15 @@ function renderRun(label: 'A' | 'B', run: RaidComparisonRunSummary): string {
 }
 
 function renderLoadout(loadout: RaidComparisonLoadoutSummary): string {
-  const weapon = loadout.weaponGridQuality === 'unknown'
-    ? 'Unavailable'
-    : `${loadout.weaponCount} observed${loadout.mainWeapon ? ` · Main: ${escapeHtml(loadout.mainWeapon)}` : ''}`;
+  const partyLabel = loadout.deckId ? `Party slot ${loadout.deckId}` : 'Party slot unavailable';
   return `<div class="raid-compare-loadout">
-    ${renderEvidence('Party', loadout.party, loadout.partyQuality, loadout.jobName)}
+    ${renderEvidence(partyLabel, loadout.party, loadout.partyQuality)}
     ${renderEvidence('Summons', loadout.summons, loadout.summonQuality)}
-    <div><span>Weapon Grid · ${qualityLabel(loadout.weaponGridQuality)}</span><strong>${weapon}</strong></div>
   </div>`;
 }
 
-function renderEvidence(label: string, values: string[], quality: 'known' | 'partial' | 'unknown', prefix?: string): string {
-  const text = [prefix, ...values].filter((value): value is string => Boolean(value)).map(escapeHtml).join(' · ');
+function renderEvidence(label: string, values: string[], quality: 'known' | 'partial' | 'unknown'): string {
+  const text = values.map(escapeHtml).join(' · ');
   return `<div><span>${escapeHtml(label)} · ${qualityLabel(quality)}</span><strong>${text || 'Unavailable'}</strong></div>`;
 }
 
@@ -209,5 +200,4 @@ function formatSigned(value: number, metric: RaidComparisonMetric): string {
   return `${sign}${metric.precision === undefined ? Math.round(value).toLocaleString('en-US') : value.toFixed(metric.precision)}`;
 }
 function formatDate(value: number): string { return new Date(value).toLocaleString(); }
-function renderContributorList(rows: RaidHistoryComparison['contributors']['common']): string { return rows.length ? rows.map((row) => escapeHtml(row.label)).join(', ') : '—'; }
 function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] ?? character); }

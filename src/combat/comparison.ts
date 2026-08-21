@@ -23,30 +23,13 @@ export interface RaidComparisonMetric {
   unit?: string;
 }
 
-export interface ObservedContributor {
-  key: string;
-  label: string;
-}
-
-export interface ContributorComparison {
-  quality: 'known' | 'partial' | 'unknown';
-  left: ObservedContributor[];
-  right: ObservedContributor[];
-  common: ObservedContributor[];
-  leftOnly: ObservedContributor[];
-  rightOnly: ObservedContributor[];
-}
-
 export interface RaidComparisonLoadoutSummary {
   quality: RaidLoadoutSnapshot['quality'];
+  deckId?: string;
   partyQuality: RaidLoadoutSnapshot['partyQuality'];
   party: string[];
   summonQuality: RaidLoadoutSnapshot['summonQuality'];
   summons: string[];
-  weaponGridQuality: RaidLoadoutSnapshot['weaponGridQuality'];
-  weaponCount: number;
-  mainWeapon?: string;
-  jobName?: string;
 }
 
 export interface RaidComparisonRunSummary {
@@ -68,7 +51,7 @@ export interface RaidHistoryComparison {
     right: RaidComparisonRunSummary;
   };
   metrics: RaidComparisonMetric[];
-  contributors: ContributorComparison;
+  damageQuality: 'known' | 'partial' | 'unknown';
 }
 
 export function buildRaidHistoryComparison(
@@ -107,7 +90,7 @@ export function buildRaidHistoryComparison(
       right: runSummary(right),
     },
     metrics,
-    contributors: compareContributors(left, right),
+    damageQuality: combineDamageQuality(left.damageQuality, right.damageQuality),
   };
 }
 
@@ -123,9 +106,9 @@ function runSummary(raid: ComparableRaidHistoryRecord): RaidComparisonRunSummary
 }
 
 function loadoutSummary(loadout: RaidLoadoutSnapshot): RaidComparisonLoadoutSummary {
-  const mainWeapon = loadout.weapons.find((weapon) => weapon.slot === 1);
   return {
     quality: loadout.quality,
+    deckId: loadout.deckId,
     partyQuality: loadout.partyQuality,
     party: [...loadout.party]
       .sort((left, right) => left.position - right.position)
@@ -134,44 +117,6 @@ function loadoutSummary(loadout: RaidLoadoutSnapshot): RaidComparisonLoadoutSumm
     summons: [...loadout.summons]
       .sort((left, right) => left.position - right.position)
       .map((summon) => `${summon.support ? 'Support: ' : ''}${summon.name ?? summon.id ?? `Slot ${summon.position + 1}`}`),
-    weaponGridQuality: loadout.weaponGridQuality,
-    weaponCount: loadout.weapons.length,
-    mainWeapon: mainWeapon?.name ?? mainWeapon?.masterId ?? mainWeapon?.imageId,
-    jobName: loadout.jobName,
-  };
-}
-
-export function observedContributors(raid: RaidHistoryRecord): ObservedContributor[] {
-  const result = new Map<string, ObservedContributor>();
-  for (const row of raid.characterDamage) {
-    const key = row.actorId ? `id:${row.actorId}` : row.actorName ? `name:${normalizeName(row.actorName)}` : '';
-    if (!key) continue;
-    result.set(key, { key, label: row.actorName ?? row.actorId });
-  }
-  for (const entry of raid.log) {
-    const key = entry.actorId ? `id:${entry.actorId}` : entry.actorName ? `name:${normalizeName(entry.actorName)}` : '';
-    if (!key) continue;
-    const current = result.get(key);
-    result.set(key, { key, label: current?.label ?? entry.actorName ?? entry.actorId ?? 'Unknown contributor' });
-  }
-  return [...result.values()].sort((a, b) => a.label.localeCompare(b.label) || a.key.localeCompare(b.key));
-}
-
-function compareContributors(left: RaidHistoryRecord, right: RaidHistoryRecord): ContributorComparison {
-  const leftRows = observedContributors(left);
-  const rightRows = observedContributors(right);
-  const leftMap = new Map(leftRows.map((row) => [row.key, row]));
-  const rightMap = new Map(rightRows.map((row) => [row.key, row]));
-  const common = leftRows.filter((row) => rightMap.has(row.key));
-  const leftOnly = leftRows.filter((row) => !rightMap.has(row.key));
-  const rightOnly = rightRows.filter((row) => !leftMap.has(row.key));
-  return {
-    quality: combineDamageQuality(left.damageQuality, right.damageQuality),
-    left: leftRows,
-    right: rightRows,
-    common,
-    leftOnly,
-    rightOnly,
   };
 }
 
@@ -227,8 +172,4 @@ function combineDamageQuality(
   if (left === 'known' && right === 'known') return 'known';
   if (left === 'unknown' && right === 'unknown') return 'unknown';
   return 'partial';
-}
-
-function normalizeName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
