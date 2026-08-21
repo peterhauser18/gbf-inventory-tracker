@@ -13,6 +13,8 @@
 .preset-combat-cockpit .cockpit-table {
   display: flex;
   flex-direction: column;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .preset-combat-cockpit .cockpit-head {
   flex: 0 0 auto;
@@ -35,6 +37,10 @@
 
 .preset-combat-cockpit .party-cards-compact .party-card-history-note {
   display: none !important;
+}
+.preset-combat-cockpit .cockpit-characters-panel .party-cards-compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 8px;
 }
 .preset-combat-cockpit .party-cards-compact {
   height: auto !important;
@@ -211,6 +217,9 @@
   }
   .preset-combat-cockpit .live-stat:nth-child(n+4) {
     border-top: 1px solid #e2e3dd !important;
+  }
+  .preset-combat-cockpit .cockpit-characters-panel .party-cards-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
   :root[data-theme='dark'] .preset-combat-cockpit .live-stat:nth-child(n+4) {
     border-top-color: #34372f !important;
