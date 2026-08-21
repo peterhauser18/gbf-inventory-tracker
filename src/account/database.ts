@@ -182,6 +182,7 @@ function mergeStashes(
     if (incomingAt < existingAt) continue;
     merged.set(stash.stashId, {
       stashId: stash.stashId,
+      name: stash.name ?? existing.name,
       quality: stash.quality,
       weapons: stash.quality === 'known'
         ? [...stash.weapons]
