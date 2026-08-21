@@ -28,6 +28,7 @@ export function createAccountDatabase(snapshot: AccountSnapshot): AccountDatabas
 }
 
 export function normalizeAccountDatabaseState(state: AccountDatabaseState): AccountDatabaseState {
+  if (!Array.isArray(state.snapshot.weapons) || !Array.isArray(state.snapshot.weaponStashes)) return state;
   const weapons = mergeStashWeaponsIntoWeapons(state.snapshot.weapons, state.snapshot.weaponStashes);
   const unchanged = weapons.length === state.snapshot.weapons.length
     && weapons.every((weapon, index) => weapon === state.snapshot.weapons[index]);
