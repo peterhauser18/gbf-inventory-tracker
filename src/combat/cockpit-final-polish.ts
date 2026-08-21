@@ -85,6 +85,7 @@ function normalizeCockpitTable(
   if (!table) return;
   const rows = [...table.querySelectorAll<HTMLElement>('button.cockpit-row')];
   const used = new Set<HTMLElement>();
+  let previous: Element | null = table.querySelector(':scope > .cockpit-head');
 
   roster.forEach((actor, index) => {
     const actorId = actor.id;
@@ -93,7 +94,12 @@ function normalizeCockpitTable(
     used.add(row);
     if (actorId) row.dataset.characterSelect = actorId;
     applyActorStateClasses(row, actorState(context, actor, index));
-    table.append(row);
+    if (previous) {
+      if (previous.nextElementSibling !== row) previous.insertAdjacentElement('afterend', row);
+    } else if (table.firstElementChild !== row) {
+      table.prepend(row);
+    }
+    previous = row;
   });
 
   for (const row of rows) if (!used.has(row)) row.remove();
@@ -110,6 +116,7 @@ function normalizeCockpitPartyCards(
   if (!party) return;
   const cards = [...party.querySelectorAll<HTMLElement>(':scope > .party-card')];
   const used = new Set<HTMLElement>();
+  let previous: Element | null = null;
 
   roster.forEach((actor, index) => {
     const actorId = actor.id;
@@ -125,7 +132,12 @@ function normalizeCockpitPartyCards(
     updatePartyCardSlotAndState(partyCard, actor, index, context);
     partyCard.querySelector('.party-card-history-note')?.remove();
     movePartyOverlaysIntoVisual(partyCard);
-    party.append(partyCard);
+    if (previous) {
+      if (previous.nextElementSibling !== partyCard) previous.insertAdjacentElement('afterend', partyCard);
+    } else if (party.firstElementChild !== partyCard) {
+      party.prepend(partyCard);
+    }
+    previous = partyCard;
   });
 
   for (const partyCard of cards) if (!used.has(partyCard)) partyCard.remove();
@@ -314,7 +326,7 @@ async function hydrateObservedRosterImages(scope: HTMLElement, context: CombatPa
 }
 
 async function observedActorImageSourceForActor(actor: CombatActorContext): Promise<string | undefined> {
-  const ids = [actor.id, actorVisualImageId(actor)]
+  const ids = [actorVisualImageId(actor), actor.id]
     .filter((value): value is string => Boolean(value));
   for (const assetId of [...new Set(ids)]) {
     const source = await observedActorImageSource(assetId);
@@ -360,6 +372,8 @@ function replaceActorImages(scope: HTMLElement, actorId: string, source: string)
     if ((target.dataset.characterSelect ?? target.dataset.rosterActorId) !== actorId) continue;
     const image = target.querySelector<HTMLElement>('.combat-image');
     if (!image) continue;
+    const existing = image.querySelector<HTMLImageElement>('img[data-combat-image]');
+    if (existing?.getAttribute('src') === source) continue;
     image.querySelectorAll('img').forEach((entry) => entry.remove());
     image.querySelector(':scope > span')?.remove();
     installImage(image, source);
