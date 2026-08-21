@@ -7,7 +7,7 @@ let collapsed = readCollapsedPreference();
 if (app) {
   syncSidebar();
   const observer = new MutationObserver(syncSidebar);
-  observer.observe(app, { childList: true, subtree: true });
+  observer.observe(app, { childList: true });
 }
 
 function syncSidebar(): void {
