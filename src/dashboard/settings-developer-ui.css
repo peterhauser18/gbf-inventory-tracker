@@ -44,8 +44,14 @@
 }
 .settings-developer-card[open] > summary::after { content: '−'; }
 .settings-developer-body {
+  display: grid;
+  gap: 10px;
   padding: 0 16px 16px;
   border-top: 1px solid var(--border);
+}
+.settings-developer-body .settings-action {
+  width: fit-content;
+  margin-top: 0;
 }
 
 /* Phase 5's older narrow-layout override must not turn the collapsible sidebar
