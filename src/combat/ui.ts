@@ -193,10 +193,17 @@ function patchLiveCombatMarkup(section: HTMLElement, markup: string): boolean {
     if (!nextCard || !patchActiveCombatCard(currentCard, nextCard)) return false;
   }
 
+  let previous: Element | null = null;
   for (const nextCard of nextList.querySelectorAll<HTMLElement>(':scope > [data-active-combat-key]')) {
     const key = nextCard.dataset.activeCombatKey;
     const currentCard = key ? currentCards.get(key) : undefined;
-    if (currentCard) currentList.append(currentCard);
+    if (!currentCard) return false;
+    if (previous) {
+      if (previous.nextElementSibling !== currentCard) previous.insertAdjacentElement('afterend', currentCard);
+    } else if (currentList.firstElementChild !== currentCard) {
+      currentList.prepend(currentCard);
+    }
+    previous = currentCard;
   }
   return true;
 }
