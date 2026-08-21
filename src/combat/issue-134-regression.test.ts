@@ -7,7 +7,7 @@ const finalPolish = readFileSync(new URL('./cockpit-final-polish.ts', import.met
 const attackModes = readFileSync(new URL('./cockpit-attack-modes.ts', import.meta.url), 'utf8');
 const finalPolishCss = readFileSync(new URL('./cockpit-final-polish.css', import.meta.url), 'utf8');
 
-test('normal live Combat updates patch the existing cockpit instead of replacing the whole section', () => {
+test('normal live Combat updates patch the existing cockpit instead of replacing or moving the whole card', () => {
   const render = /function renderSectionIfChanged[\s\S]*?function decorateSection/.exec(ui)?.[0] ?? '';
   const patch = /function patchLiveCombatMarkup[\s\S]*?function activeCombatCardsByKey/.exec(ui)?.[0] ?? '';
 
@@ -17,7 +17,8 @@ test('normal live Combat updates patch the existing cockpit instead of replacing
     'stable live patch must be attempted before the structural full-render fallback',
   );
   assert.match(patch, /activeCombatCardsByKey/);
-  assert.doesNotMatch(patch, /section\.innerHTML|currentList\.innerHTML|replaceWith/);
+  assert.doesNotMatch(patch, /section\.innerHTML|currentList\.innerHTML|currentList\.append\(|replaceWith/);
+  assert.match(patch, /previous\.nextElementSibling !== currentCard/);
   assert.match(ui, /patchLabeledStrongValues\(current, next, '\.live-stat'\)/);
   assert.match(ui, /patchCockpitRows\(current, next\)/);
   assert.match(ui, /patchPartyCards\(current, next\)/);
