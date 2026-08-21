@@ -13,13 +13,15 @@ const ACTOR_IMAGE_HOSTS = new Set([
 ]);
 const ACTOR_IMAGE_PATH = /^\/assets(?:_en)?(?:\/\d+)?\/img\/sp\/assets\/(leader|npc)\/(s|m|ds)\/([A-Za-z0-9_-]+)\.(?:png|jpe?g|webp)$/i;
 const SUPPORTED_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+// Compact roster cards should use the already-observed card-sized art when it
+// exists. The wider battle `ds` strip stays available as a local-only fallback.
 const ACTOR_VARIANT_PREFERENCE = [
-  ['npc', 'ds'],
-  ['leader', 'ds'],
-  ['npc', 's'],
-  ['leader', 's'],
   ['npc', 'm'],
   ['leader', 'm'],
+  ['npc', 's'],
+  ['leader', 's'],
+  ['npc', 'ds'],
+  ['leader', 'ds'],
 ] as const;
 const MAX_ENTRIES = 240;
 
@@ -55,9 +57,8 @@ export function parseObservedActorImageResponse(
     const observedAssetId = match?.[3];
     if (!family || !variant || !observedAssetId) return null;
 
-    // Keep every already-loaded GBF actor variant under its own cache id. The battle
-    // response itself uses `ds` images for the in-combat party portraits, so readers
-    // can prefer those without letting a later `s`/`m` response overwrite them.
+    // Keep every already-loaded GBF actor variant under its own cache id so a
+    // later response for another size can never overwrite the preferred card art.
     return {
       assetId: actorVariantAssetId(family, variant, observedAssetId),
       url: parsed.toString(),
