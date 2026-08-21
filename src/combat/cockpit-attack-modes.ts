@@ -69,16 +69,26 @@ function normalizeRow(row: HTMLElement, analysis: CharacterCombatAnalysis | unde
     row.dataset.attackModesNormalized = 'true';
   }
 
-  row.querySelectorAll('.cockpit-attack-mode').forEach((cell) => cell.remove());
-  const crit = row.lastElementChild;
   const total = (analysis?.single?.count ?? 0) + (analysis?.double?.count ?? 0) + (analysis?.triple?.count ?? 0);
-  for (const mode of [analysis?.single, analysis?.double, analysis?.triple]) {
-    const cell = document.createElement('span');
-    cell.className = 'cockpit-attack-mode';
-    cell.title = 'Share of normal attacks whose SA/DA/TA mode was observed';
-    cell.textContent = attackModeLabel(mode, total);
-    row.insertBefore(cell, crit);
+  const modes = [analysis?.single, analysis?.double, analysis?.triple];
+  let cells = [...row.querySelectorAll<HTMLElement>(':scope > .cockpit-attack-mode')];
+  const crit = row.lastElementChild;
+
+  if (cells.length !== 3) {
+    cells.forEach((cell) => cell.remove());
+    cells = modes.map(() => {
+      const cell = document.createElement('span');
+      cell.className = 'cockpit-attack-mode';
+      cell.title = 'Share of normal attacks whose SA/DA/TA mode was observed';
+      row.insertBefore(cell, crit);
+      return cell;
+    });
   }
+
+  cells.forEach((cell, index) => {
+    const label = attackModeLabel(modes[index], total);
+    if (cell.textContent !== label) cell.textContent = label;
+  });
 }
 
 function attackModeLabel(mode: AttackModeSummary | undefined, total: number): string {

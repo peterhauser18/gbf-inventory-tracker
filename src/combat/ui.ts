@@ -144,15 +144,16 @@ function renderSectionIfChanged(force = false): void {
   if (!section) return;
   const markup = selected === 'combat' ? controller.renderCombat(layout) : controller.renderRaids(query, layout);
   if (!force && markup === lastSectionMarkup) {
-    if (selected === 'combat') applyCombatLiveUiFixes(section);
-    applySharedCombatPresentationFixes(section);
-    if (selected === 'raids') applyCompactRaidHistory(section, query);
-    applyCockpitFinalPolish(section);
-    applyCockpitViewportLayout(section);
-    decorateRosterAndAttackModes(section);
-    decorateLoadouts(section);
+    decorateSection(section);
     return;
   }
+
+  if (!force && selected === 'combat' && patchLiveCombatMarkup(section, markup)) {
+    lastSectionMarkup = markup;
+    decorateSection(section);
+    return;
+  }
+
   const preservedLoadouts = detachCombatLoadouts(section);
   const preservedStableDom = selected === 'combat' ? detachStableCombatDom(section) : undefined;
   lastSectionMarkup = markup;
@@ -160,6 +161,10 @@ function renderSectionIfChanged(force = false): void {
   controller.bind(section);
   restoreCombatLoadouts(section, preservedLoadouts);
   if (preservedStableDom) restoreStableCombatDom(section, preservedStableDom);
+  decorateSection(section);
+}
+
+function decorateSection(section: HTMLElement): void {
   if (selected === 'combat') applyCombatLiveUiFixes(section);
   applySharedCombatPresentationFixes(section);
   if (selected === 'raids') applyCompactRaidHistory(section, query);
@@ -167,6 +172,196 @@ function renderSectionIfChanged(force = false): void {
   applyCockpitViewportLayout(section);
   decorateRosterAndAttackModes(section);
   decorateLoadouts(section);
+}
+
+function patchLiveCombatMarkup(section: HTMLElement, markup: string): boolean {
+  const currentList = section.querySelector<HTMLElement>(':scope > .active-combat-list');
+  if (!currentList) return false;
+
+  const template = document.createElement('template');
+  template.innerHTML = markup.trim();
+  const first = template.content.firstElementChild;
+  const nextList = first instanceof HTMLElement && first.classList.contains('active-combat-list') ? first : undefined;
+  if (!nextList) return false;
+
+  const currentCards = activeCombatCardsByKey(currentList);
+  const nextCards = activeCombatCardsByKey(nextList);
+  if (currentCards.size !== nextCards.size || [...currentCards.keys()].some((key) => !nextCards.has(key))) return false;
+
+  for (const [key, currentCard] of currentCards) {
+    const nextCard = nextCards.get(key);
+    if (!nextCard || !patchActiveCombatCard(currentCard, nextCard)) return false;
+  }
+
+  let previous: Element | null = null;
+  for (const nextCard of nextList.querySelectorAll<HTMLElement>(':scope > [data-active-combat-key]')) {
+    const key = nextCard.dataset.activeCombatKey;
+    const currentCard = key ? currentCards.get(key) : undefined;
+    if (!currentCard) return false;
+    if (previous) {
+      if (previous.nextElementSibling !== currentCard) previous.insertAdjacentElement('afterend', currentCard);
+    } else if (currentList.firstElementChild !== currentCard) {
+      currentList.prepend(currentCard);
+    }
+    previous = currentCard;
+  }
+  return true;
+}
+
+function activeCombatCardsByKey(root: ParentNode): Map<string, HTMLElement> {
+  const cards = new Map<string, HTMLElement>();
+  for (const card of root.querySelectorAll<HTMLElement>(':scope > [data-active-combat-key]')) {
+    const key = card.dataset.activeCombatKey;
+    if (!key || cards.has(key)) return new Map();
+    cards.set(key, card);
+  }
+  return cards;
+}
+
+function patchActiveCombatCard(current: HTMLElement, next: HTMLElement): boolean {
+  patchRaidHeader(current, next);
+  patchLiveStats(current, next);
+  if (!patchCockpitRows(current, next)) return false;
+  if (!patchPartyCards(current, next)) return false;
+  if (!patchSummons(current, next)) return false;
+  patchSecondaryPanels(current, next);
+  patchSelectedAnalysis(current, next);
+  return true;
+}
+
+function patchRaidHeader(current: HTMLElement, next: HTMLElement): void {
+  const currentResult = current.querySelector<HTMLElement>('.combat-raid-title .raid-result');
+  const nextResult = next.querySelector<HTMLElement>('.combat-raid-title .raid-result');
+  if (currentResult && nextResult) {
+    currentResult.textContent = nextResult.textContent;
+    currentResult.className = nextResult.className;
+  }
+  patchText(current, next, '.combat-raid-title h3');
+  patchLabeledStrongValues(current, next, '.header-fact');
+
+  const currentBoss = current.querySelector<HTMLElement>('.boss-hp-wide');
+  const nextBoss = next.querySelector<HTMLElement>('.boss-hp-wide');
+  if (!currentBoss || !nextBoss) return;
+  const currentStrong = currentBoss.querySelector<HTMLElement>('strong');
+  const nextStrong = nextBoss.querySelector<HTMLElement>('strong');
+  if (currentStrong && nextStrong) currentStrong.textContent = nextStrong.textContent;
+  const currentPercent = currentBoss.querySelector<HTMLElement>(':scope > div:first-child > span:last-child');
+  const nextPercent = nextBoss.querySelector<HTMLElement>(':scope > div:first-child > span:last-child');
+  if (currentPercent && nextPercent) currentPercent.textContent = nextPercent.textContent;
+  const currentTrack = currentBoss.querySelector<HTMLElement>('.hp-track > span');
+  const nextTrack = nextBoss.querySelector<HTMLElement>('.hp-track > span');
+  if (currentTrack && nextTrack) currentTrack.setAttribute('style', nextTrack.getAttribute('style') ?? '');
+}
+
+function patchLiveStats(current: HTMLElement, next: HTMLElement): void {
+  patchLabeledStrongValues(current, next, '.live-stat');
+}
+
+function patchLabeledStrongValues(current: ParentNode, next: ParentNode, selector: string): void {
+  for (const nextItem of next.querySelectorAll<HTMLElement>(selector)) {
+    const label = nextItem.querySelector<HTMLElement>(':scope > span')?.textContent?.trim();
+    if (!label) continue;
+    const currentItem = [...current.querySelectorAll<HTMLElement>(selector)].find(
+      (candidate) => candidate.querySelector<HTMLElement>(':scope > span')?.textContent?.trim() === label,
+    );
+    const currentValue = currentItem?.querySelector<HTMLElement>(':scope > strong');
+    const nextValue = nextItem.querySelector<HTMLElement>(':scope > strong');
+    if (currentValue && nextValue) currentValue.textContent = nextValue.textContent;
+  }
+}
+
+function patchCockpitRows(current: HTMLElement, next: HTMLElement): boolean {
+  const currentRows = actorElementsById(current, '.cockpit-table button.cockpit-row[data-character-select]');
+  const nextRows = actorElementsById(next, '.cockpit-table button.cockpit-row[data-character-select]');
+  for (const [actorId, nextRow] of nextRows) {
+    const currentRow = currentRows.get(actorId);
+    if (!currentRow) return false;
+    currentRow.classList.toggle('selected', nextRow.classList.contains('selected'));
+    patchText(currentRow, nextRow, '.cockpit-character strong');
+    patchHtml(currentRow, nextRow, '.cockpit-character .actor-hp');
+    const currentCells = [...currentRow.children];
+    const nextCells = [...nextRow.children];
+    if (currentCells.length < 7 || nextCells.length < 8) return false;
+    for (let index = 1; index <= 5; index += 1) {
+      currentCells[index]!.textContent = nextCells[index]!.textContent;
+    }
+    currentRow.lastElementChild!.textContent = nextRow.lastElementChild!.textContent;
+  }
+  return true;
+}
+
+function patchPartyCards(current: HTMLElement, next: HTMLElement): boolean {
+  const selector = '.cockpit-characters-panel .party-card[data-character-select]';
+  const currentCards = actorElementsById(current, selector);
+  const nextCards = actorElementsById(next, selector);
+  for (const [actorId, nextCard] of nextCards) {
+    const currentCard = currentCards.get(actorId);
+    if (!currentCard) return false;
+    currentCard.classList.toggle('selected', nextCard.classList.contains('selected'));
+    patchText(currentCard, nextCard, '.party-card-copy > strong');
+    patchHtml(currentCard, nextCard, '.party-card-copy .actor-hp');
+    patchText(currentCard, nextCard, '.party-card-damage');
+  }
+  return true;
+}
+
+function patchSummons(current: HTMLElement, next: HTMLElement): boolean {
+  const currentCards = [...current.querySelectorAll<HTMLElement>('.cockpit-summons-panel .summon-card')];
+  const nextCards = [...next.querySelectorAll<HTMLElement>('.cockpit-summons-panel .summon-card')];
+  if (currentCards.length !== nextCards.length) return false;
+  for (let index = 0; index < currentCards.length; index += 1) {
+    const currentCard = currentCards[index]!;
+    const nextCard = nextCards[index]!;
+    patchText(currentCard, nextCard, ':scope > strong');
+    patchText(currentCard, nextCard, ':scope > span:last-child');
+  }
+  return true;
+}
+
+function patchSecondaryPanels(current: HTMLElement, next: HTMLElement): void {
+  for (const nextPanel of next.querySelectorAll<HTMLDetailsElement>('.cockpit-secondary-panel[data-combat-collapse]')) {
+    const key = nextPanel.dataset.combatCollapse;
+    if (!key) continue;
+    const currentPanel = [...current.querySelectorAll<HTMLDetailsElement>('.cockpit-secondary-panel[data-combat-collapse]')]
+      .find((candidate) => candidate.dataset.combatCollapse === key);
+    if (!currentPanel) continue;
+    const currentBody = currentPanel.querySelector<HTMLElement>(':scope > div');
+    const nextBody = nextPanel.querySelector<HTMLElement>(':scope > div');
+    if (currentBody && nextBody && currentBody.innerHTML !== nextBody.innerHTML) currentBody.innerHTML = nextBody.innerHTML;
+  }
+}
+
+function patchSelectedAnalysis(current: HTMLElement, next: HTMLElement): void {
+  const currentDetails = current.querySelector<HTMLDetailsElement>('.cockpit-selected-analysis');
+  const nextDetails = next.querySelector<HTMLDetailsElement>('.cockpit-selected-analysis');
+  if (!currentDetails || !nextDetails) return;
+  patchText(currentDetails, nextDetails, ':scope > summary');
+  const currentBody = currentDetails.querySelector<HTMLElement>(':scope > div');
+  const nextBody = nextDetails.querySelector<HTMLElement>(':scope > div');
+  if (currentBody && nextBody && currentBody.innerHTML !== nextBody.innerHTML) currentBody.innerHTML = nextBody.innerHTML;
+}
+
+function actorElementsById(root: ParentNode, selector: string): Map<string, HTMLElement> {
+  const elements = new Map<string, HTMLElement>();
+  for (const element of root.querySelectorAll<HTMLElement>(selector)) {
+    const actorId = element.dataset.characterSelect;
+    if (actorId) elements.set(actorId, element);
+  }
+  return elements;
+}
+
+function patchText(current: ParentNode, next: ParentNode, selector: string): void {
+  const currentValue = current.querySelector<HTMLElement>(selector);
+  const nextValue = next.querySelector<HTMLElement>(selector);
+  if (currentValue && nextValue) currentValue.textContent = nextValue.textContent;
+}
+
+function patchHtml(current: ParentNode, next: ParentNode, selector: string): void {
+  const currentValue = current.querySelector<HTMLElement>(selector);
+  const nextValue = next.querySelector<HTMLElement>(selector);
+  if (currentValue && nextValue && currentValue.innerHTML !== nextValue.innerHTML) {
+    currentValue.innerHTML = nextValue.innerHTML;
+  }
 }
 
 function decorateRosterAndAttackModes(section: HTMLElement): void {

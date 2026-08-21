@@ -6,7 +6,8 @@ import {
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
 
 type Obj = Record<string, unknown>;
-type ActorWithVisual = CombatActorContext & { imageId?: string };
+type ActorWithVisual = CombatActorContext & { imageId?: string; cardImageId?: string };
+type ObservedActorVisual = { battleImageId?: string; cardImageId?: string };
 
 export function enrichObservedActorVisuals(
   record: CapturedResponseRecord,
@@ -21,12 +22,15 @@ export function enrichObservedActorVisuals(
   const params = at(body, 'player', 'param');
   if (!Array.isArray(params)) return;
 
-  const visualByActorId = new Map<string, string>();
+  const visualByActorId = new Map<string, ObservedActorVisual>();
   for (const value of params) {
     if (!isObject(value)) continue;
     const actorId = text(value.pid);
-    const imageId = battleActorImageId(value);
-    if (actorId && imageId) visualByActorId.set(actorId, imageId);
+    const battleImageId = battleActorImageId(value);
+    const cardImageId = safeAssetId(value.pid_image);
+    if (actorId && (battleImageId || cardImageId)) {
+      visualByActorId.set(actorId, { battleImageId, cardImageId });
+    }
   }
   if (!visualByActorId.size) return;
 
@@ -38,12 +42,18 @@ export function actorVisualImageId(actor: CombatActorContext | undefined): strin
   return safeAssetId((actor as ActorWithVisual | undefined)?.imageId);
 }
 
+export function actorCardImageId(actor: CombatActorContext | undefined): string | undefined {
+  return safeAssetId((actor as ActorWithVisual | undefined)?.cardImageId);
+}
+
 export function retainActorVisualId(
   source: CombatActorContext,
   target: CombatActorContext,
 ): CombatActorContext {
   const imageId = actorVisualImageId(source);
+  const cardImageId = actorCardImageId(source);
   if (imageId) (target as ActorWithVisual).imageId = imageId;
+  if (cardImageId) (target as ActorWithVisual).cardImageId = cardImageId;
   return target;
 }
 
@@ -87,8 +97,9 @@ function battleDsAssetId(value: unknown): string | undefined {
   return safeAssetId(match?.[1]);
 }
 
-function attachObservedActorVisual(actor: CombatActorContext, imageId: string | undefined): void {
-  if (imageId) (actor as ActorWithVisual).imageId = imageId;
+function attachObservedActorVisual(actor: CombatActorContext, visual: ObservedActorVisual | undefined): void {
+  if (visual?.battleImageId) (actor as ActorWithVisual).imageId = visual.battleImageId;
+  if (visual?.cardImageId) (actor as ActorWithVisual).cardImageId = visual.cardImageId;
 }
 
 function isVerifiedStart(url: string): boolean {

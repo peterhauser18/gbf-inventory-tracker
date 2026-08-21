@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { CapturedResponseRecord } from '../capture/types.ts';
 import type { CombatParseContext } from './multiraid.ts';
 import {
+  actorCardImageId,
   actorVisualImageId,
   bossImageAssetIdFromCjs,
   enrichObservedActorVisuals,
@@ -24,7 +25,7 @@ function startRecord(body: unknown): CapturedResponseRecord {
   };
 }
 
-test('verified start prefers exact local battle ds portrait ids without changing actor identity', () => {
+test('verified start retains exact battle ds and pid_image card ids without changing actor identity', () => {
   const context: CombatParseContext = {
     raidTechnicalId: 'raid',
     actorSlots: [
@@ -51,7 +52,9 @@ test('verified start prefers exact local battle ds portrait ids without changing
 
   assert.equal(context.actorSlots[0]?.id, 'mc');
   assert.equal(actorVisualImageId(context.actorSlots[0]), '450301');
+  assert.equal(actorCardImageId(context.actorSlots[0]), 'fallback_mc');
   assert.equal(actorVisualImageId(context.actors?.[1]), '3040001000');
+  assert.equal(actorCardImageId(context.actors?.[1]), 'fallback_ally');
 });
 
 test('verified start falls back to safe pid_image when no battle ds src is present', () => {
@@ -63,6 +66,7 @@ test('verified start falls back to safe pid_image when no battle ds src is prese
     { pid: 'ally', pid_image: '3040001000' },
   ] } }), context);
   assert.equal(actorVisualImageId(context.actorSlots[0]), '3040001000');
+  assert.equal(actorCardImageId(context.actorSlots[0]), '3040001000');
 });
 
 test('boss cjs values expose the image asset id independently from enemy_id', () => {
@@ -72,13 +76,18 @@ test('boss cjs values expose the image asset id independently from enemy_id', ()
   assert.equal(bossImageAssetIdFromCjs('../enemy_4200263'), undefined);
 });
 
-test('retaining a dead/history actor copy preserves only a safe visual asset id', () => {
+test('retaining a dead/history actor copy preserves only safe visual asset ids', () => {
   const source = { id: 'ally', alive: false };
-  (source as typeof source & { imageId: string }).imageId = '3040001000';
+  (source as typeof source & { imageId: string; cardImageId: string }).imageId = '3040001000';
+  (source as typeof source & { imageId: string; cardImageId: string }).cardImageId = '3040001000_01';
   const retained = retainActorVisualId(source, { id: source.id, alive: source.alive });
   assert.equal(actorVisualImageId(retained), '3040001000');
+  assert.equal(actorCardImageId(retained), '3040001000_01');
 
   const unsafe = { id: 'bad' };
-  (unsafe as typeof unsafe & { imageId: string }).imageId = '../secret';
-  assert.equal(actorVisualImageId(retainActorVisualId(unsafe, { id: 'bad' })), undefined);
+  (unsafe as typeof unsafe & { imageId: string; cardImageId: string }).imageId = '../secret';
+  (unsafe as typeof unsafe & { imageId: string; cardImageId: string }).cardImageId = '../secret-card';
+  const unsafeRetained = retainActorVisualId(unsafe, { id: 'bad' });
+  assert.equal(actorVisualImageId(unsafeRetained), undefined);
+  assert.equal(actorCardImageId(unsafeRetained), undefined);
 });

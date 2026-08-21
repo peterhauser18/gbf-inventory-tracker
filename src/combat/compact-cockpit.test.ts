@@ -141,9 +141,9 @@ test('live roster keeps all six observed original actors and makes deaths/backli
   assert.match(finalPolishCss, /party-cards-compact \.state-tag\s*\{[^}]*position:\s*absolute !important/s);
 });
 
-test('MC and characters prefer locally observed battle portrait bytes without a new image lookup', () => {
+test('MC and characters prefer locally observed card portrait bytes without a new image lookup', () => {
   assert.match(finalPolish, /readObservedActorImageBlob/);
-  assert.match(finalPolish, /const ids = \[actor\.id, actorVisualImageId\(actor\)\]/);
+  assert.match(finalPolish, /const ids = \[actorCardImageId\(actor\), actorVisualImageId\(actor\), actor\.id\]/);
   assert.match(finalPolish, /URL\.createObjectURL\(blob\)/);
   assert.doesNotMatch(finalPolish, /gbf\.wiki\/api\.php|pageimages|fetch\(/);
 });

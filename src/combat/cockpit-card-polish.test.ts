@@ -10,16 +10,16 @@ const actorImageCache = readFileSync(new URL('../actor-image-cache.ts', import.m
 
 const compactCharacterAndSummonCardRule = /cockpit-characters-panel \.party-card,\s*[\s\S]*cockpit-summons-panel \.summon-card\s*\{[^}]*height:\s*auto !important/s;
 
-test('compact Character cards use local battle ds assets at their landscape ratio with names directly below', () => {
-  assert.match(actorImageCache, /\['npc', 'ds'\]/);
+test('compact Character cards mirror Summons and prefer locally observed card-sized actor art', () => {
+  assert.match(actorImageCache, /\['npc', 'm'\][\s\S]*\['npc', 's'\][\s\S]*\['npc', 'ds'\]/s);
   assert.match(actorImageCache, /actorVariantAssetId\(family, variant, observedAssetId\)/);
-  assert.match(finalPolish, /const ids = \[actor\.id, actorVisualImageId\(actor\)\]/);
-  assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-visual\s*\{[^}]*aspect-ratio:\s*16 \/ 9/s);
-  assert.match(finalPolishCss, /party-cards-compact \.party-card-visual\s*\{[^}]*aspect-ratio:\s*16 \/ 9/s);
+  assert.match(finalPolish, /const ids = \[actorCardImageId\(actor\), actorVisualImageId\(actor\), actor\.id\]/);
+  assert.match(finalPolishCss, /cockpit-characters-panel \.party-cards-compact\s*\{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/s);
+  assert.match(finalPolishCss, /party-cards-compact \.party-card-visual\s*\{[^}]*aspect-ratio:\s*1 \/ 2/s);
   assert.match(runtimePolishCss, compactCharacterAndSummonCardRule);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-copy\s*\{[^}]*display:\s*block/s);
   assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-copy > strong\s*\{[^}]*display:\s*block/s);
-  assert.match(runtimePolishCss, /cockpit-characters-panel \.party-card-visual \.combat-image img[\s\S]*object-fit:\s*contain !important/s);
+  assert.match(finalPolishCss, /party-cards-compact \.party-card-visual \.combat-image img[\s\S]*object-fit:\s*contain !important/s);
 });
 
 test('Character backline/dead badges and Summon Main/Support roles live inside image containers', () => {
