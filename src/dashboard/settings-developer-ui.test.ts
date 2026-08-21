@@ -28,6 +28,17 @@ test('Dashboard Settings owns account reset and local storage cleanup controls',
   assert.doesNotMatch(ui, /\bfetch\s*\(|XMLHttpRequest|chrome\.debugger/);
 });
 
+test('Raw Combat Capture launcher lives in Settings Developer and requires existing observation', () => {
+  assert.match(ui, /data-settings-raw-capture/);
+  assert.match(ui, /Open Combat Tracker Raw Capture Mode/);
+  assert.match(ui, /combat\.html\?rawCapture=1/);
+  assert.match(ui, /await import\('\.\.\/combat\/raw-capture\.ts'\)/);
+  assert.match(ui, /enableRawCombatCapture\(rawTabId, true\)/);
+  assert.match(ui, /if \(!status\.active\)/);
+  assert.match(ui, /Start read-only observation from the extension popup first/);
+  assert.doesNotMatch(ui, /gbfit:start-observation/);
+});
+
 test('visible Data confidence legend is removed everywhere in Dashboard UI', () => {
   assert.match(dashboardHtml, /settings-developer-ui\.css/);
   assert.match(css, /\.quality-legend\s*\{[^}]*display:\s*none !important/s);
