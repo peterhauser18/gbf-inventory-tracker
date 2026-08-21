@@ -128,14 +128,17 @@ test('raw export omits internal request ids and preserves ordered redacted bodie
   assert.equal(JSON.stringify(bundle).includes('combat-request-1'), false);
 });
 
-test('Settings Developer owns Raw Capture Mode launcher and raw page exposes export and clear controls', () => {
+test('Popup and Settings Developer both expose Raw Capture Mode launchers and raw page exposes export and clear controls', () => {
   const popupCombat = readFileSync(new URL('../popup-combat.ts', import.meta.url), 'utf8');
   const settingsDeveloper = readFileSync(new URL('../dashboard/settings-developer-ui.ts', import.meta.url), 'utf8');
   const combatEntry = readFileSync(new URL('../combat-entry.ts', import.meta.url), 'utf8');
   const observer = readFileSync(new URL('../capture/observer.ts', import.meta.url), 'utf8');
   const rawCaptureSource = readFileSync(new URL('./raw-capture.ts', import.meta.url), 'utf8');
 
-  assert.doesNotMatch(popupCombat, /Open Combat Tracker Raw Capture Mode/);
+  assert.match(popupCombat, /Open Combat Tracker Raw Capture Mode/);
+  assert.match(popupCombat, /developerContent\.prepend\(rawButton\)/);
+  assert.match(popupCombat, /combat\.html\?rawCapture=1/);
+  assert.match(popupCombat, /enableRawCombatCapture\(rawTab\.id, true\)/);
   assert.match(settingsDeveloper, /Open Combat Tracker Raw Capture Mode/);
   assert.match(settingsDeveloper, /combat\.html\?rawCapture=1/);
   assert.match(settingsDeveloper, /enableRawCombatCapture\(rawTabId, true\)/);
