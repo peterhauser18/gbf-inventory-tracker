@@ -6,7 +6,7 @@ let openDeveloperAfterNavigation = false;
 if (app) {
   app.addEventListener('click', handleClick, true);
   const observer = new MutationObserver(scheduleSync);
-  observer.observe(app, { childList: true, subtree: true });
+  observer.observe(app, { childList: true });
   scheduleSync();
 }
 
@@ -22,7 +22,6 @@ function scheduleSync(): void {
 function syncUi(): void {
   if (!app) return;
   app.querySelector<HTMLElement>('.nav-item[data-section="developer"]')?.remove();
-  polishDeveloperShortcut();
   if (!isSettingsActive()) return;
   ensureStorageCard();
   ensureDeveloperPanel();
@@ -35,15 +34,6 @@ function syncUi(): void {
       openDeveloperAfterNavigation = false;
     }
   }
-}
-
-function polishDeveloperShortcut(): void {
-  const shortcut = app?.querySelector<HTMLElement>('[data-command-destination="developer"]');
-  if (!shortcut) return;
-  const title = shortcut.querySelector<HTMLElement>('strong');
-  const detail = shortcut.querySelector<HTMLElement>('small');
-  if (title) title.textContent = 'Developer settings';
-  if (detail) detail.textContent = 'Open local developer tools inside Settings.';
 }
 
 function isSettingsActive(): boolean {
