@@ -4,7 +4,7 @@ import { buildCharacterAnalyses, type CharacterCombatAnalysis } from './analytic
 import type { CombatActorContext, CombatParseContext } from './multiraid.ts';
 import { getActiveCombatRaids } from './storage.ts';
 import type { NormalizedRaidParse } from './types.ts';
-import { actorVisualImageId } from './visual-context.ts';
+import { actorCardImageId, actorVisualImageId } from './visual-context.ts';
 
 const rememberedActorImages = new Map<string, string>();
 const observedActorImagePromises = new Map<string, Promise<string | undefined>>();
@@ -326,7 +326,7 @@ async function hydrateObservedRosterImages(scope: HTMLElement, context: CombatPa
 }
 
 async function observedActorImageSourceForActor(actor: CombatActorContext): Promise<string | undefined> {
-  const ids = [actorVisualImageId(actor), actor.id]
+  const ids = [actorCardImageId(actor), actorVisualImageId(actor), actor.id]
     .filter((value): value is string => Boolean(value));
   for (const assetId of [...new Set(ids)]) {
     const source = await observedActorImageSource(assetId);
