@@ -1,4 +1,4 @@
-import { ingestAccountRecord } from './account/ingest.ts';
+import { ingestAccountRecord, type AccountIngestContext } from './account/ingest.ts';
 import { loadAccountDatabase, resetAccountDatabase, saveAccountDatabase } from './account/storage.ts';
 import {
   clearObservedActorImageCache,
@@ -14,6 +14,7 @@ import {
 } from './capture/observer.ts';
 import { isGbfPageUrl } from './capture/policy.ts';
 import { classifyObservedResponseUrl, shouldReadObservedResponse } from './capture/route.ts';
+import { parseObservedWeaponStashName } from './capture/stash-metadata.ts';
 import {
   clearCaptureStorage,
   finishCaptureScan,
@@ -54,6 +55,7 @@ const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const STATE_KEY = 'gbfit:capture-state';
 const NETWORK_MAX_TOTAL_BUFFER_SIZE = 32 * 1024 * 1024;
 const NETWORK_MAX_RESOURCE_BUFFER_SIZE = 8 * 1024 * 1024;
+const STASH_NAME_MAX_AGE_MS = 30_000;
 const CAPTURE_NETWORK_METHODS = new Set([
   'Network.requestWillBeSent',
   'Network.responseReceived',
@@ -65,6 +67,7 @@ const pendingTreasureIcons = new Map<string, { itemId: string }>();
 const pendingEnemyIcons = new Map<string, { enemyId: string; mimeType: string }>();
 const pendingActorImages = new Map<string, { assetId: string; mimeType: string }>();
 const pendingDeckSelections = new Map<number, ObservedDeckSelection & { scanId: string }>();
+const pendingWeaponStashNames = new Map<number, { scanId: string; name: string; capturedAt: number }>();
 let eventQueue: Promise<void> = Promise.resolve();
 let accountQueue: Promise<void> = Promise.resolve();
 let targetQueue: Promise<void> = Promise.resolve();
@@ -126,7 +129,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 
 chrome.debugger.onDetach.addListener((source, reason) => {
   if (source.tabId === undefined) return;
-  void handleUnexpectedDetach(source.tabId, reason);
+  void withTargetQueue(() => handleUnexpectedDetach(source.tabId as number, reason)).catch(() => {});
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {
@@ -141,7 +144,7 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  void releaseUnavailableTarget(tabId, 'observed GBF tab closed');
+  void withTargetQueue(() => releaseUnavailableTarget(tabId, 'observed GBF tab closed')).catch(() => {});
 });
 
 chrome.tabs.onAttached.addListener((tabId) => {
@@ -178,12 +181,15 @@ async function queueAccountReset(): Promise<void> {
   await accountQueue;
 }
 
-async function queueAccountIngest(record: CapturedResponseRecord): Promise<void> {
+async function queueAccountIngest(
+  record: CapturedResponseRecord,
+  context: AccountIngestContext = {},
+): Promise<void> {
   accountQueue = accountQueue
     .catch(() => {})
     .then(async () => {
       const current = await loadAccountDatabase();
-      const next = ingestAccountRecord(current, record);
+      const next = ingestAccountRecord(current, record, context);
       if (!next || next === current) return;
       await saveAccountDatabase(next);
     });
@@ -266,7 +272,11 @@ async function resolveObservationTab(explicitTabId?: number): Promise<chrome.tab
   return tab;
 }
 
-async function stopObservation(): Promise<CaptureStatusResponse> {
+function stopObservation(): Promise<CaptureStatusResponse> {
+  return withTargetQueue(stopObservationNow);
+}
+
+async function stopObservationNow(): Promise<CaptureStatusResponse> {
   const state = await getRuntimeState();
   if (!state.active || !state.scanId) return await getStatus();
 
@@ -286,10 +296,13 @@ async function stopObservation(): Promise<CaptureStatusResponse> {
 }
 
 function queueObservationRetarget(candidateTabId: number): Promise<void> {
-  targetQueue = targetQueue
-    .catch(() => {})
-    .then(() => retargetObservation(candidateTabId));
-  return targetQueue.catch(() => {});
+  return withTargetQueue(() => retargetObservation(candidateTabId)).then(() => {}, () => {});
+}
+
+function withTargetQueue<T>(operation: () => Promise<T>): Promise<T> {
+  const run = targetQueue.catch(() => {}).then(operation);
+  targetQueue = run.then(() => {}, () => {});
+  return run;
 }
 
 async function retargetObservation(candidateTabId: number): Promise<void> {
@@ -622,6 +635,18 @@ async function captureObservedResponse(tabId: number, scanId: string, meta: Obse
 
 async function saveObservedResponse(tabId: number, record: CapturedResponseRecord): Promise<void> {
   const route = classifyObservedResponseUrl(record.meta.url);
+  if (route === 'stash-meta') {
+    const name = parseObservedWeaponStashName(record.body);
+    const state = await getRuntimeState();
+    if (name && state.active && state.scanId === record.scanId && observationIncludesTab(state, tabId)) {
+      pendingWeaponStashNames.set(tabId, {
+        scanId: record.scanId,
+        name,
+        capturedAt: record.meta.capturedAt,
+      });
+    }
+    return;
+  }
   if (route === 'combat') {
     await rememberPendingDeckSelectionForBattle(tabId, record);
     const state = await getRuntimeState();
@@ -633,8 +658,30 @@ async function saveObservedResponse(tabId: number, record: CapturedResponseRecor
   }
   if (route !== 'account') return;
 
-  await queueAccountIngest(record);
+  const context = weaponStashIngestContext(tabId, record);
+  await queueAccountIngest(record, context);
   await saveCapturedResponse(record);
+}
+
+function weaponStashIngestContext(tabId: number, record: CapturedResponseRecord): AccountIngestContext {
+  if (!isWeaponStashRecord(record)) return {};
+  const pending = pendingWeaponStashNames.get(tabId);
+  if (!pending) return {};
+  const age = record.meta.capturedAt - pending.capturedAt;
+  if (pending.scanId !== record.scanId || age < 0 || age > STASH_NAME_MAX_AGE_MS) {
+    pendingWeaponStashNames.delete(tabId);
+    return {};
+  }
+  pendingWeaponStashNames.delete(tabId);
+  return { weaponStashName: pending.name };
+}
+
+function isWeaponStashRecord(record: CapturedResponseRecord): boolean {
+  try {
+    return /^\/weapon\/container_list\/\d+\/[^/]+$/.test(new URL(record.meta.url).pathname);
+  } catch {
+    return false;
+  }
 }
 
 async function rememberPendingDeckSelectionForBattle(
@@ -780,6 +827,7 @@ function clearPendingObservationData(tabId?: number): void {
     pendingEnemyIcons.clear();
     pendingActorImages.clear();
     pendingDeckSelections.clear();
+    pendingWeaponStashNames.clear();
     return;
   }
 
@@ -792,6 +840,7 @@ function clearPendingObservationData(tabId?: number): void {
     }
   }
   pendingDeckSelections.delete(tabId);
+  pendingWeaponStashNames.delete(tabId);
 }
 
 function pendingResponseBuffer(tabId: number): CaptureEventBuffer {
