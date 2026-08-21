@@ -25,6 +25,9 @@ import {
   type EntityMetadataIndex,
 } from '../dashboard/wiki-metadata.ts';
 
+const RAIDS_PER_PAGE = 5;
+const RAID_PAGE_BUTTONS = 5;
+
 export class CombatDashboardControllerV2 {
   private latest = null as Awaited<ReturnType<typeof getLatestCombatParse>>;
   private liveContext: CombatParseContext | null = null;
@@ -39,6 +42,8 @@ export class CombatDashboardControllerV2 {
   private readonly collapsedRaidCombat = new Set<string>();
   private readonly collapsedRaidDrops = new Set<string>();
   private readonly wikiReferences = new Map<string, WikiDropReference>();
+  private raidPage = 1;
+  private raidQuery = '';
   private readonly onChanged: () => void;
 
   constructor(onChanged: () => void) {
@@ -73,22 +78,39 @@ export class CombatDashboardControllerV2 {
   }
 
   renderRaids(query: string, layout: CombatLayoutPreset): string {
+    if (query !== this.raidQuery) {
+      this.raidQuery = query;
+      this.raidPage = 1;
+    }
     const ordered = sortRaidHistoryForDisplay(this.history);
     const raids = filterRaidHistory(ordered, query, this.preferences);
     const pins = buildGlobalPinnedDrops(this.history, this.preferences);
+    const totalPages = Math.max(1, Math.ceil(raids.length / RAIDS_PER_PAGE));
+    this.raidPage = Math.min(Math.max(1, this.raidPage), totalPages);
+    const start = (this.raidPage - 1) * RAIDS_PER_PAGE;
+    const visibleRaids = raids.slice(start, start + RAIDS_PER_PAGE);
     return `
+      ${raids.length > RAIDS_PER_PAGE ? this.renderRaidPagination(totalPages) : ''}
       <div class="raid-toolbar">
         <label class="import-button">Import normalized parse<input type="file" accept="application/json,.json" data-raid-import hidden /></label>
         <span class="muted">${formatNumber(raids.length)} of ${formatNumber(this.history.length)} local raid records</span>
       </div>
       ${this.renderGlobalPins(pins)}
-      ${raids.length
-        ? `<div class="raid-list">${raids.map((raid) => this.renderRaid(raid, layout)).join('')}</div>`
+      ${visibleRaids.length
+        ? `<div class="raid-list">${visibleRaids.map((raid) => this.renderRaid(raid, layout)).join('')}</div>`
         : '<div class="empty"><strong>No matching raid records</strong><span>Completed/left raids appear only when enough normalized identifying data was observed.</span></div>'}
     `;
   }
 
   bind(root: HTMLElement): void {
+    root.querySelectorAll<HTMLButtonElement>('[data-raid-page]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const page = Number(button.dataset.raidPage);
+        if (!Number.isInteger(page) || page < 1 || page === this.raidPage) return;
+        this.raidPage = page;
+        this.onChanged();
+      });
+    });
     root.querySelectorAll<HTMLButtonElement>('[data-character-select]').forEach((button) => {
       button.addEventListener('click', () => {
         const actorId = button.dataset.characterSelect ?? null;
@@ -169,6 +191,17 @@ export class CombatDashboardControllerV2 {
         </article>`;
       }).join('')}</div>
     </section>`;
+  }
+
+  private renderRaidPagination(totalPages: number): string {
+    const buttons = visibleRaidPages(this.raidPage, totalPages)
+      .map((page) => `<button class="raid-page-button${page === this.raidPage ? ' active' : ''}" type="button" data-raid-page="${page}" aria-label="Page ${page}"${page === this.raidPage ? ' aria-current="page"' : ''}>${page}</button>`)
+      .join('');
+    return `<nav class="raid-pagination" data-raid-pagination="true" aria-label="Raid history pages">
+      <button class="raid-page-button" type="button" data-raid-page="${this.raidPage - 1}" aria-label="Previous page"${this.raidPage <= 1 ? ' disabled' : ''}>‹</button>
+      ${buttons}
+      <button class="raid-page-button" type="button" data-raid-page="${this.raidPage + 1}" aria-label="Next page"${this.raidPage >= totalPages ? ' disabled' : ''}>›</button>
+    </nav>`;
   }
 
   private renderRaid(raid: RaidHistoryRecord, layout: CombatLayoutPreset): string {
@@ -280,6 +313,13 @@ export class CombatDashboardControllerV2 {
     }
     this.onChanged();
   }
+}
+
+function visibleRaidPages(currentPage: number, totalPages: number): number[] {
+  if (totalPages <= RAID_PAGE_BUTTONS) return Array.from({ length: totalPages }, (_, index) => index + 1);
+  const half = Math.floor(RAID_PAGE_BUTTONS / 2);
+  const first = Math.min(Math.max(1, currentPage - half), totalPages - RAID_PAGE_BUTTONS + 1);
+  return Array.from({ length: RAID_PAGE_BUTTONS }, (_, index) => first + index);
 }
 
 function renderWikiReference(reference: WikiDropReference): string {

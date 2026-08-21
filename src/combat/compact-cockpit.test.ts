@@ -9,6 +9,7 @@ const ui = readFileSync(new URL('./ui.ts', import.meta.url), 'utf8');
 const uiV2Css = readFileSync(new URL('./ui-v2.css', import.meta.url), 'utf8');
 const runtimePolishCss = readFileSync(new URL('./cockpit-weapon-runtime-polish.css', import.meta.url), 'utf8');
 const dashboardMultiActive = readFileSync(new URL('./dashboard-multi-active.ts', import.meta.url), 'utf8');
+const dashboardV2 = readFileSync(new URL('./dashboard-v2.ts', import.meta.url), 'utf8');
 const loadoutFillCss = readFileSync(new URL('./cockpit-loadout-fill.css', import.meta.url), 'utf8');
 const sharedPresentation = readFileSync(new URL('./shared-presentation-fixes.ts', import.meta.url), 'utf8');
 const stableDom = readFileSync(new URL('./live-dom-preservation.ts', import.meta.url), 'utf8');
@@ -152,12 +153,13 @@ test('Raid History uses compact five-record pages with navigation above the raid
   assert.doesNotMatch(ui, /combat-layout-select|COMBAT_LAYOUT_PRESETS|loadLayoutPreference/);
   assert.match(ui, /class="content-header raids-compact-header"/);
   assert.doesNotMatch(ui, /<h2>Raids<\/h2>/);
-  assert.match(raidHistoryCompact, /const RAIDS_PER_PAGE = 5/);
-  assert.match(raidHistoryCompact, /card\.hidden = index < start \|\| index >= end/);
-  assert.match(raidHistoryCompact, /root\.before\(pagination\)/);
-  assert.doesNotMatch(raidHistoryCompact, /list\.insertBefore\(pagination, lastVisibleRaid\)/);
+  assert.match(dashboardV2, /const RAIDS_PER_PAGE = 5/);
+  assert.match(dashboardV2, /const visibleRaids = raids\.slice\(start, start \+ RAIDS_PER_PAGE\)/);
+  assert.match(dashboardV2, /this\.renderRaidPagination\(totalPages\)/);
+  assert.match(dashboardV2, /visibleRaids\.map\(\(raid\) => this\.renderRaid\(raid, layout\)\)/);
+  assert.doesNotMatch(raidHistoryCompact, /card\.hidden|renderPagination/);
   assert.match(raidHistoryCompact, /toolbar\.classList\.add\('raid-toolbar-bottom'\)/);
-  assert.match(raidHistoryCompact, /root\.append\(toolbar\)/);
+  assert.match(raidHistoryCompact, /if \(toolbar !== root\.lastElementChild\) root\.append\(toolbar\)/);
 });
 
 test('live and historical cockpit show Party Damage Previous Current Honors and Participants together', () => {

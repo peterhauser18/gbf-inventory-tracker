@@ -8,8 +8,6 @@
   width: min(280px, 100%);
   margin-left: auto;
 }
-.raid-list > .raid-card[hidden] { display: none !important; }
-
 .raid-pagination {
   display: flex;
   justify-content: center;
@@ -18,7 +16,7 @@
   width: 100%;
   margin: 14px 0 10px;
 }
-.raids-compact-header + .raid-pagination {
+.raids-compact-header + [data-combat-section] > .raid-pagination {
   margin-top: 0;
   margin-bottom: 10px;
 }
