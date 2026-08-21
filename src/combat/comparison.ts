@@ -1,4 +1,8 @@
+import type { DataQuality } from '../types/account.ts';
 import type { DamageBreakdown, RaidHistoryRecord } from './types.ts';
+import type { RaidLoadoutSnapshot } from './loadout-types.ts';
+
+type ComparableRaidHistoryRecord = RaidHistoryRecord & { loadout?: RaidLoadoutSnapshot };
 
 export type RaidComparisonMetricKey =
   | 'party-damage'
@@ -18,20 +22,27 @@ export interface RaidComparisonMetric {
   delta?: number;
   precision?: number;
   unit?: string;
+  leftQuality: DataQuality;
+  rightQuality: DataQuality;
+  deltaQuality: DataQuality;
 }
 
-export interface ObservedContributor {
-  key: string;
-  label: string;
+export interface RaidComparisonLoadoutSummary {
+  quality: RaidLoadoutSnapshot['quality'];
+  deckId?: string;
+  partyQuality: RaidLoadoutSnapshot['partyQuality'];
+  party: string[];
+  summonQuality: RaidLoadoutSnapshot['summonQuality'];
+  summons: string[];
 }
 
-export interface ContributorComparison {
-  quality: 'known' | 'partial' | 'unknown';
-  left: ObservedContributor[];
-  right: ObservedContributor[];
-  common: ObservedContributor[];
-  leftOnly: ObservedContributor[];
-  rightOnly: ObservedContributor[];
+export interface RaidComparisonRunSummary {
+  localId: string;
+  observedAt: number;
+  result: RaidHistoryRecord['result'];
+  role?: RaidHistoryRecord['role'];
+  source: RaidHistoryRecord['source'];
+  loadout?: RaidComparisonLoadoutSummary;
 }
 
 export interface RaidHistoryComparison {
@@ -39,34 +50,42 @@ export interface RaidHistoryComparison {
   raidName?: string;
   leftId: string;
   rightId: string;
+  runs: {
+    left: RaidComparisonRunSummary;
+    right: RaidComparisonRunSummary;
+  };
   metrics: RaidComparisonMetric[];
-  contributors: ContributorComparison;
+  damageQuality: 'known' | 'partial' | 'unknown';
 }
 
 export function buildRaidHistoryComparison(
-  left: RaidHistoryRecord,
-  right: RaidHistoryRecord,
+  left: ComparableRaidHistoryRecord,
+  right: ComparableRaidHistoryRecord,
 ): RaidHistoryComparison | null {
   if (left.raidTechnicalId !== right.raidTechnicalId) return null;
 
   const leftTurn = observedTurn(left);
   const rightTurn = observedTurn(right);
+  const leftDamage = observedPartyDamage(left);
+  const rightDamage = observedPartyDamage(right);
   const metrics: RaidComparisonMetric[] = [
-    metric('party-damage', 'Party damage', knownPartyDamage(left), knownPartyDamage(right)),
+    metric('party-damage', 'Party damage', leftDamage, rightDamage, undefined, undefined, damageMetricQuality(left, leftDamage), damageMetricQuality(right, rightDamage)),
     metric('duration', 'Duration', left.durationMs, right.durationMs, 'ms'),
     metric('observed-turns', 'Last observed turn', leftTurn, rightTurn),
     metric(
       'damage-per-observed-turn',
       'Damage / observed turn',
-      ratio(knownPartyDamage(left), leftTurn),
-      ratio(knownPartyDamage(right), rightTurn),
+      ratio(leftDamage, leftTurn),
+      ratio(rightDamage, rightTurn),
       undefined,
       1,
+      damageMetricQuality(left, leftDamage),
+      damageMetricQuality(right, rightDamage),
     ),
-    metric('honors', 'Honors / contribution', honors(left), honors(right)),
-    metric('normal-damage', 'Normal damage', knownBreakdown(left, 'normal'), knownBreakdown(right, 'normal')),
-    metric('skill-damage', 'Skill damage', knownBreakdown(left, 'skill'), knownBreakdown(right, 'skill')),
-    metric('ougi-damage', 'Ougi damage', knownBreakdown(left, 'ougi'), knownBreakdown(right, 'ougi')),
+    metric('honors', 'Honors / contribution', honors(left), honors(right), undefined, undefined, participantMetricQuality(left), participantMetricQuality(right)),
+    damageBreakdownMetric('normal-damage', 'Normal damage', left, right, 'normal'),
+    damageBreakdownMetric('skill-damage', 'Skill damage', left, right, 'skill'),
+    damageBreakdownMetric('ougi-damage', 'Ougi damage', left, right, 'ougi'),
   ];
 
   return {
@@ -74,42 +93,38 @@ export function buildRaidHistoryComparison(
     raidName: left.raidName ?? right.raidName,
     leftId: left.localId,
     rightId: right.localId,
+    runs: {
+      left: runSummary(left),
+      right: runSummary(right),
+    },
     metrics,
-    contributors: compareContributors(left, right),
+    damageQuality: combineDamageQuality(left.damageQuality, right.damageQuality),
   };
 }
 
-export function observedContributors(raid: RaidHistoryRecord): ObservedContributor[] {
-  const result = new Map<string, ObservedContributor>();
-  for (const row of raid.characterDamage) {
-    const key = row.actorId ? `id:${row.actorId}` : row.actorName ? `name:${normalizeName(row.actorName)}` : '';
-    if (!key) continue;
-    result.set(key, { key, label: row.actorName ?? row.actorId });
-  }
-  for (const entry of raid.log) {
-    const key = entry.actorId ? `id:${entry.actorId}` : entry.actorName ? `name:${normalizeName(entry.actorName)}` : '';
-    if (!key) continue;
-    const current = result.get(key);
-    result.set(key, { key, label: current?.label ?? entry.actorName ?? entry.actorId ?? 'Unknown contributor' });
-  }
-  return [...result.values()].sort((a, b) => a.label.localeCompare(b.label) || a.key.localeCompare(b.key));
+function runSummary(raid: ComparableRaidHistoryRecord): RaidComparisonRunSummary {
+  return {
+    localId: raid.localId,
+    observedAt: raid.observedEndedAt ?? raid.lastObservedAt,
+    result: raid.result,
+    role: raid.role,
+    source: raid.source,
+    loadout: raid.loadout ? loadoutSummary(raid.loadout) : undefined,
+  };
 }
 
-function compareContributors(left: RaidHistoryRecord, right: RaidHistoryRecord): ContributorComparison {
-  const leftRows = observedContributors(left);
-  const rightRows = observedContributors(right);
-  const leftMap = new Map(leftRows.map((row) => [row.key, row]));
-  const rightMap = new Map(rightRows.map((row) => [row.key, row]));
-  const common = leftRows.filter((row) => rightMap.has(row.key));
-  const leftOnly = leftRows.filter((row) => !rightMap.has(row.key));
-  const rightOnly = rightRows.filter((row) => !leftMap.has(row.key));
+function loadoutSummary(loadout: RaidLoadoutSnapshot): RaidComparisonLoadoutSummary {
   return {
-    quality: combineDamageQuality(left.damageQuality, right.damageQuality),
-    left: leftRows,
-    right: rightRows,
-    common,
-    leftOnly,
-    rightOnly,
+    quality: loadout.quality,
+    deckId: loadout.deckId,
+    partyQuality: loadout.partyQuality,
+    party: [...loadout.party]
+      .sort((left, right) => left.position - right.position)
+      .map((member) => member.name ?? member.id ?? `Slot ${member.position + 1}`),
+    summonQuality: loadout.summonQuality,
+    summons: [...loadout.summons]
+      .sort((left, right) => left.position - right.position)
+      .map((summon) => `${summon.support ? 'Support: ' : ''}${summon.name ?? summon.id ?? `Slot ${summon.position + 1}`}`),
   };
 }
 
@@ -120,25 +135,43 @@ function metric(
   right: number | undefined,
   unit?: string,
   precision?: number,
+  leftQuality: DataQuality = 'known',
+  rightQuality: DataQuality = 'known',
 ): RaidComparisonMetric {
+  const delta = left !== undefined && right !== undefined ? right - left : undefined;
   return {
     key,
     label,
     left,
     right,
-    delta: left !== undefined && right !== undefined ? right - left : undefined,
+    delta,
     unit,
     precision,
+    leftQuality: left === undefined ? 'unknown' : leftQuality,
+    rightQuality: right === undefined ? 'unknown' : rightQuality,
+    deltaQuality: delta === undefined
+      ? 'unknown'
+      : leftQuality === 'known' && rightQuality === 'known'
+        ? 'known'
+        : 'partial',
   };
 }
 
-function knownPartyDamage(raid: RaidHistoryRecord): number | undefined {
-  return raid.damageQuality === 'known' ? raid.partyDamage : undefined;
+function observedPartyDamage(raid: RaidHistoryRecord): number | undefined {
+  return raid.partyDamage;
+}
+
+function damageMetricQuality(raid: RaidHistoryRecord, value: number | undefined): DataQuality {
+  return value === undefined ? 'unknown' : raid.damageQuality;
 }
 
 function honors(raid: RaidHistoryRecord): number | undefined {
-  if (raid.participants?.quality !== 'known') return undefined;
-  return raid.participants.honors ?? raid.participants.contribution;
+  return raid.participants?.honors ?? raid.participants?.contribution;
+}
+
+function participantMetricQuality(raid: RaidHistoryRecord): DataQuality {
+  if (!raid.participants) return 'unknown';
+  return raid.participants.quality;
 }
 
 function observedTurn(raid: RaidHistoryRecord): number | undefined {
@@ -153,9 +186,37 @@ function ratio(value: number | undefined, denominator: number | undefined): numb
   return value !== undefined && denominator !== undefined && denominator > 0 ? value / denominator : undefined;
 }
 
-function knownBreakdown(raid: RaidHistoryRecord, key: keyof DamageBreakdown): number | undefined {
-  if (raid.damageQuality !== 'known' || raid.characterDamage.length === 0 || raid.characterDamage.some((row) => row.quality !== 'known')) return undefined;
-  return raid.characterDamage.reduce((sum, row) => sum + (row.breakdown[key] ?? 0), 0);
+function damageBreakdownMetric(
+  metricKey: RaidComparisonMetricKey,
+  label: string,
+  left: RaidHistoryRecord,
+  right: RaidHistoryRecord,
+  breakdownKey: keyof DamageBreakdown,
+): RaidComparisonMetric {
+  const leftValue = observedBreakdown(left, breakdownKey);
+  const rightValue = observedBreakdown(right, breakdownKey);
+  return metric(
+    metricKey,
+    label,
+    leftValue,
+    rightValue,
+    undefined,
+    undefined,
+    damageMetricQuality(left, leftValue),
+    damageMetricQuality(right, rightValue),
+  );
+}
+
+function observedBreakdown(raid: RaidHistoryRecord, key: keyof DamageBreakdown): number | undefined {
+  let observed = false;
+  let total = 0;
+  for (const entry of raid.log) {
+    const value = entry.breakdown[key];
+    if (value === undefined) continue;
+    observed = true;
+    total += value;
+  }
+  return observed ? total : undefined;
 }
 
 function combineDamageQuality(
@@ -165,8 +226,4 @@ function combineDamageQuality(
   if (left === 'known' && right === 'known') return 'known';
   if (left === 'unknown' && right === 'unknown') return 'unknown';
   return 'partial';
-}
-
-function normalizeName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }

@@ -7,6 +7,7 @@ const rosterLogic = readFileSync(new URL('./roster-capabilities.ts', import.meta
 const wikiCargo = readFileSync(new URL('./wiki-cargo.ts', import.meta.url), 'utf8');
 const compareUi = readFileSync(new URL('../combat/combat-compare-ui.ts', import.meta.url), 'utf8');
 const compareLogic = readFileSync(new URL('../combat/comparison.ts', import.meta.url), 'utf8');
+const compareCss = readFileSync(new URL('../combat/combat-compare.css', import.meta.url), 'utf8');
 const source = `${rosterUi}\n${rosterLogic}\n${compareUi}\n${compareLogic}`;
 
 const dashboardHtml = readFileSync(new URL('../../dashboard.html', import.meta.url), 'utf8');
@@ -32,13 +33,40 @@ test('roster Wiki lookup remains bulk public and credential-free through the sha
   assert.doesNotMatch(wikiCargo, /searchParams\.set\(['"]ids/);
 });
 
-test('combat comparison UI explicitly labels actor lists as observed contributors rather than full party', () => {
-  assert.match(compareUi, /Observed contributors are not guaranteed to be the complete party/);
-  assert.doesNotMatch(compareUi, />Team</);
+test('combat comparison uses the observed party slot and omits contributor and weapon-grid summaries', () => {
+  assert.match(compareUi, /Party slot \$\{loadout\.deckId\}/);
+  assert.doesNotMatch(compareUi, /Observed in both|Observed only in|Weapon Grid/);
+});
+
+test('combat comparison keeps A blue and B gold across run cards and metric columns', () => {
+  assert.match(compareUi, /side-\$\{label\.toLowerCase\(\)\}/);
+  assert.match(compareUi, /raid-compare-col-a/);
+  assert.match(compareUi, /raid-compare-col-b/);
+  assert.match(compareCss, /\.raid-compare-run\.side-a/);
+  assert.match(compareCss, /\.raid-compare-run\.side-b/);
+  assert.match(compareCss, /\.raid-compare-col-a[^}]*#102536/);
+  assert.match(compareCss, /\.raid-compare-col-b[^}]*#2e2615/);
+});
+
+test('combat comparison colors the larger available metric green and the smaller red', () => {
+  assert.match(compareUi, /left > right/);
+  assert.match(compareUi, /raid-compare-higher/);
+  assert.match(compareUi, /raid-compare-lower/);
+  assert.match(compareCss, /\.raid-compare-higher[^}]*#173a27/);
+  assert.match(compareCss, /\.raid-compare-lower[^}]*#3b2024/);
+});
+
+test('combat comparison excludes drop facts from its UI and derived comparison data', () => {
+  assert.doesNotMatch(compareUi, /\.drops\b|dropsQuality|Drop comparison/i);
+  assert.doesNotMatch(compareLogic, /\.drops\b|dropsQuality/);
 });
 
 test('combat comparison mutation sync keeps button text idempotent', () => {
   assert.ok(compareUi.includes('if (button.textContent !== label) button.textContent = label;'));
+  assert.match(compareUi, /panel\.dataset\.raidComparisonKey !== selectionKey/);
+  assert.match(compareUi, /mutations\.some\(requiresRaidComparisonSync\)/);
+  assert.doesNotMatch(compareUi, /new MutationObserver\(scheduleSync\)/);
+  assert.doesNotMatch(compareUi, /requiresRaidComparisonSync[\s\S]*combat-image/);
 });
 
 test('roster controller is installed before dashboard restore navigation can replay a roster click', () => {

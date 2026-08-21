@@ -2,6 +2,7 @@ import './dashboard/theme.css';
 import './dashboard/styles.css';
 import './combat/standalone.css';
 import './combat/ui.ts';
+import './combat/combat-compare-ui.ts';
 import {
   clearRawCombatCapture,
   enableRawCombatCapture,
