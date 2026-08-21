@@ -41,13 +41,24 @@ test('parallel tab network bookkeeping is target-scoped and accepts every attach
   assert.match(background, /clearPendingObservationData\(tabId\)/);
 });
 
-test('stopping observation detaches every attached GBF target', () => {
-  const start = background.indexOf('async function stopObservation');
+test('stop, retarget, tab removal and debugger detach share one serialized target lifecycle', () => {
+  assert.match(background, /function stopObservation\(\): Promise<CaptureStatusResponse> \{\s*return withTargetQueue\(stopObservationNow\);\s*\}/s);
+  assert.match(background, /function queueObservationRetarget[\s\S]*withTargetQueue\(\(\) => retargetObservation\(candidateTabId\)\)/);
+  assert.match(background, /chrome\.debugger\.onDetach\.addListener[\s\S]*withTargetQueue\(\(\) => handleUnexpectedDetach/);
+  assert.match(background, /chrome\.tabs\.onRemoved\.addListener[\s\S]*withTargetQueue\(\(\) => releaseUnavailableTarget/);
+  assert.match(background, /function withTargetQueue<T>[\s\S]*targetQueue\.catch\(\(\) => \{\}\)\.then\(operation\)[\s\S]*targetQueue = run\.then/);
+});
+
+test('stopping observation marks the scan inactive before detaching every retained GBF target', () => {
+  const start = background.indexOf('async function stopObservationNow');
   const end = background.indexOf('function queueObservationRetarget', start);
   assert.ok(start >= 0 && end > start);
   const stopSource = background.slice(start, end);
+  const markInactive = stopSource.indexOf('setRuntimeState({ active: false');
+  const detachLoop = stopSource.indexOf('for (const tabId of tabIds)');
+  assert.ok(markInactive >= 0);
+  assert.ok(detachLoop > markInactive);
   assert.match(stopSource, /const tabIds = observationTabIds\(state\)/);
-  assert.match(stopSource, /for \(const tabId of tabIds\)/);
   assert.match(stopSource, /chrome\.debugger\.detach\(\{ tabId \}\)/);
 });
 
