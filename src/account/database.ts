@@ -27,6 +27,15 @@ export function createAccountDatabase(snapshot: AccountSnapshot): AccountDatabas
   };
 }
 
+export function normalizeAccountDatabaseState(state: AccountDatabaseState): AccountDatabaseState {
+  const weapons = mergeStashWeaponsIntoWeapons(state.snapshot.weapons, state.snapshot.weaponStashes);
+  const unchanged = weapons.length === state.snapshot.weapons.length
+    && weapons.every((weapon, index) => weapon === state.snapshot.weapons[index]);
+  return unchanged
+    ? state
+    : { ...state, snapshot: { ...state.snapshot, weapons } };
+}
+
 export function mergeAccountDatabase(
   current: AccountDatabaseState | null,
   incoming: AccountSnapshot,
