@@ -152,13 +152,13 @@ function renderComparison(comparison: RaidHistoryComparison | null): string {
   return `
     <div class="raid-compare-head"><div><p class="eyebrow">COMBAT HISTORY COMPARE</p><h3>${escapeHtml(comparison.raidName ?? comparison.raidTechnicalId)}</h3><p class="muted">A vs B · Δ is B − A</p></div><div class="raid-compare-head-actions">${qualityChip(comparison.damageQuality)}<button type="button" data-raid-compare-clear>Clear</button></div></div>
     <div class="raid-compare-runs">${renderRun('A', comparison.runs.left)}${renderRun('B', comparison.runs.right)}</div>
-    <div class="raid-compare-metrics"><div class="raid-compare-row head"><span>Metric</span><span>A</span><span>B</span><span>Δ</span></div>${comparison.metrics.map(renderMetric).join('')}</div>
+    <div class="raid-compare-metrics"><div class="raid-compare-row head"><span>Metric</span><span class="raid-compare-col-a">A</span><span class="raid-compare-col-b">B</span><span>Δ</span></div>${comparison.metrics.map(renderMetric).join('')}</div>
   `;
 }
 
 function renderRun(label: 'A' | 'B', run: RaidComparisonRunSummary): string {
   const loadout = run.loadout ? renderLoadout(run.loadout) : '<p class="muted">Historical loadout unavailable.</p>';
-  return `<article class="raid-compare-run"><div class="raid-compare-run-head"><span>${label}</span><div><strong>${escapeHtml(formatDate(run.observedAt))}</strong><small>${escapeHtml([run.result, run.role, run.source].filter(Boolean).join(' · '))}</small></div></div>${loadout}</article>`;
+  return `<article class="raid-compare-run side-${label.toLowerCase()}"><div class="raid-compare-run-head"><span>${label}</span><div><strong>${escapeHtml(formatDate(run.observedAt))}</strong><small>${escapeHtml([run.result, run.role, run.source].filter(Boolean).join(' · '))}</small></div></div>${loadout}</article>`;
 }
 
 function renderLoadout(loadout: RaidComparisonLoadoutSummary): string {
@@ -186,7 +186,7 @@ function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
 }
 
 function renderMetric(metric: RaidComparisonMetric): string {
-  return `<div class="raid-compare-row"><strong>${escapeHtml(metric.label)}</strong><span>${formatMetric(metric.left, metric.leftQuality, metric)}</span><span>${formatMetric(metric.right, metric.rightQuality, metric)}</span><span>${metric.delta === undefined ? '—' : formatSigned(metric.delta, metric)}</span></div>`;
+  return `<div class="raid-compare-row"><strong>${escapeHtml(metric.label)}</strong><span class="raid-compare-col-a">${formatMetric(metric.left, metric.leftQuality, metric)}</span><span class="raid-compare-col-b">${formatMetric(metric.right, metric.rightQuality, metric)}</span><span>${metric.delta === undefined ? '—' : formatSigned(metric.delta, metric.deltaQuality, metric)}</span></div>`;
 }
 
 function formatMetric(value: number | undefined, quality: 'known' | 'partial' | 'unknown', metric: RaidComparisonMetric): string {
@@ -198,10 +198,12 @@ function formatMetric(value: number | undefined, quality: 'known' | 'partial' | 
       : value.toFixed(metric.precision);
   return quality === 'partial' ? `≥ ${formatted}` : formatted;
 }
-function formatSigned(value: number, metric: RaidComparisonMetric): string {
+function formatSigned(value: number, quality: 'known' | 'partial' | 'unknown', metric: RaidComparisonMetric): string {
   const sign = value > 0 ? '+' : '';
-  if (metric.unit === 'ms') return `${sign}${(value / 1000).toFixed(1)}s`;
-  return `${sign}${metric.precision === undefined ? Math.round(value).toLocaleString('en-US') : value.toFixed(metric.precision)}`;
+  const formatted = metric.unit === 'ms'
+    ? `${sign}${(value / 1000).toFixed(1)}s`
+    : `${sign}${metric.precision === undefined ? Math.round(value).toLocaleString('en-US') : value.toFixed(metric.precision)}`;
+  return quality === 'partial' ? `≈ ${formatted}` : formatted;
 }
 function formatDate(value: number): string { return new Date(value).toLocaleString(); }
 function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] ?? character); }

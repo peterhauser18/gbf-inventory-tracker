@@ -24,6 +24,7 @@ export interface RaidComparisonMetric {
   unit?: string;
   leftQuality: DataQuality;
   rightQuality: DataQuality;
+  deltaQuality: DataQuality;
 }
 
 export interface RaidComparisonLoadoutSummary {
@@ -137,18 +138,22 @@ function metric(
   leftQuality: DataQuality = 'known',
   rightQuality: DataQuality = 'known',
 ): RaidComparisonMetric {
+  const delta = left !== undefined && right !== undefined ? right - left : undefined;
   return {
     key,
     label,
     left,
     right,
-    delta: left !== undefined && right !== undefined && leftQuality === 'known' && rightQuality === 'known'
-      ? right - left
-      : undefined,
+    delta,
     unit,
     precision,
     leftQuality: left === undefined ? 'unknown' : leftQuality,
     rightQuality: right === undefined ? 'unknown' : rightQuality,
+    deltaQuality: delta === undefined
+      ? 'unknown'
+      : leftQuality === 'known' && rightQuality === 'known'
+        ? 'known'
+        : 'partial',
   };
 }
 

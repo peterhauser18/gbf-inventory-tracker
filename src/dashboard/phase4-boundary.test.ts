@@ -7,6 +7,7 @@ const rosterLogic = readFileSync(new URL('./roster-capabilities.ts', import.meta
 const wikiCargo = readFileSync(new URL('./wiki-cargo.ts', import.meta.url), 'utf8');
 const compareUi = readFileSync(new URL('../combat/combat-compare-ui.ts', import.meta.url), 'utf8');
 const compareLogic = readFileSync(new URL('../combat/comparison.ts', import.meta.url), 'utf8');
+const compareCss = readFileSync(new URL('../combat/combat-compare.css', import.meta.url), 'utf8');
 const source = `${rosterUi}\n${rosterLogic}\n${compareUi}\n${compareLogic}`;
 
 const dashboardHtml = readFileSync(new URL('../../dashboard.html', import.meta.url), 'utf8');
@@ -35,6 +36,16 @@ test('roster Wiki lookup remains bulk public and credential-free through the sha
 test('combat comparison uses the observed party slot and omits contributor and weapon-grid summaries', () => {
   assert.match(compareUi, /Party slot \$\{loadout\.deckId\}/);
   assert.doesNotMatch(compareUi, /Observed in both|Observed only in|Weapon Grid/);
+});
+
+test('combat comparison keeps A blue and B gold across run cards and metric columns', () => {
+  assert.match(compareUi, /side-\$\{label\.toLowerCase\(\)\}/);
+  assert.match(compareUi, /raid-compare-col-a/);
+  assert.match(compareUi, /raid-compare-col-b/);
+  assert.match(compareCss, /\.raid-compare-run\.side-a/);
+  assert.match(compareCss, /\.raid-compare-run\.side-b/);
+  assert.match(compareCss, /\.raid-compare-col-a[^}]*#102536/);
+  assert.match(compareCss, /\.raid-compare-col-b[^}]*#2e2615/);
 });
 
 test('combat comparison excludes drop facts from its UI and derived comparison data', () => {

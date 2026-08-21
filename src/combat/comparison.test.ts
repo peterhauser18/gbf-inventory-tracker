@@ -54,7 +54,7 @@ test('compares only records for the same technical raid identity', () => {
   assert.equal(buildRaidHistoryComparison(raid('r1', 'a'), raid('r1', 'b'))?.raidTechnicalId, 'r1');
 });
 
-test('derives deltas only when both compared values are known', () => {
+test('marks deltas exact when both compared values are known', () => {
   const comparison = buildRaidHistoryComparison(
     raid('r1', 'a'),
     raid('r1', 'b', { partyDamage: 1600, durationMs: undefined, lastObservedTurn: 4, participants: undefined, log: [{ observedAt: 1, turn: 4, actorId: '3040000000', actorName: 'Alpha', actionKind: 'normal', damage: 500, breakdown: { normal: 500 } }] }),
@@ -71,9 +71,10 @@ test('derives deltas only when both compared values are known', () => {
   assert.equal(perTurn?.delta, 200);
   assert.equal(damage?.leftQuality, 'known');
   assert.equal(damage?.rightQuality, 'known');
+  assert.equal(damage?.deltaQuality, 'known');
 });
 
-test('exposes observed partial party damage, per-turn and contribution without deriving deltas', () => {
+test('exposes observed partial party damage, per-turn and contribution with partial-quality deltas', () => {
   const comparison = buildRaidHistoryComparison(
     raid('r1', 'a', { damageQuality: 'partial', partyDamage: 1000, participants: { honors: 100, quality: 'partial' } }),
     raid('r1', 'b', { damageQuality: 'known', partyDamage: 1600, participants: { honors: 250, quality: 'known' }, lastObservedTurn: 4 }),
@@ -83,16 +84,19 @@ test('exposes observed partial party damage, per-turn and contribution without d
   const honors = comparison.metrics.find((row) => row.key === 'honors');
   assert.equal(partyDamage?.left, 1000);
   assert.equal(partyDamage?.leftQuality, 'partial');
-  assert.equal(partyDamage?.delta, undefined);
+  assert.equal(partyDamage?.delta, 600);
+  assert.equal(partyDamage?.deltaQuality, 'partial');
   assert.equal(perTurn?.left, 200);
   assert.equal(perTurn?.leftQuality, 'partial');
-  assert.equal(perTurn?.delta, undefined);
+  assert.equal(perTurn?.delta, 120);
+  assert.equal(perTurn?.deltaQuality, 'partial');
   assert.equal(honors?.left, 100);
   assert.equal(honors?.leftQuality, 'partial');
-  assert.equal(honors?.delta, undefined);
+  assert.equal(honors?.delta, 150);
+  assert.equal(honors?.deltaQuality, 'partial');
 });
 
-test('exposes observed partial damage breakdown without deriving a numeric delta', () => {
+test('exposes observed partial damage breakdown with a partial-quality delta', () => {
   const comparison = buildRaidHistoryComparison(
     raid('r1', 'a'),
     raid('r1', 'b', { damageQuality: 'partial' }),
@@ -100,7 +104,8 @@ test('exposes observed partial damage breakdown without deriving a numeric delta
   const normal = comparison.metrics.find((row) => row.key === 'normal-damage');
   assert.equal(normal?.right, 500);
   assert.equal(normal?.rightQuality, 'partial');
-  assert.equal(normal?.delta, undefined);
+  assert.equal(normal?.delta, 0);
+  assert.equal(normal?.deltaQuality, 'partial');
   assert.equal(comparison.damageQuality, 'partial');
 });
 
