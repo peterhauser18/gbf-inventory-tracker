@@ -171,11 +171,12 @@ function renderLoadout(loadout: RaidComparisonLoadoutSummary): string {
 
 function renderEvidence(label: string, values: string[], quality: 'known' | 'partial' | 'unknown'): string {
   const text = values.map(escapeHtml).join(' · ');
-  return `<div><span>${escapeHtml(label)} · ${qualityLabel(quality)}</span><strong>${text || 'Unavailable'}</strong></div>`;
+  const qualityText = qualityLabel(quality);
+  return `<div><span>${escapeHtml(label)}${qualityText ? ` · ${qualityText}` : ''}</span><strong>${text || 'Unavailable'}</strong></div>`;
 }
 
 function qualityLabel(quality: 'known' | 'partial' | 'unknown'): string {
-  if (quality === 'known') return 'Known';
+  if (quality === 'known') return '';
   return quality === 'partial' ? 'Incomplete' : 'Unavailable';
 }
 
@@ -186,24 +187,30 @@ function qualityChip(quality: 'known' | 'partial' | 'unknown'): string {
 }
 
 function renderMetric(metric: RaidComparisonMetric): string {
-  return `<div class="raid-compare-row"><strong>${escapeHtml(metric.label)}</strong><span class="raid-compare-col-a">${formatMetric(metric.left, metric.leftQuality, metric)}</span><span class="raid-compare-col-b">${formatMetric(metric.right, metric.rightQuality, metric)}</span><span>${metric.delta === undefined ? '—' : formatSigned(metric.delta, metric.deltaQuality, metric)}</span></div>`;
+  const [leftComparison, rightComparison] = comparisonClasses(metric.left, metric.right);
+  return `<div class="raid-compare-row"><strong>${escapeHtml(metric.label)}</strong><span class="raid-compare-col-a${leftComparison}">${formatMetric(metric.left, metric)}</span><span class="raid-compare-col-b${rightComparison}">${formatMetric(metric.right, metric)}</span><span>${metric.delta === undefined ? '—' : formatSigned(metric.delta, metric)}</span></div>`;
 }
 
-function formatMetric(value: number | undefined, quality: 'known' | 'partial' | 'unknown', metric: RaidComparisonMetric): string {
+function comparisonClasses(left: number | undefined, right: number | undefined): [string, string] {
+  if (left === undefined || right === undefined || left === right) return ['', ''];
+  return left > right
+    ? [' raid-compare-higher', ' raid-compare-lower']
+    : [' raid-compare-lower', ' raid-compare-higher'];
+}
+
+function formatMetric(value: number | undefined, metric: RaidComparisonMetric): string {
   if (value === undefined) return '—';
-  const formatted = metric.unit === 'ms'
+  return metric.unit === 'ms'
     ? `${(value / 1000).toFixed(1)}s`
     : metric.precision === undefined
       ? Math.round(value).toLocaleString('en-US')
       : value.toFixed(metric.precision);
-  return quality === 'partial' ? `≥ ${formatted}` : formatted;
 }
-function formatSigned(value: number, quality: 'known' | 'partial' | 'unknown', metric: RaidComparisonMetric): string {
+function formatSigned(value: number, metric: RaidComparisonMetric): string {
   const sign = value > 0 ? '+' : '';
-  const formatted = metric.unit === 'ms'
+  return metric.unit === 'ms'
     ? `${sign}${(value / 1000).toFixed(1)}s`
     : `${sign}${metric.precision === undefined ? Math.round(value).toLocaleString('en-US') : value.toFixed(metric.precision)}`;
-  return quality === 'partial' ? `≈ ${formatted}` : formatted;
 }
 function formatDate(value: number): string { return new Date(value).toLocaleString(); }
 function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[character] ?? character); }

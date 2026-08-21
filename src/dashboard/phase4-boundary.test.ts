@@ -48,6 +48,14 @@ test('combat comparison keeps A blue and B gold across run cards and metric colu
   assert.match(compareCss, /\.raid-compare-col-b[^}]*#2e2615/);
 });
 
+test('combat comparison colors the larger available metric green and the smaller red', () => {
+  assert.match(compareUi, /left > right/);
+  assert.match(compareUi, /raid-compare-higher/);
+  assert.match(compareUi, /raid-compare-lower/);
+  assert.match(compareCss, /\.raid-compare-higher[^}]*#173a27/);
+  assert.match(compareCss, /\.raid-compare-lower[^}]*#3b2024/);
+});
+
 test('combat comparison excludes drop facts from its UI and derived comparison data', () => {
   assert.doesNotMatch(compareUi, /\.drops\b|dropsQuality|Drop comparison/i);
   assert.doesNotMatch(compareLogic, /\.drops\b|dropsQuality/);

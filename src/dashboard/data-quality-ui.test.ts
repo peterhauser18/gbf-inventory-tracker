@@ -68,6 +68,5 @@ test('combat surfaces keep uncertainty without raw partial or unknown labels', (
   assert.match(combatLayouts, /\(estimated\)/);
   assert.doesNotMatch(combatCompare, />\$\{comparison\.damageQuality\}<|partial\/unknown/);
   assert.match(combatCompare, /qualityChip\(comparison\.damageQuality\)/);
-  assert.match(combatCompare, /quality === 'partial' \? `≥ \$\{formatted\}` : formatted/);
-  assert.match(combatCompare, /quality === 'partial' \? `≈ \$\{formatted\}` : formatted/);
+  assert.doesNotMatch(combatCompare, /return 'Known'|≥|≈/);
 });
